@@ -207,9 +207,7 @@ async def generate_cypher(
                 """
             )
             labels = [(r["label"], r["count"]) for r in labels_result]
-            schema_info = "Node counts: " + ", ".join(
-                f"{lbl}({cnt})" for lbl, cnt in labels[:15]
-            )
+            schema_info = "Node counts: " + ", ".join(f"{lbl}({cnt})" for lbl, cnt in labels[:15])
     except Exception as e:
         logger.warning("Failed to get schema: %s", e)
         schema_info = "Schema information unavailable"
@@ -227,9 +225,7 @@ async def generate_cypher(
         )
     )
 
-    human_message = HumanMessage(
-        content=f"Generate a Cypher query for this question: {question}"
-    )
+    human_message = HumanMessage(content=f"Generate a Cypher query for this question: {question}")
 
     chain = llm | StrOutputParser()
     cypher = await chain.ainvoke([system_message, human_message])
@@ -239,9 +235,7 @@ async def generate_cypher(
     if cypher.startswith("```"):
         # Remove markdown code blocks
         lines = cypher.split("\n")
-        cypher = "\n".join(
-            line for line in lines if not line.startswith("```")
-        ).strip()
+        cypher = "\n".join(line for line in lines if not line.startswith("```")).strip()
 
     if len(cypher) > LOG_TRUNCATE_LENGTH:
         truncated = cypher[:LOG_TRUNCATE_LENGTH] + "..."
@@ -284,9 +278,7 @@ async def text2cypher_query(
         # Validate query is read-only (before trying to execute)
         cypher_upper = cypher.upper()
         forbidden = ["DELETE", "MERGE", "CREATE", "SET", "REMOVE", "DROP"]
-        forbidden_found = next(
-            (keyword for keyword in forbidden if keyword in cypher_upper), None
-        )
+        forbidden_found = next((keyword for keyword in forbidden if keyword in cypher_upper), None)
 
         if forbidden_found:
             logger.warning("Query contains forbidden keyword: %s", forbidden_found)

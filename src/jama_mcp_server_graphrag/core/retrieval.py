@@ -309,9 +309,7 @@ async def graph_enriched_search(
 
     # Collect all chunk IDs for batch query
     chunk_ids = [
-        r["metadata"].get("chunk_id")
-        for r in base_results
-        if r["metadata"].get("chunk_id")
+        r["metadata"].get("chunk_id") for r in base_results if r["metadata"].get("chunk_id")
     ]
 
     if not chunk_ids:

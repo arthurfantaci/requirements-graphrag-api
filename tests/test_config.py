@@ -184,11 +184,14 @@ class TestGetConfig:
 
     def test_get_config_missing_password_raises_error(self):
         """Test that missing NEO4J_PASSWORD raises ConfigurationError."""
-        with patch.dict(
-            "os.environ",
-            {"NEO4J_URI": "neo4j://localhost:7687", "NEO4J_USERNAME": "neo4j"},
-            clear=True,
-        ), pytest.raises(ConfigurationError, match="NEO4J_PASSWORD"):
+        with (
+            patch.dict(
+                "os.environ",
+                {"NEO4J_URI": "neo4j://localhost:7687", "NEO4J_USERNAME": "neo4j"},
+                clear=True,
+            ),
+            pytest.raises(ConfigurationError, match="NEO4J_PASSWORD"),
+        ):
             get_config()
 
     def test_get_config_lists_all_missing_vars(self):

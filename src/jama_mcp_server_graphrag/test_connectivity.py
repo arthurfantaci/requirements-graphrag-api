@@ -58,7 +58,6 @@ def main() -> int:
     # Step 3: Test basic query - count nodes
     logger.info("\n[3/4] Testing basic query (node counts)...")
     try:
-
         # Count nodes by label
         query = """
         MATCH (n)

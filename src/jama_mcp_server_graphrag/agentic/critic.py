@@ -92,9 +92,7 @@ async def critique_answer(
         content=ANSWER_CRITIC_PROMPT.format(context=context, question=question)
     )
 
-    human_message = HumanMessage(
-        content="Evaluate the context and return the critique as JSON."
-    )
+    human_message = HumanMessage(content="Evaluate the context and return the critique as JSON.")
 
     chain = llm | StrOutputParser()
     response = await chain.ainvoke([system_message, human_message])
@@ -105,9 +103,7 @@ async def critique_answer(
         response_clean = response.strip()
         if response_clean.startswith("```"):
             lines = response_clean.split("\n")
-            response_clean = "\n".join(
-                line for line in lines if not line.startswith("```")
-            ).strip()
+            response_clean = "\n".join(line for line in lines if not line.startswith("```")).strip()
 
         data = json.loads(response_clean)
 

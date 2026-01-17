@@ -32,9 +32,7 @@ def create_mock_record(data: dict[str, Any]) -> MagicMock:
     return record
 
 
-def create_mock_driver_with_results(
-    results_sequence: list[list[dict[str, Any]]]
-) -> MagicMock:
+def create_mock_driver_with_results(results_sequence: list[list[dict[str, Any]]]) -> MagicMock:
     """Create a mock Neo4j driver that returns a sequence of results."""
     mock_driver = MagicMock()
     mock_session = MagicMock()
@@ -74,17 +72,19 @@ def create_mock_driver_with_results(
 @pytest.fixture
 def mock_driver_with_terms() -> MagicMock:
     """Create a mock Neo4j driver with definition terms."""
-    return create_mock_driver_with_results([
+    return create_mock_driver_with_results(
         [
-            {
-                "term": "Requirements Traceability",
-                "definition": "The ability to trace requirements throughout the lifecycle",
-                "url": "https://example.com/glossary#traceability",
-                "term_id": "term-123",
-                "score": 0.95,
-            }
+            [
+                {
+                    "term": "Requirements Traceability",
+                    "definition": "The ability to trace requirements throughout the lifecycle",
+                    "url": "https://example.com/glossary#traceability",
+                    "term_id": "term-123",
+                    "score": 0.95,
+                }
+            ]
         ]
-    ])
+    )
 
 
 @pytest.fixture
@@ -118,9 +118,7 @@ class TestLookupTerm:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_lookup_term_fuzzy_uses_contains(
-        self, mock_driver_with_terms: MagicMock
-    ) -> None:
+    async def test_lookup_term_fuzzy_uses_contains(self, mock_driver_with_terms: MagicMock) -> None:
         """Test fuzzy matching uses CONTAINS."""
         await lookup_term(mock_driver_with_terms, "trace", fuzzy=True)
 
@@ -129,9 +127,7 @@ class TestLookupTerm:
         assert "CONTAINS" in call_args[0][0]
 
     @pytest.mark.asyncio
-    async def test_lookup_term_exact_matching(
-        self, mock_driver_with_terms: MagicMock
-    ) -> None:
+    async def test_lookup_term_exact_matching(self, mock_driver_with_terms: MagicMock) -> None:
         """Test exact matching when fuzzy=False."""
         await lookup_term(mock_driver_with_terms, "traceability", fuzzy=False)
 
@@ -150,18 +146,14 @@ class TestSearchTerms:
     """Tests for search_terms function."""
 
     @pytest.mark.asyncio
-    async def test_search_terms_returns_list(
-        self, mock_driver_with_terms: MagicMock
-    ) -> None:
+    async def test_search_terms_returns_list(self, mock_driver_with_terms: MagicMock) -> None:
         """Test that search returns a list of terms."""
         results = await search_terms(mock_driver_with_terms, "requirements")
 
         assert isinstance(results, list)
 
     @pytest.mark.asyncio
-    async def test_search_terms_respects_limit(
-        self, mock_driver_with_terms: MagicMock
-    ) -> None:
+    async def test_search_terms_respects_limit(self, mock_driver_with_terms: MagicMock) -> None:
         """Test that limit parameter is passed to query."""
         await search_terms(mock_driver_with_terms, "test", limit=5)
 
@@ -171,9 +163,7 @@ class TestSearchTerms:
         assert call_args[1]["limit"] == 5
 
     @pytest.mark.asyncio
-    async def test_search_terms_empty_results(
-        self, mock_driver_empty: MagicMock
-    ) -> None:
+    async def test_search_terms_empty_results(self, mock_driver_empty: MagicMock) -> None:
         """Test handling of empty search results."""
         results = await search_terms(mock_driver_empty, "nonexistent")
 
@@ -189,18 +179,14 @@ class TestListAllTerms:
     """Tests for list_all_terms function."""
 
     @pytest.mark.asyncio
-    async def test_list_all_terms_returns_list(
-        self, mock_driver_with_terms: MagicMock
-    ) -> None:
+    async def test_list_all_terms_returns_list(self, mock_driver_with_terms: MagicMock) -> None:
         """Test that list_all_terms returns a list."""
         results = await list_all_terms(mock_driver_with_terms)
 
         assert isinstance(results, list)
 
     @pytest.mark.asyncio
-    async def test_list_all_terms_respects_limit(
-        self, mock_driver_with_terms: MagicMock
-    ) -> None:
+    async def test_list_all_terms_respects_limit(self, mock_driver_with_terms: MagicMock) -> None:
         """Test that limit parameter is used."""
         await list_all_terms(mock_driver_with_terms, limit=100)
 
@@ -210,9 +196,7 @@ class TestListAllTerms:
         assert call_args[1]["limit"] == 100
 
     @pytest.mark.asyncio
-    async def test_list_all_terms_default_limit(
-        self, mock_driver_with_terms: MagicMock
-    ) -> None:
+    async def test_list_all_terms_default_limit(self, mock_driver_with_terms: MagicMock) -> None:
         """Test default limit of 50."""
         await list_all_terms(mock_driver_with_terms)
 

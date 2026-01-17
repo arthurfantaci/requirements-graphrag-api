@@ -79,9 +79,7 @@ class TestRouteNode:
         self, initial_state: AgenticState, mock_config: MagicMock
     ) -> None:
         """Test successful routing."""
-        with patch(
-            "jama_mcp_server_graphrag.workflows.agentic_workflow.route_query"
-        ) as mock_route:
+        with patch("jama_mcp_server_graphrag.workflows.agentic_workflow.route_query") as mock_route:
             mock_result = MagicMock()
             mock_result.selected_tools = ["graphrag_hybrid_search"]
             mock_result.reasoning = "Hybrid search for technical query"
@@ -97,9 +95,7 @@ class TestRouteNode:
         self, initial_state: AgenticState, mock_config: MagicMock
     ) -> None:
         """Test that routing errors default to hybrid search."""
-        with patch(
-            "jama_mcp_server_graphrag.workflows.agentic_workflow.route_query"
-        ) as mock_route:
+        with patch("jama_mcp_server_graphrag.workflows.agentic_workflow.route_query") as mock_route:
             mock_route.side_effect = Exception("Routing failed")
 
             result = await route_node(initial_state, config=mock_config)
@@ -129,9 +125,7 @@ class TestRetrieveNode:
         with patch(
             "jama_mcp_server_graphrag.workflows.agentic_workflow.vector_search"
         ) as mock_search:
-            mock_search.return_value = [
-                {"content": "Test", "score": 0.9, "metadata": {}}
-            ]
+            mock_search.return_value = [{"content": "Test", "score": 0.9, "metadata": {}}]
 
             result = await retrieve_node(
                 initial_state, graph=mock_graph, vector_store=mock_vector_store
@@ -153,9 +147,7 @@ class TestRetrieveNode:
         with patch(
             "jama_mcp_server_graphrag.workflows.agentic_workflow.hybrid_search"
         ) as mock_search:
-            mock_search.return_value = [
-                {"content": "Test", "score": 0.9, "metadata": {}}
-            ]
+            mock_search.return_value = [{"content": "Test", "score": 0.9, "metadata": {}}]
 
             result = await retrieve_node(
                 initial_state, graph=mock_graph, vector_store=mock_vector_store
@@ -303,9 +295,7 @@ class TestRefineQueryNode:
     """Tests for refine_query_node function."""
 
     @pytest.mark.asyncio
-    async def test_refine_with_followup_query(
-        self, initial_state: AgenticState
-    ) -> None:
+    async def test_refine_with_followup_query(self, initial_state: AgenticState) -> None:
         """Test refinement using followup query."""
         initial_state["followup_query"] = "What are specific examples?"
 
@@ -315,14 +305,10 @@ class TestRefineQueryNode:
         assert result["iteration"] == 1
 
     @pytest.mark.asyncio
-    async def test_refine_with_missing_aspects(
-        self, initial_state: AgenticState
-    ) -> None:
+    async def test_refine_with_missing_aspects(self, initial_state: AgenticState) -> None:
         """Test refinement using missing aspects."""
         initial_state["followup_query"] = None
-        initial_state["critique_result"] = {
-            "missing_aspects": ["implementation", "examples"]
-        }
+        initial_state["critique_result"] = {"missing_aspects": ["implementation", "examples"]}
 
         result = await refine_query_node(initial_state)
 
@@ -330,9 +316,7 @@ class TestRefineQueryNode:
         assert "implementation" in result["refined_question"]
 
     @pytest.mark.asyncio
-    async def test_refine_increments_iteration(
-        self, initial_state: AgenticState
-    ) -> None:
+    async def test_refine_increments_iteration(self, initial_state: AgenticState) -> None:
         """Test that refinement increments iteration count."""
         initial_state["iteration"] = 1
         initial_state["critique_result"] = {}  # Prevent NoneType error
@@ -350,9 +334,7 @@ class TestRefineQueryNode:
 class TestShouldRefine:
     """Tests for should_refine function."""
 
-    def test_should_refine_when_needs_context(
-        self, initial_state: AgenticState
-    ) -> None:
+    def test_should_refine_when_needs_context(self, initial_state: AgenticState) -> None:
         """Test that refinement is triggered when context is needed."""
         initial_state["needs_more_context"] = True
 
@@ -360,9 +342,7 @@ class TestShouldRefine:
 
         assert result == "refine"
 
-    def test_should_generate_when_context_sufficient(
-        self, initial_state: AgenticState
-    ) -> None:
+    def test_should_generate_when_context_sufficient(self, initial_state: AgenticState) -> None:
         """Test that generation is triggered when context is sufficient."""
         initial_state["needs_more_context"] = False
 

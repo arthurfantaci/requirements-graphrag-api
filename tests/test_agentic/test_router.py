@@ -65,13 +65,9 @@ class TestRouteQuery:
     """Tests for route_query function."""
 
     @pytest.mark.asyncio
-    async def test_route_query_returns_routing_result(
-        self, mock_config: MagicMock
-    ) -> None:
+    async def test_route_query_returns_routing_result(self, mock_config: MagicMock) -> None:
         """Test that route_query returns a RoutingResult."""
-        with patch(
-            "jama_mcp_server_graphrag.agentic.router.ChatOpenAI"
-        ) as mock_llm_class:
+        with patch("jama_mcp_server_graphrag.agentic.router.ChatOpenAI") as mock_llm_class:
             mock_llm = MagicMock()
             mock_llm.__or__ = MagicMock(return_value=mock_llm)
             mock_llm.ainvoke = AsyncMock(
@@ -89,13 +85,9 @@ class TestRouteQuery:
             assert result.reasoning != ""
 
     @pytest.mark.asyncio
-    async def test_route_query_selects_appropriate_tool(
-        self, mock_config: MagicMock
-    ) -> None:
+    async def test_route_query_selects_appropriate_tool(self, mock_config: MagicMock) -> None:
         """Test that router selects appropriate tools based on query."""
-        with patch(
-            "jama_mcp_server_graphrag.agentic.router.ChatOpenAI"
-        ) as mock_llm_class:
+        with patch("jama_mcp_server_graphrag.agentic.router.ChatOpenAI") as mock_llm_class:
             mock_llm = MagicMock()
             mock_llm.__or__ = MagicMock(return_value=mock_llm)
             mock_llm.ainvoke = AsyncMock(
@@ -112,13 +104,9 @@ class TestRouteQuery:
             assert "graphrag_lookup_term" in result.selected_tools
 
     @pytest.mark.asyncio
-    async def test_route_query_handles_invalid_json(
-        self, mock_config: MagicMock
-    ) -> None:
+    async def test_route_query_handles_invalid_json(self, mock_config: MagicMock) -> None:
         """Test that invalid JSON responses default to chat."""
-        with patch(
-            "jama_mcp_server_graphrag.agentic.router.ChatOpenAI"
-        ) as mock_llm_class:
+        with patch("jama_mcp_server_graphrag.agentic.router.ChatOpenAI") as mock_llm_class:
             mock_llm = MagicMock()
             mock_llm.__or__ = MagicMock(return_value=mock_llm)
             mock_llm.ainvoke = AsyncMock(return_value="This is not valid JSON")
@@ -132,9 +120,7 @@ class TestRouteQuery:
     @pytest.mark.asyncio
     async def test_route_query_strips_markdown(self, mock_config: MagicMock) -> None:
         """Test that markdown code blocks are stripped from response."""
-        with patch(
-            "jama_mcp_server_graphrag.agentic.router.ChatOpenAI"
-        ) as mock_llm_class:
+        with patch("jama_mcp_server_graphrag.agentic.router.ChatOpenAI") as mock_llm_class:
             mock_llm = MagicMock()
             mock_llm.__or__ = MagicMock(return_value=mock_llm)
             mock_llm.ainvoke = AsyncMock(
@@ -150,17 +136,13 @@ class TestRouteQuery:
             assert "graphrag_vector_search" in result.selected_tools
 
     @pytest.mark.asyncio
-    async def test_route_query_preserves_raw_response(
-        self, mock_config: MagicMock
-    ) -> None:
+    async def test_route_query_preserves_raw_response(self, mock_config: MagicMock) -> None:
         """Test that raw LLM response is preserved."""
         raw_response = (
             '{"selected_tools": ["graphrag_chat"], "reasoning": "Test", "tool_params": {}}'
         )
 
-        with patch(
-            "jama_mcp_server_graphrag.agentic.router.ChatOpenAI"
-        ) as mock_llm_class:
+        with patch("jama_mcp_server_graphrag.agentic.router.ChatOpenAI") as mock_llm_class:
             mock_llm = MagicMock()
             mock_llm.__or__ = MagicMock(return_value=mock_llm)
             mock_llm.ainvoke = AsyncMock(return_value=raw_response)

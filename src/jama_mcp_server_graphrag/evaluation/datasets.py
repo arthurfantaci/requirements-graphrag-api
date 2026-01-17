@@ -91,9 +91,7 @@ def get_sample_evaluation_data() -> list[EvaluationSample]:
                 "use clear language, avoid implementation details unless necessary, "
                 "and be reviewed by stakeholders."
             ),
-            contexts=[
-                "Good requirements are atomic, unambiguous, testable, and traceable."
-            ],
+            contexts=["Good requirements are atomic, unambiguous, testable, and traceable."],
             metadata={"topic": "best_practices", "difficulty": "basic"},
         ),
         EvaluationSample(
@@ -184,9 +182,7 @@ def create_evaluation_dataset(
     if filter_topic:
         filtered = [s for s in filtered if s.metadata.get("topic") == filter_topic]
     if filter_difficulty:
-        filtered = [
-            s for s in filtered if s.metadata.get("difficulty") == filter_difficulty
-        ]
+        filtered = [s for s in filtered if s.metadata.get("difficulty") == filter_difficulty]
 
     # Convert to RAGAS format
     return [

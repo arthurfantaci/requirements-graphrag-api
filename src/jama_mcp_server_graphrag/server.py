@@ -104,9 +104,7 @@ def create_driver(config: AppConfig) -> Driver:
         driver.verify_connectivity()
     except Exception as e:
         logger.exception("Failed to connect to Neo4j")
-        raise Neo4jConnectionError(
-            f"Failed to connect to Neo4j at {config.neo4j_uri}: {e}"
-        ) from e
+        raise Neo4jConnectionError(f"Failed to connect to Neo4j at {config.neo4j_uri}: {e}") from e
     else:
         logger.info("Neo4j connectivity verified successfully")
         return driver
@@ -694,23 +692,27 @@ async def resource_graph_schema() -> str:
 
     lines.extend(f"- **{node['label']}**: {node['count']} nodes" for node in node_counts)
 
-    lines.extend([
-        "",
-        "## Relationship Types",
-    ])
+    lines.extend(
+        [
+            "",
+            "## Relationship Types",
+        ]
+    )
 
     lines.extend(f"- **{rel['type']}**: {rel['count']} relationships" for rel in rel_counts)
 
-    lines.extend([
-        "",
-        "## Key Patterns",
-        "- `(Chapter)-[:CONTAINS]->(Article)` - Book structure",
-        "- `(Chunk)-[:FROM_ARTICLE]->(Article)` - Chunk to article link",
-        "- `(Entity)-[:MENTIONED_IN]->(Chunk)` - Entity mentions in chunks",
-        "- `(Article)-[:HAS_IMAGE]->(Image)` - Article images",
-        "- `(Concept)-[:ADDRESSES]->(Challenge)` - Concepts solving challenges",
-        "- `(Standard)-[:APPLIES_TO]->(Industry)` - Industry standards",
-    ])
+    lines.extend(
+        [
+            "",
+            "## Key Patterns",
+            "- `(Chapter)-[:CONTAINS]->(Article)` - Book structure",
+            "- `(Chunk)-[:FROM_ARTICLE]->(Article)` - Chunk to article link",
+            "- `(Entity)-[:MENTIONED_IN]->(Chunk)` - Entity mentions in chunks",
+            "- `(Article)-[:HAS_IMAGE]->(Image)` - Article images",
+            "- `(Concept)-[:ADDRESSES]->(Challenge)` - Concepts solving challenges",
+            "- `(Standard)-[:APPLIES_TO]->(Industry)` - Industry standards",
+        ]
+    )
 
     logger.info("MCP resource: schema://graph accessed")
     return "\n".join(lines)

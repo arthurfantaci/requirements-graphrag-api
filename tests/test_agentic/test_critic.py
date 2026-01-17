@@ -74,9 +74,7 @@ class TestCritiqueAnswer:
     @pytest.mark.asyncio
     async def test_critique_returns_result(self, mock_config: MagicMock) -> None:
         """Test that critique_answer returns a CritiqueResult."""
-        with patch(
-            "jama_mcp_server_graphrag.agentic.critic.ChatOpenAI"
-        ) as mock_llm_class:
+        with patch("jama_mcp_server_graphrag.agentic.critic.ChatOpenAI") as mock_llm_class:
             mock_llm = MagicMock()
             mock_llm.__or__ = MagicMock(return_value=mock_llm)
             mock_llm.ainvoke = AsyncMock(
@@ -98,13 +96,9 @@ class TestCritiqueAnswer:
             assert result.confidence == 0.9
 
     @pytest.mark.asyncio
-    async def test_critique_identifies_insufficient_context(
-        self, mock_config: MagicMock
-    ) -> None:
+    async def test_critique_identifies_insufficient_context(self, mock_config: MagicMock) -> None:
         """Test critique identifies when context is insufficient."""
-        with patch(
-            "jama_mcp_server_graphrag.agentic.critic.ChatOpenAI"
-        ) as mock_llm_class:
+        with patch("jama_mcp_server_graphrag.agentic.critic.ChatOpenAI") as mock_llm_class:
             mock_llm = MagicMock()
             mock_llm.__or__ = MagicMock(return_value=mock_llm)
             mock_llm.ainvoke = AsyncMock(
@@ -129,9 +123,7 @@ class TestCritiqueAnswer:
     @pytest.mark.asyncio
     async def test_critique_handles_invalid_json(self, mock_config: MagicMock) -> None:
         """Test that invalid JSON returns conservative defaults."""
-        with patch(
-            "jama_mcp_server_graphrag.agentic.critic.ChatOpenAI"
-        ) as mock_llm_class:
+        with patch("jama_mcp_server_graphrag.agentic.critic.ChatOpenAI") as mock_llm_class:
             mock_llm = MagicMock()
             mock_llm.__or__ = MagicMock(return_value=mock_llm)
             mock_llm.ainvoke = AsyncMock(return_value="Invalid JSON response")
@@ -147,9 +139,7 @@ class TestCritiqueAnswer:
     @pytest.mark.asyncio
     async def test_critique_strips_markdown(self, mock_config: MagicMock) -> None:
         """Test that markdown code blocks are stripped."""
-        with patch(
-            "jama_mcp_server_graphrag.agentic.critic.ChatOpenAI"
-        ) as mock_llm_class:
+        with patch("jama_mcp_server_graphrag.agentic.critic.ChatOpenAI") as mock_llm_class:
             mock_llm = MagicMock()
             mock_llm.__or__ = MagicMock(return_value=mock_llm)
             mock_llm.ainvoke = AsyncMock(
@@ -167,18 +157,14 @@ class TestCritiqueAnswer:
             assert result.confidence == 0.8
 
     @pytest.mark.asyncio
-    async def test_critique_preserves_raw_response(
-        self, mock_config: MagicMock
-    ) -> None:
+    async def test_critique_preserves_raw_response(self, mock_config: MagicMock) -> None:
         """Test that raw LLM response is preserved."""
         raw_response = (
             '{"answerable": true, "confidence": 0.9, "completeness": "complete", '
             '"missing_aspects": [], "followup_query": null, "reasoning": "Test"}'
         )
 
-        with patch(
-            "jama_mcp_server_graphrag.agentic.critic.ChatOpenAI"
-        ) as mock_llm_class:
+        with patch("jama_mcp_server_graphrag.agentic.critic.ChatOpenAI") as mock_llm_class:
             mock_llm = MagicMock()
             mock_llm.__or__ = MagicMock(return_value=mock_llm)
             mock_llm.ainvoke = AsyncMock(return_value=raw_response)

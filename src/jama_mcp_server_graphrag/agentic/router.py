@@ -126,9 +126,7 @@ async def route_query(
     logger.info("Routing query: '%s'", question[:50])
 
     # Format tools for prompt
-    tools_text = "\n".join(
-        f"- {name}: {desc.strip()}" for name, desc in RETRIEVER_TOOLS.items()
-    )
+    tools_text = "\n".join(f"- {name}: {desc.strip()}" for name, desc in RETRIEVER_TOOLS.items())
 
     llm = ChatOpenAI(
         model=config.chat_model,
@@ -153,9 +151,7 @@ async def route_query(
         response_clean = response.strip()
         if response_clean.startswith("```"):
             lines = response_clean.split("\n")
-            response_clean = "\n".join(
-                line for line in lines if not line.startswith("```")
-            ).strip()
+            response_clean = "\n".join(line for line in lines if not line.startswith("```")).strip()
 
         data = json.loads(response_clean)
 

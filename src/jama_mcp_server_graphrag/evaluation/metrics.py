@@ -45,10 +45,7 @@ class RAGMetrics:
     def average(self) -> float:
         """Calculate average score across all metrics."""
         return (
-            self.faithfulness
-            + self.answer_relevancy
-            + self.context_precision
-            + self.context_recall
+            self.faithfulness + self.answer_relevancy + self.context_precision + self.context_recall
         ) / 4
 
     def to_dict(self) -> dict[str, float]:
@@ -263,9 +260,7 @@ async def compute_context_precision(
         api_key=config.openai_api_key,
     )
 
-    contexts_text = "\n---\n".join(
-        f"[Context {i + 1}]: {ctx}" for i, ctx in enumerate(contexts)
-    )
+    contexts_text = "\n---\n".join(f"[Context {i + 1}]: {ctx}" for i, ctx in enumerate(contexts))
 
     messages = [
         SystemMessage(content="You are an evaluation assistant."),
@@ -312,9 +307,7 @@ async def compute_context_recall(
         api_key=config.openai_api_key,
     )
 
-    contexts_text = "\n---\n".join(
-        f"[Context {i + 1}]: {ctx}" for i, ctx in enumerate(contexts)
-    )
+    contexts_text = "\n---\n".join(f"[Context {i + 1}]: {ctx}" for i, ctx in enumerate(contexts))
 
     messages = [
         SystemMessage(content="You are an evaluation assistant."),

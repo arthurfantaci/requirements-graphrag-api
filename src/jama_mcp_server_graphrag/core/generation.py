@@ -91,12 +91,14 @@ async def generate_answer(  # noqa: PLR0913
         url = result["metadata"].get("url", "")
 
         context_parts.append(f"[Source {i}: {title}]\n{content}\n")
-        sources.append({
-            "title": title,
-            "url": url,
-            "chunk_id": result["metadata"].get("chunk_id"),
-            "relevance_score": result["score"],
-        })
+        sources.append(
+            {
+                "title": title,
+                "url": url,
+                "chunk_id": result["metadata"].get("chunk_id"),
+                "relevance_score": result["score"],
+            }
+        )
 
         # Collect entities
         if include_entities:

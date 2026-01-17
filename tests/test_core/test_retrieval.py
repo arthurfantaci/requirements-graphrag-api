@@ -77,9 +77,7 @@ def create_mock_record(data: dict[str, Any]) -> MagicMock:
     return record
 
 
-def create_mock_driver_with_results(
-    results_sequence: list[list[dict[str, Any]]]
-) -> MagicMock:
+def create_mock_driver_with_results(results_sequence: list[list[dict[str, Any]]]) -> MagicMock:
     """Create a mock Neo4j driver that returns a sequence of results."""
     mock_driver = MagicMock()
     mock_session = MagicMock()
@@ -119,48 +117,52 @@ def create_mock_driver_with_results(
 @pytest.fixture
 def mock_retriever() -> MagicMock:
     """Create a mock VectorRetriever with test data."""
-    return create_mock_retriever([
-        {
-            "text": "Test content about requirements",
-            "metadata": {
-                "element_id": "4:abc:123",
-                "title": "Test Article",
-                "score": 0.95,
+    return create_mock_retriever(
+        [
+            {
+                "text": "Test content about requirements",
+                "metadata": {
+                    "element_id": "4:abc:123",
+                    "title": "Test Article",
+                    "score": 0.95,
+                },
             },
-        },
-        {
-            "text": "More content about traceability",
-            "metadata": {
-                "element_id": "4:abc:456",
-                "title": "Another Article",
-                "score": 0.85,
+            {
+                "text": "More content about traceability",
+                "metadata": {
+                    "element_id": "4:abc:456",
+                    "title": "Another Article",
+                    "score": 0.85,
+                },
             },
-        },
-    ])
+        ]
+    )
 
 
 @pytest.fixture
 def mock_driver() -> MagicMock:
     """Create a mock Neo4j driver."""
-    return create_mock_driver_with_results([
-        # Article context query results
+    return create_mock_driver_with_results(
         [
-            {
-                "chunk_id": "4:abc:123",
-                "title": "Test Article",
-                "url": "https://example.com/test",
-                "article_id": "article-1",
-                "chapter": "Chapter 1",
-            },
-            {
-                "chunk_id": "4:abc:456",
-                "title": "Another Article",
-                "url": "https://example.com/another",
-                "article_id": "article-2",
-                "chapter": "Chapter 2",
-            },
+            # Article context query results
+            [
+                {
+                    "chunk_id": "4:abc:123",
+                    "title": "Test Article",
+                    "url": "https://example.com/test",
+                    "article_id": "article-1",
+                    "chapter": "Chapter 1",
+                },
+                {
+                    "chunk_id": "4:abc:456",
+                    "title": "Another Article",
+                    "url": "https://example.com/another",
+                    "article_id": "article-2",
+                    "chapter": "Chapter 2",
+                },
+            ]
         ]
-    ])
+    )
 
 
 @pytest.fixture
@@ -188,9 +190,7 @@ class TestVectorSearch:
         self, mock_retriever: MagicMock, mock_driver: MagicMock
     ) -> None:
         """Test that vector search returns formatted results."""
-        results = await vector_search(
-            mock_retriever, mock_driver, "requirements", limit=5
-        )
+        results = await vector_search(mock_retriever, mock_driver, "requirements", limit=5)
 
         assert len(results) == 2
         assert results[0]["content"] == "Test content about requirements"
@@ -202,18 +202,14 @@ class TestVectorSearch:
         """Test that limit parameter is passed to retriever."""
         await vector_search(mock_retriever, mock_driver, "test query", limit=10)
 
-        mock_retriever.search.assert_called_once_with(
-            query_text="test query", top_k=10
-        )
+        mock_retriever.search.assert_called_once_with(query_text="test query", top_k=10)
 
     @pytest.mark.asyncio
     async def test_vector_search_empty_results(
         self, empty_retriever: MagicMock, empty_driver: MagicMock
     ) -> None:
         """Test handling of empty search results."""
-        results = await vector_search(
-            empty_retriever, empty_driver, "nonexistent topic"
-        )
+        results = await vector_search(empty_retriever, empty_driver, "nonexistent topic")
 
         assert results == []
 
@@ -231,9 +227,7 @@ class TestHybridSearch:
         self, mock_retriever: MagicMock, mock_driver: MagicMock
     ) -> None:
         """Test that hybrid search returns combined results."""
-        results = await hybrid_search(
-            mock_retriever, mock_driver, "requirements traceability"
-        )
+        results = await hybrid_search(mock_retriever, mock_driver, "requirements traceability")
 
         assert len(results) > 0
         mock_retriever.search.assert_called()
@@ -243,9 +237,7 @@ class TestHybridSearch:
         self, mock_retriever: MagicMock, mock_driver: MagicMock
     ) -> None:
         """Test that keyword_weight parameter affects scoring."""
-        results = await hybrid_search(
-            mock_retriever, mock_driver, "test", keyword_weight=0.3
-        )
+        results = await hybrid_search(mock_retriever, mock_driver, "test", keyword_weight=0.3)
 
         assert len(results) > 0
 
@@ -263,9 +255,7 @@ class TestGraphEnrichedSearch:
         self, mock_retriever: MagicMock, mock_driver: MagicMock
     ) -> None:
         """Test that graph enriched search adds related entities."""
-        results = await graph_enriched_search(
-            mock_retriever, mock_driver, "requirements"
-        )
+        results = await graph_enriched_search(mock_retriever, mock_driver, "requirements")
 
         assert len(results) > 0
         mock_retriever.search.assert_called()
@@ -275,9 +265,7 @@ class TestGraphEnrichedSearch:
         self, mock_retriever: MagicMock, mock_driver: MagicMock
     ) -> None:
         """Test that traversal_depth parameter is used."""
-        await graph_enriched_search(
-            mock_retriever, mock_driver, "test", traversal_depth=2
-        )
+        await graph_enriched_search(mock_retriever, mock_driver, "test", traversal_depth=2)
 
         mock_retriever.search.assert_called()
 
@@ -293,23 +281,25 @@ class TestExploreEntity:
     @pytest.mark.asyncio
     async def test_explore_entity_found(self) -> None:
         """Test exploring an existing entity."""
-        driver = create_mock_driver_with_results([
-            # Entity query returns entity node
+        driver = create_mock_driver_with_results(
             [
-                {
-                    "e": {
-                        "name": "requirements traceability",
-                        "display_name": "Requirements Traceability",
-                        "definition": "The ability to trace requirements",
-                    },
-                    "labels": ["Entity", "Concept"],
-                }
-            ],
-            # Related entities query
-            [],
-            # Mentioned in articles query
-            [],
-        ])
+                # Entity query returns entity node
+                [
+                    {
+                        "e": {
+                            "name": "requirements traceability",
+                            "display_name": "Requirements Traceability",
+                            "definition": "The ability to trace requirements",
+                        },
+                        "labels": ["Entity", "Concept"],
+                    }
+                ],
+                # Related entities query
+                [],
+                # Mentioned in articles query
+                [],
+            ]
+        )
 
         result = await explore_entity(driver, "requirements traceability")
 
@@ -327,35 +317,37 @@ class TestExploreEntity:
     @pytest.mark.asyncio
     async def test_explore_entity_include_related(self) -> None:
         """Test that include_related fetches relationships."""
-        driver = create_mock_driver_with_results([
-            # Entity query
+        driver = create_mock_driver_with_results(
             [
-                {
-                    "e": {
-                        "name": "test",
-                        "display_name": "Test Entity",
-                    },
-                    "labels": ["Entity"],
-                }
-            ],
-            # Related entities query
-            [
-                {
-                    "name": "related",
-                    "display_name": "Related Entity",
-                    "relationship": "RELATED_TO",
-                    "labels": ["Entity"],
-                }
-            ],
-            # Mentioned in articles query
-            [
-                {
-                    "article": "Test Article",
-                    "heading": "Section",
-                    "url": "http://example.com",
-                }
-            ],
-        ])
+                # Entity query
+                [
+                    {
+                        "e": {
+                            "name": "test",
+                            "display_name": "Test Entity",
+                        },
+                        "labels": ["Entity"],
+                    }
+                ],
+                # Related entities query
+                [
+                    {
+                        "name": "related",
+                        "display_name": "Related Entity",
+                        "relationship": "RELATED_TO",
+                        "labels": ["Entity"],
+                    }
+                ],
+                # Mentioned in articles query
+                [
+                    {
+                        "article": "Test Article",
+                        "heading": "Section",
+                        "url": "http://example.com",
+                    }
+                ],
+            ]
+        )
 
         result = await explore_entity(driver, "test", include_related=True)
 
@@ -367,17 +359,19 @@ class TestExploreEntity:
     @pytest.mark.asyncio
     async def test_explore_entity_exclude_related(self) -> None:
         """Test that include_related=False skips relationship queries."""
-        driver = create_mock_driver_with_results([
+        driver = create_mock_driver_with_results(
             [
-                {
-                    "e": {
-                        "name": "test",
-                        "display_name": "Test Entity",
-                    },
-                    "labels": ["Entity"],
-                }
+                [
+                    {
+                        "e": {
+                            "name": "test",
+                            "display_name": "Test Entity",
+                        },
+                        "labels": ["Entity"],
+                    }
+                ]
             ]
-        ])
+        )
 
         await explore_entity(driver, "test", include_related=False)
 

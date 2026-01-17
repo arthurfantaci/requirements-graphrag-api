@@ -27,9 +27,7 @@ router = APIRouter()
 async def get_standard(
     request: Request,
     name: str,
-    include_related: bool = Query(
-        default=True, description="Include related entities"
-    ),
+    include_related: bool = Query(default=True, description="Include related entities"),
 ) -> dict[str, Any]:
     """Look up a specific standard.
 

@@ -101,9 +101,7 @@ class TestRetrieveNode:
         self, sample_state: RAGState, mock_vector_store: MagicMock
     ) -> None:
         """Test successful document retrieval."""
-        with patch(
-            "jama_mcp_server_graphrag.workflows.rag_workflow.vector_search"
-        ) as mock_search:
+        with patch("jama_mcp_server_graphrag.workflows.rag_workflow.vector_search") as mock_search:
             mock_search.return_value = [
                 {
                     "content": "Test content",
@@ -112,9 +110,7 @@ class TestRetrieveNode:
                 }
             ]
 
-            result = await retrieve_node(
-                sample_state, vector_store=mock_vector_store, limit=6
-            )
+            result = await retrieve_node(sample_state, vector_store=mock_vector_store, limit=6)
 
             assert "documents" in result
             assert len(result["documents"]) == 1
@@ -125,14 +121,10 @@ class TestRetrieveNode:
         self, sample_state: RAGState, mock_vector_store: MagicMock
     ) -> None:
         """Test retrieval error handling."""
-        with patch(
-            "jama_mcp_server_graphrag.workflows.rag_workflow.vector_search"
-        ) as mock_search:
+        with patch("jama_mcp_server_graphrag.workflows.rag_workflow.vector_search") as mock_search:
             mock_search.side_effect = Exception("Search failed")
 
-            result = await retrieve_node(
-                sample_state, vector_store=mock_vector_store, limit=6
-            )
+            result = await retrieve_node(sample_state, vector_store=mock_vector_store, limit=6)
 
             assert "error" in result
             assert "Search failed" in result["error"]
@@ -147,9 +139,7 @@ class TestFormatContextNode:
     """Tests for format_context_node function."""
 
     @pytest.mark.asyncio
-    async def test_format_context_with_documents(
-        self, state_with_documents: RAGState
-    ) -> None:
+    async def test_format_context_with_documents(self, state_with_documents: RAGState) -> None:
         """Test formatting context from documents."""
         result = await format_context_node(state_with_documents)
 
@@ -160,9 +150,7 @@ class TestFormatContextNode:
         assert "[2]" in result["context"]
 
     @pytest.mark.asyncio
-    async def test_format_context_empty_documents(
-        self, sample_state: RAGState
-    ) -> None:
+    async def test_format_context_empty_documents(self, sample_state: RAGState) -> None:
         """Test formatting with no documents."""
         result = await format_context_node(sample_state)
 
@@ -170,9 +158,7 @@ class TestFormatContextNode:
         assert result["sources"] == []
 
     @pytest.mark.asyncio
-    async def test_format_context_with_error(
-        self, sample_state: RAGState
-    ) -> None:
+    async def test_format_context_with_error(self, sample_state: RAGState) -> None:
         """Test that errors short-circuit formatting."""
         sample_state["error"] = "Previous error"
 
@@ -199,14 +185,10 @@ class TestGenerateNode:
         """Test successful answer generation."""
         state_with_documents["context"] = "Test context about traceability."
 
-        with patch(
-            "jama_mcp_server_graphrag.workflows.rag_workflow.generate_answer"
-        ) as mock_gen:
+        with patch("jama_mcp_server_graphrag.workflows.rag_workflow.generate_answer") as mock_gen:
             mock_gen.return_value = {"answer": "Traceability is important."}
 
-            result = await generate_node(
-                state_with_documents, config=mock_config, graph=mock_graph
-            )
+            result = await generate_node(state_with_documents, config=mock_config, graph=mock_graph)
 
             assert "answer" in result
             assert result["answer"] == "Traceability is important."
@@ -219,9 +201,7 @@ class TestGenerateNode:
         mock_graph: MagicMock,
     ) -> None:
         """Test generation with empty context."""
-        result = await generate_node(
-            sample_state, config=mock_config, graph=mock_graph
-        )
+        result = await generate_node(sample_state, config=mock_config, graph=mock_graph)
 
         assert "couldn't find relevant information" in result["answer"]
 
@@ -235,14 +215,10 @@ class TestGenerateNode:
         """Test generation error handling."""
         state_with_documents["context"] = "Test context."
 
-        with patch(
-            "jama_mcp_server_graphrag.workflows.rag_workflow.generate_answer"
-        ) as mock_gen:
+        with patch("jama_mcp_server_graphrag.workflows.rag_workflow.generate_answer") as mock_gen:
             mock_gen.side_effect = Exception("Generation failed")
 
-            result = await generate_node(
-                state_with_documents, config=mock_config, graph=mock_graph
-            )
+            result = await generate_node(state_with_documents, config=mock_config, graph=mock_graph)
 
             assert "error" in result
             assert "couldn't generate" in result["answer"]
@@ -265,12 +241,8 @@ class TestRunRAGWorkflow:
     ) -> None:
         """Test full RAG workflow execution."""
         with (
-            patch(
-                "jama_mcp_server_graphrag.workflows.rag_workflow.vector_search"
-            ) as mock_search,
-            patch(
-                "jama_mcp_server_graphrag.workflows.rag_workflow.generate_answer"
-            ) as mock_gen,
+            patch("jama_mcp_server_graphrag.workflows.rag_workflow.vector_search") as mock_search,
+            patch("jama_mcp_server_graphrag.workflows.rag_workflow.generate_answer") as mock_gen,
         ):
             mock_search.return_value = [
                 {

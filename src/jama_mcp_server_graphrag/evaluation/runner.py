@@ -203,12 +203,10 @@ class RAGEvaluator:
         if results:
             aggregate_metrics = {
                 "faithfulness": sum(r.metrics.faithfulness for r in results) / len(results),
-                "answer_relevancy": sum(r.metrics.answer_relevancy for r in results)
-                / len(results),
+                "answer_relevancy": sum(r.metrics.answer_relevancy for r in results) / len(results),
                 "context_precision": sum(r.metrics.context_precision for r in results)
                 / len(results),
-                "context_recall": sum(r.metrics.context_recall for r in results)
-                / len(results),
+                "context_recall": sum(r.metrics.context_recall for r in results) / len(results),
                 "average_latency_ms": sum(r.latency_ms for r in results) / len(results),
             }
             aggregate_metrics["average"] = (

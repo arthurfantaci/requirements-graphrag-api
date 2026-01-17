@@ -46,13 +46,9 @@ class TestUpdateQuery:
     """Tests for update_query function."""
 
     @pytest.mark.asyncio
-    async def test_returns_original_when_no_history(
-        self, mock_config: MagicMock
-    ) -> None:
+    async def test_returns_original_when_no_history(self, mock_config: MagicMock) -> None:
         """Test that original query is returned when no previous answers."""
-        result = await update_query(
-            mock_config, "What are the requirements?", previous_answers=[]
-        )
+        result = await update_query(mock_config, "What are the requirements?", previous_answers=[])
 
         assert result == "What are the requirements?"
 
@@ -63,9 +59,7 @@ class TestUpdateQuery:
         sample_previous_answers: list[dict[str, str]],
     ) -> None:
         """Test that query is updated with context from previous answers."""
-        with patch(
-            "jama_mcp_server_graphrag.agentic.query_updater.ChatOpenAI"
-        ) as mock_llm_class:
+        with patch("jama_mcp_server_graphrag.agentic.query_updater.ChatOpenAI") as mock_llm_class:
             mock_llm = MagicMock()
             mock_llm.__or__ = MagicMock(return_value=mock_llm)
             mock_llm.ainvoke = AsyncMock(
@@ -89,9 +83,7 @@ class TestUpdateQuery:
         sample_previous_answers: list[dict[str, str]],
     ) -> None:
         """Test that result is stripped of whitespace."""
-        with patch(
-            "jama_mcp_server_graphrag.agentic.query_updater.ChatOpenAI"
-        ) as mock_llm_class:
+        with patch("jama_mcp_server_graphrag.agentic.query_updater.ChatOpenAI") as mock_llm_class:
             mock_llm = MagicMock()
             mock_llm.__or__ = MagicMock(return_value=mock_llm)
             mock_llm.ainvoke = AsyncMock(return_value="  Updated question?  \n")
@@ -110,29 +102,21 @@ class TestUpdateQuery:
         sample_previous_answers: list[dict[str, str]],
     ) -> None:
         """Test that previous answers are properly formatted in prompt."""
-        with patch(
-            "jama_mcp_server_graphrag.agentic.query_updater.ChatOpenAI"
-        ) as mock_llm_class:
+        with patch("jama_mcp_server_graphrag.agentic.query_updater.ChatOpenAI") as mock_llm_class:
             mock_llm = MagicMock()
             mock_llm.__or__ = MagicMock(return_value=mock_llm)
             mock_llm.ainvoke = AsyncMock(return_value="Updated question")
             mock_llm_class.return_value = mock_llm
 
-            await update_query(
-                mock_config, "Test", previous_answers=sample_previous_answers
-            )
+            await update_query(mock_config, "Test", previous_answers=sample_previous_answers)
 
             # Check that the LLM was called with properly formatted context
             mock_llm.ainvoke.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_handles_single_previous_answer(
-        self, mock_config: MagicMock
-    ) -> None:
+    async def test_handles_single_previous_answer(self, mock_config: MagicMock) -> None:
         """Test handling of a single previous answer."""
-        with patch(
-            "jama_mcp_server_graphrag.agentic.query_updater.ChatOpenAI"
-        ) as mock_llm_class:
+        with patch("jama_mcp_server_graphrag.agentic.query_updater.ChatOpenAI") as mock_llm_class:
             mock_llm = MagicMock()
             mock_llm.__or__ = MagicMock(return_value=mock_llm)
             mock_llm.ainvoke = AsyncMock(return_value="What is ISO 26262 traceability?")

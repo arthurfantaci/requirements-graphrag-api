@@ -33,9 +33,7 @@ class TestGenerateStepbackQuery:
     @pytest.mark.asyncio
     async def test_generates_broader_query(self, mock_config: MagicMock) -> None:
         """Test that stepback generates a broader query."""
-        with patch(
-            "jama_mcp_server_graphrag.agentic.stepback.ChatOpenAI"
-        ) as mock_llm_class:
+        with patch("jama_mcp_server_graphrag.agentic.stepback.ChatOpenAI") as mock_llm_class:
             mock_llm = MagicMock()
             mock_llm.__or__ = MagicMock(return_value=mock_llm)
             mock_llm.ainvoke = AsyncMock(
@@ -56,14 +54,10 @@ class TestGenerateStepbackQuery:
     @pytest.mark.asyncio
     async def test_strips_whitespace(self, mock_config: MagicMock) -> None:
         """Test that result is stripped of whitespace."""
-        with patch(
-            "jama_mcp_server_graphrag.agentic.stepback.ChatOpenAI"
-        ) as mock_llm_class:
+        with patch("jama_mcp_server_graphrag.agentic.stepback.ChatOpenAI") as mock_llm_class:
             mock_llm = MagicMock()
             mock_llm.__or__ = MagicMock(return_value=mock_llm)
-            mock_llm.ainvoke = AsyncMock(
-                return_value="  What are requirements best practices?  \n"
-            )
+            mock_llm.ainvoke = AsyncMock(return_value="  What are requirements best practices?  \n")
             mock_llm_class.return_value = mock_llm
 
             result = await generate_stepback_query(mock_config, "Specific question")
@@ -75,20 +69,14 @@ class TestGenerateStepbackQuery:
     @pytest.mark.asyncio
     async def test_handles_already_broad_query(self, mock_config: MagicMock) -> None:
         """Test handling of queries that are already broad."""
-        with patch(
-            "jama_mcp_server_graphrag.agentic.stepback.ChatOpenAI"
-        ) as mock_llm_class:
+        with patch("jama_mcp_server_graphrag.agentic.stepback.ChatOpenAI") as mock_llm_class:
             mock_llm = MagicMock()
             mock_llm.__or__ = MagicMock(return_value=mock_llm)
             # LLM might return the same query if it's already broad
-            mock_llm.ainvoke = AsyncMock(
-                return_value="What is requirements management?"
-            )
+            mock_llm.ainvoke = AsyncMock(return_value="What is requirements management?")
             mock_llm_class.return_value = mock_llm
 
-            result = await generate_stepback_query(
-                mock_config, "What is requirements management?"
-            )
+            result = await generate_stepback_query(mock_config, "What is requirements management?")
 
             assert isinstance(result, str)
             assert len(result) > 0
@@ -98,9 +86,7 @@ class TestGenerateStepbackQuery:
         """Test that the configured chat model is used."""
         mock_config.chat_model = "gpt-4-turbo"
 
-        with patch(
-            "jama_mcp_server_graphrag.agentic.stepback.ChatOpenAI"
-        ) as mock_llm_class:
+        with patch("jama_mcp_server_graphrag.agentic.stepback.ChatOpenAI") as mock_llm_class:
             mock_llm = MagicMock()
             mock_llm.__or__ = MagicMock(return_value=mock_llm)
             mock_llm.ainvoke = AsyncMock(return_value="Broader question")

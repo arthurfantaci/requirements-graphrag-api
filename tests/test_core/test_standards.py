@@ -50,9 +50,7 @@ def create_mock_result(records: list[dict[str, Any]]) -> MagicMock:
     return mock_result
 
 
-def create_mock_driver_with_results(
-    results_sequence: list[list[dict[str, Any]]]
-) -> MagicMock:
+def create_mock_driver_with_results(results_sequence: list[list[dict[str, Any]]]) -> MagicMock:
     """Create a mock Neo4j driver that returns a sequence of results."""
     mock_driver = MagicMock()
     mock_session = MagicMock()
@@ -81,50 +79,54 @@ def create_mock_driver_with_results(
 @pytest.fixture
 def mock_driver_with_standard() -> MagicMock:
     """Create a mock Neo4j driver with a standard."""
-    return create_mock_driver_with_results([
+    return create_mock_driver_with_results(
         [
-            {
-                "name": "ISO 26262",
-                "display_name": "ISO 26262 Functional Safety",
-                "organization": "ISO",
-                "domain": "Automotive",
-                "labels": ["Standard", "Entity"],
-            }
+            [
+                {
+                    "name": "ISO 26262",
+                    "display_name": "ISO 26262 Functional Safety",
+                    "organization": "ISO",
+                    "domain": "Automotive",
+                    "labels": ["Standard", "Entity"],
+                }
+            ]
         ]
-    ])
+    )
 
 
 @pytest.fixture
 def mock_driver_with_standard_and_related() -> MagicMock:
     """Create a mock driver that returns standard and related data."""
-    return create_mock_driver_with_results([
-        # First query: standard lookup
+    return create_mock_driver_with_results(
         [
-            {
-                "name": "ISO 26262",
-                "display_name": "ISO 26262 Functional Safety",
-                "organization": "ISO",
-                "domain": "Automotive",
-                "labels": ["Standard", "Entity"],
-            }
-        ],
-        # Second query: related entities
-        [
-            {
-                "name": "ASIL",
-                "display_name": "ASIL Levels",
-                "relationship": "DEFINES",
-                "labels": ["Concept"],
-            }
-        ],
-        # Third query: articles mentioning
-        [
-            {
-                "title": "Automotive Safety",
-                "url": "https://example.com/automotive",
-            }
-        ],
-    ])
+            # First query: standard lookup
+            [
+                {
+                    "name": "ISO 26262",
+                    "display_name": "ISO 26262 Functional Safety",
+                    "organization": "ISO",
+                    "domain": "Automotive",
+                    "labels": ["Standard", "Entity"],
+                }
+            ],
+            # Second query: related entities
+            [
+                {
+                    "name": "ASIL",
+                    "display_name": "ASIL Levels",
+                    "relationship": "DEFINES",
+                    "labels": ["Concept"],
+                }
+            ],
+            # Third query: articles mentioning
+            [
+                {
+                    "title": "Automotive Safety",
+                    "url": "https://example.com/automotive",
+                }
+            ],
+        ]
+    )
 
 
 @pytest.fixture
@@ -146,18 +148,14 @@ class TestLookupStandard:
         self, mock_driver_with_standard_and_related: MagicMock
     ) -> None:
         """Test looking up an existing standard."""
-        result = await lookup_standard(
-            mock_driver_with_standard_and_related, "ISO 26262"
-        )
+        result = await lookup_standard(mock_driver_with_standard_and_related, "ISO 26262")
 
         assert result is not None
         assert result["name"] == "ISO 26262"
         assert result["organization"] == "ISO"
 
     @pytest.mark.asyncio
-    async def test_lookup_standard_not_found(
-        self, mock_driver_empty: MagicMock
-    ) -> None:
+    async def test_lookup_standard_not_found(self, mock_driver_empty: MagicMock) -> None:
         """Test looking up a non-existent standard."""
         result = await lookup_standard(mock_driver_empty, "FAKE-12345")
 
@@ -183,9 +181,7 @@ class TestLookupStandard:
         self, mock_driver_with_standard: MagicMock
     ) -> None:
         """Test that include_related=False skips extra queries."""
-        await lookup_standard(
-            mock_driver_with_standard, "ISO 26262", include_related=False
-        )
+        await lookup_standard(mock_driver_with_standard, "ISO 26262", include_related=False)
 
         # Only the main query
         mock_session = mock_driver_with_standard.session.return_value
@@ -214,9 +210,7 @@ class TestSearchStandards:
         self, mock_driver_with_standard: MagicMock
     ) -> None:
         """Test filtering by industry."""
-        await search_standards(
-            mock_driver_with_standard, "safety", industry="automotive"
-        )
+        await search_standards(mock_driver_with_standard, "safety", industry="automotive")
 
         # Query should include industry filter
         mock_session = mock_driver_with_standard.session.return_value.__enter__.return_value
@@ -244,13 +238,9 @@ class TestGetStandardsByIndustry:
     """Tests for get_standards_by_industry function."""
 
     @pytest.mark.asyncio
-    async def test_get_standards_automotive(
-        self, mock_driver_with_standard: MagicMock
-    ) -> None:
+    async def test_get_standards_automotive(self, mock_driver_with_standard: MagicMock) -> None:
         """Test getting automotive standards."""
-        results = await get_standards_by_industry(
-            mock_driver_with_standard, "automotive"
-        )
+        results = await get_standards_by_industry(mock_driver_with_standard, "automotive")
 
         assert isinstance(results, list)
         # Query should include automotive industry param
@@ -259,9 +249,7 @@ class TestGetStandardsByIndustry:
         assert call_args[1]["industry"] == "automotive"
 
     @pytest.mark.asyncio
-    async def test_get_standards_medical(
-        self, mock_driver_with_standard: MagicMock
-    ) -> None:
+    async def test_get_standards_medical(self, mock_driver_with_standard: MagicMock) -> None:
         """Test getting medical standards."""
         await get_standards_by_industry(mock_driver_with_standard, "medical")
 

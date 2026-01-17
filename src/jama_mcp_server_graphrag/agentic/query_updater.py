@@ -66,9 +66,7 @@ async def update_query(
     logger.info("Updating query with %d previous answers", len(previous_answers))
 
     # Format previous answers
-    answers_text = "\n".join(
-        f"Q: {qa['question']}\nA: {qa['answer']}" for qa in previous_answers
-    )
+    answers_text = "\n".join(f"Q: {qa['question']}\nA: {qa['answer']}" for qa in previous_answers)
 
     llm = ChatOpenAI(
         model=config.chat_model,
@@ -77,9 +75,7 @@ async def update_query(
     )
 
     system_message = SystemMessage(
-        content=QUERY_UPDATE_PROMPT.format(
-            previous_answers=answers_text, question=question
-        )
+        content=QUERY_UPDATE_PROMPT.format(previous_answers=answers_text, question=question)
     )
 
     human_message = HumanMessage(

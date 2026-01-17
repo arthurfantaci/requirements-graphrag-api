@@ -66,9 +66,7 @@ def sample_chat_response() -> dict:
 class TestChatEndpoint:
     """Tests for POST /api/v1/chat endpoint."""
 
-    def test_chat_success(
-        self, client: TestClient, sample_chat_response: dict
-    ) -> None:
+    def test_chat_success(self, client: TestClient, sample_chat_response: dict) -> None:
         """Test successful chat request."""
         with patch("jama_mcp_server_graphrag.routes.chat.core_chat") as mock_chat:
             mock_chat.return_value = sample_chat_response
@@ -84,9 +82,7 @@ class TestChatEndpoint:
             assert "sources" in data
             assert "entities" in data
 
-    def test_chat_with_options(
-        self, client: TestClient, sample_chat_response: dict
-    ) -> None:
+    def test_chat_with_options(self, client: TestClient, sample_chat_response: dict) -> None:
         """Test chat with custom options."""
         with patch("jama_mcp_server_graphrag.routes.chat.core_chat") as mock_chat:
             mock_chat.return_value = sample_chat_response
@@ -126,25 +122,19 @@ class TestChatEndpoint:
 
         assert response.status_code == 422
 
-    def test_chat_transforms_sources(
-        self, client: TestClient, sample_chat_response: dict
-    ) -> None:
+    def test_chat_transforms_sources(self, client: TestClient, sample_chat_response: dict) -> None:
         """Test that sources are properly transformed."""
         with patch("jama_mcp_server_graphrag.routes.chat.core_chat") as mock_chat:
             mock_chat.return_value = sample_chat_response
 
-            response = client.post(
-                "/api/v1/chat", json={"message": "What is traceability?"}
-            )
+            response = client.post("/api/v1/chat", json={"message": "What is traceability?"})
 
             data = response.json()
             assert len(data["sources"]) == 1
             assert data["sources"][0]["title"] == "Traceability Guide"
             assert data["sources"][0]["relevance_score"] == 0.95
 
-    def test_chat_transforms_entities(
-        self, client: TestClient, sample_chat_response: dict
-    ) -> None:
+    def test_chat_transforms_entities(self, client: TestClient, sample_chat_response: dict) -> None:
         """Test that entities are properly transformed."""
         with patch("jama_mcp_server_graphrag.routes.chat.core_chat") as mock_chat:
             mock_chat.return_value = sample_chat_response

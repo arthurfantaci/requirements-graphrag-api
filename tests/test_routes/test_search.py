@@ -36,9 +36,7 @@ def mock_retriever() -> MagicMock:
 
 
 @pytest.fixture
-def client(
-    mock_app: FastAPI, mock_driver: MagicMock, mock_retriever: MagicMock
-) -> TestClient:
+def client(mock_app: FastAPI, mock_driver: MagicMock, mock_retriever: MagicMock) -> TestClient:
     """Create a test client with mocked dependencies."""
     mock_app.state.driver = mock_driver
     mock_app.state.retriever = mock_retriever
@@ -69,9 +67,7 @@ class TestVectorSearchEndpoint:
         self, client: TestClient, sample_search_results: list[dict]
     ) -> None:
         """Test successful vector search."""
-        with patch(
-            "jama_mcp_server_graphrag.routes.search.vector_search"
-        ) as mock_search:
+        with patch("jama_mcp_server_graphrag.routes.search.vector_search") as mock_search:
             mock_search.return_value = sample_search_results
 
             response = client.post(
@@ -92,9 +88,7 @@ class TestVectorSearchEndpoint:
 
     def test_vector_search_validates_limit(self, client: TestClient) -> None:
         """Test that invalid limit is rejected."""
-        response = client.post(
-            "/api/v1/search/vector", json={"query": "test", "limit": 100}
-        )
+        response = client.post("/api/v1/search/vector", json={"query": "test", "limit": 100})
 
         assert response.status_code == 422  # limit > 50
 
@@ -106,9 +100,7 @@ class TestHybridSearchEndpoint:
         self, client: TestClient, sample_search_results: list[dict]
     ) -> None:
         """Test successful hybrid search."""
-        with patch(
-            "jama_mcp_server_graphrag.routes.search.hybrid_search"
-        ) as mock_search:
+        with patch("jama_mcp_server_graphrag.routes.search.hybrid_search") as mock_search:
             mock_search.return_value = sample_search_results
 
             response = client.post(
@@ -124,14 +116,10 @@ class TestHybridSearchEndpoint:
         self, client: TestClient, sample_search_results: list[dict]
     ) -> None:
         """Test that default keyword_weight is used."""
-        with patch(
-            "jama_mcp_server_graphrag.routes.search.hybrid_search"
-        ) as mock_search:
+        with patch("jama_mcp_server_graphrag.routes.search.hybrid_search") as mock_search:
             mock_search.return_value = sample_search_results
 
-            response = client.post(
-                "/api/v1/search/hybrid", json={"query": "test", "limit": 5}
-            )
+            response = client.post("/api/v1/search/hybrid", json={"query": "test", "limit": 5})
 
             assert response.status_code == 200
             # Check that hybrid_search was called with default weight
@@ -152,9 +140,7 @@ class TestGraphSearchEndpoint:
             for r in sample_search_results
         ]
 
-        with patch(
-            "jama_mcp_server_graphrag.routes.search.graph_enriched_search"
-        ) as mock_search:
+        with patch("jama_mcp_server_graphrag.routes.search.graph_enriched_search") as mock_search:
             mock_search.return_value = enriched_results
 
             response = client.post(

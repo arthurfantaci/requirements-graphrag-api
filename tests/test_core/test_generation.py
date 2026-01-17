@@ -99,12 +99,8 @@ class TestGenerateAnswer:
     ) -> None:
         """Test that generate_answer returns a complete response."""
         with (
-            patch(
-                "jama_mcp_server_graphrag.core.generation.graph_enriched_search"
-            ) as mock_search,
-            patch(
-                "jama_mcp_server_graphrag.core.generation.ChatOpenAI"
-            ) as mock_llm_class,
+            patch("jama_mcp_server_graphrag.core.generation.graph_enriched_search") as mock_search,
+            patch("jama_mcp_server_graphrag.core.generation.ChatOpenAI") as mock_llm_class,
         ):
             mock_search.return_value = mock_search_results
 
@@ -138,12 +134,8 @@ class TestGenerateAnswer:
     ) -> None:
         """Test that sources are properly formatted."""
         with (
-            patch(
-                "jama_mcp_server_graphrag.core.generation.graph_enriched_search"
-            ) as mock_search,
-            patch(
-                "jama_mcp_server_graphrag.core.generation.ChatOpenAI"
-            ) as mock_llm_class,
+            patch("jama_mcp_server_graphrag.core.generation.graph_enriched_search") as mock_search,
+            patch("jama_mcp_server_graphrag.core.generation.ChatOpenAI") as mock_llm_class,
         ):
             mock_search.return_value = mock_search_results
 
@@ -172,12 +164,8 @@ class TestGenerateAnswer:
     ) -> None:
         """Test that retrieval_limit parameter is passed to search."""
         with (
-            patch(
-                "jama_mcp_server_graphrag.core.generation.graph_enriched_search"
-            ) as mock_search,
-            patch(
-                "jama_mcp_server_graphrag.core.generation.ChatOpenAI"
-            ) as mock_llm_class,
+            patch("jama_mcp_server_graphrag.core.generation.graph_enriched_search") as mock_search,
+            patch("jama_mcp_server_graphrag.core.generation.ChatOpenAI") as mock_llm_class,
         ):
             mock_search.return_value = []
 
@@ -215,9 +203,7 @@ class TestChat:
         mock_vector_store: MagicMock,
     ) -> None:
         """Test that chat delegates to generate_answer."""
-        with patch(
-            "jama_mcp_server_graphrag.core.generation.generate_answer"
-        ) as mock_gen:
+        with patch("jama_mcp_server_graphrag.core.generation.generate_answer") as mock_gen:
             mock_gen.return_value = {
                 "question": "Test",
                 "answer": "Answer",
@@ -245,9 +231,7 @@ class TestChat:
         mock_vector_store: MagicMock,
     ) -> None:
         """Test that max_sources is passed to generate_answer."""
-        with patch(
-            "jama_mcp_server_graphrag.core.generation.generate_answer"
-        ) as mock_gen:
+        with patch("jama_mcp_server_graphrag.core.generation.generate_answer") as mock_gen:
             mock_gen.return_value = {
                 "question": "Test",
                 "answer": "Answer",

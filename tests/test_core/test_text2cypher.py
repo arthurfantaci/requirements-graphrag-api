@@ -31,9 +31,7 @@ def create_mock_record(data: dict[str, Any]) -> MagicMock:
     return record
 
 
-def create_mock_driver_with_results(
-    results_sequence: list[list[dict[str, Any]]]
-) -> MagicMock:
+def create_mock_driver_with_results(results_sequence: list[list[dict[str, Any]]]) -> MagicMock:
     """Create a mock Neo4j driver."""
     mock_driver = MagicMock()
     mock_session = MagicMock()
@@ -80,12 +78,14 @@ def mock_config() -> MagicMock:
 @pytest.fixture
 def mock_driver() -> MagicMock:
     """Create a mock Neo4j driver."""
-    return create_mock_driver_with_results([
-        # Schema query result
-        [{"label": "Entity", "count": 100}, {"label": "Concept", "count": 50}],
-        # Query execution result
-        [{"count": 100}],
-    ])
+    return create_mock_driver_with_results(
+        [
+            # Schema query result
+            [{"label": "Entity", "count": 100}, {"label": "Concept", "count": 50}],
+            # Query execution result
+            [{"count": 100}],
+        ]
+    )
 
 
 # =============================================================================
@@ -101,20 +101,14 @@ class TestGenerateCypher:
         self, mock_config: MagicMock, mock_driver: MagicMock
     ) -> None:
         """Test that generate_cypher returns a Cypher query string."""
-        with patch(
-            "jama_mcp_server_graphrag.core.text2cypher.ChatOpenAI"
-        ) as mock_llm_class:
+        with patch("jama_mcp_server_graphrag.core.text2cypher.ChatOpenAI") as mock_llm_class:
             # Setup mock LLM chain
             mock_llm = MagicMock()
             mock_llm.__or__ = MagicMock(return_value=mock_llm)
-            mock_llm.ainvoke = AsyncMock(
-                return_value="MATCH (n:Entity) RETURN count(n) AS count"
-            )
+            mock_llm.ainvoke = AsyncMock(return_value="MATCH (n:Entity) RETURN count(n) AS count")
             mock_llm_class.return_value = mock_llm
 
-            result = await generate_cypher(
-                mock_config, mock_driver, "How many entities are there?"
-            )
+            result = await generate_cypher(mock_config, mock_driver, "How many entities are there?")
 
             assert isinstance(result, str)
             assert "MATCH" in result or "RETURN" in result
@@ -124,14 +118,10 @@ class TestGenerateCypher:
         self, mock_config: MagicMock, mock_driver: MagicMock
     ) -> None:
         """Test that markdown code blocks are stripped from response."""
-        with patch(
-            "jama_mcp_server_graphrag.core.text2cypher.ChatOpenAI"
-        ) as mock_llm_class:
+        with patch("jama_mcp_server_graphrag.core.text2cypher.ChatOpenAI") as mock_llm_class:
             mock_llm = MagicMock()
             mock_llm.__or__ = MagicMock(return_value=mock_llm)
-            mock_llm.ainvoke = AsyncMock(
-                return_value="```cypher\nMATCH (n) RETURN n\n```"
-            )
+            mock_llm.ainvoke = AsyncMock(return_value="```cypher\nMATCH (n) RETURN n\n```")
             mock_llm_class.return_value = mock_llm
 
             result = await generate_cypher(mock_config, mock_driver, "Get all nodes")
@@ -149,18 +139,16 @@ class TestText2CypherQuery:
     """Tests for text2cypher_query function."""
 
     @pytest.mark.asyncio
-    async def test_text2cypher_query_with_execution(
-        self, mock_config: MagicMock
-    ) -> None:
+    async def test_text2cypher_query_with_execution(self, mock_config: MagicMock) -> None:
         """Test query generation and execution."""
         # Create a driver that returns 1 result for the execution query
-        driver = create_mock_driver_with_results([
-            [{"count": 100}],
-        ])
+        driver = create_mock_driver_with_results(
+            [
+                [{"count": 100}],
+            ]
+        )
 
-        with patch(
-            "jama_mcp_server_graphrag.core.text2cypher.generate_cypher"
-        ) as mock_gen:
+        with patch("jama_mcp_server_graphrag.core.text2cypher.generate_cypher") as mock_gen:
             mock_gen.return_value = "MATCH (n:Entity) RETURN count(n) AS count"
 
             result = await text2cypher_query(
@@ -177,14 +165,10 @@ class TestText2CypherQuery:
         self, mock_config: MagicMock, mock_driver: MagicMock
     ) -> None:
         """Test query generation without execution."""
-        with patch(
-            "jama_mcp_server_graphrag.core.text2cypher.generate_cypher"
-        ) as mock_gen:
+        with patch("jama_mcp_server_graphrag.core.text2cypher.generate_cypher") as mock_gen:
             mock_gen.return_value = "MATCH (n) RETURN n LIMIT 10"
 
-            result = await text2cypher_query(
-                mock_config, mock_driver, "Get nodes", execute=False
-            )
+            result = await text2cypher_query(mock_config, mock_driver, "Get nodes", execute=False)
 
             assert "cypher" in result
             assert "results" not in result
@@ -204,22 +188,16 @@ class TestText2CypherQuery:
         ]
 
         for forbidden in forbidden_queries:
-            with patch(
-                "jama_mcp_server_graphrag.core.text2cypher.generate_cypher"
-            ) as mock_gen:
+            with patch("jama_mcp_server_graphrag.core.text2cypher.generate_cypher") as mock_gen:
                 mock_gen.return_value = f"MATCH (n) {forbidden}"
 
-                result = await text2cypher_query(
-                    mock_config, mock_driver, "test", execute=True
-                )
+                result = await text2cypher_query(mock_config, mock_driver, "test", execute=True)
 
                 assert "error" in result
                 assert result["row_count"] == 0
 
     @pytest.mark.asyncio
-    async def test_text2cypher_query_handles_execution_error(
-        self, mock_config: MagicMock
-    ) -> None:
+    async def test_text2cypher_query_handles_execution_error(self, mock_config: MagicMock) -> None:
         """Test handling of query execution errors."""
         # Create a driver that raises an exception when run is called
         mock_driver = MagicMock()
@@ -229,14 +207,10 @@ class TestText2CypherQuery:
         mock_session.__exit__ = MagicMock(return_value=False)
         mock_driver.session.return_value = mock_session
 
-        with patch(
-            "jama_mcp_server_graphrag.core.text2cypher.generate_cypher"
-        ) as mock_gen:
+        with patch("jama_mcp_server_graphrag.core.text2cypher.generate_cypher") as mock_gen:
             mock_gen.return_value = "MATCH (n) RETURN n"
 
-            result = await text2cypher_query(
-                mock_config, mock_driver, "test", execute=True
-            )
+            result = await text2cypher_query(mock_config, mock_driver, "test", execute=True)
 
             assert "error" in result
             assert "Query failed" in result["error"]

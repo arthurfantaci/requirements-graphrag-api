@@ -110,9 +110,7 @@ class TestComputeFaithfulness:
     @pytest.mark.asyncio
     async def test_returns_score(self, mock_config: AppConfig) -> None:
         """Test that compute_faithfulness returns a score."""
-        with patch(
-            "jama_mcp_server_graphrag.evaluation.metrics.ChatOpenAI"
-        ) as mock_chat:
+        with patch("jama_mcp_server_graphrag.evaluation.metrics.ChatOpenAI") as mock_chat:
             # Create mock chain that returns a string when awaited
             mock_chain = MagicMock()
             mock_chain.ainvoke = AsyncMock(return_value="0.85")
@@ -138,9 +136,7 @@ class TestComputeAnswerRelevancy:
     @pytest.mark.asyncio
     async def test_returns_score(self, mock_config: AppConfig) -> None:
         """Test that compute_answer_relevancy returns a score."""
-        with patch(
-            "jama_mcp_server_graphrag.evaluation.metrics.ChatOpenAI"
-        ) as mock_chat:
+        with patch("jama_mcp_server_graphrag.evaluation.metrics.ChatOpenAI") as mock_chat:
             mock_chain = MagicMock()
             mock_chain.ainvoke = AsyncMock(return_value="0.9")
 
@@ -163,9 +159,7 @@ class TestComputeContextPrecision:
     @pytest.mark.asyncio
     async def test_returns_score(self, mock_config: AppConfig) -> None:
         """Test that compute_context_precision returns a score."""
-        with patch(
-            "jama_mcp_server_graphrag.evaluation.metrics.ChatOpenAI"
-        ) as mock_chat:
+        with patch("jama_mcp_server_graphrag.evaluation.metrics.ChatOpenAI") as mock_chat:
             mock_chain = MagicMock()
             mock_chain.ainvoke = AsyncMock(return_value="0.8")
 
@@ -199,9 +193,7 @@ class TestComputeContextRecall:
     @pytest.mark.asyncio
     async def test_returns_score(self, mock_config: AppConfig) -> None:
         """Test that compute_context_recall returns a score."""
-        with patch(
-            "jama_mcp_server_graphrag.evaluation.metrics.ChatOpenAI"
-        ) as mock_chat:
+        with patch("jama_mcp_server_graphrag.evaluation.metrics.ChatOpenAI") as mock_chat:
             mock_chain = MagicMock()
             mock_chain.ainvoke = AsyncMock(return_value="0.75")
 

@@ -190,14 +190,8 @@ def display_relationships(relationships: list[dict], entity_name: str) -> None:
 
 def main() -> None:
     """Run the knowledge graph query demonstration."""
-    query = (
-        sys.argv[1]
-        if len(sys.argv) > 1
-        else "What can you tell me about Requirements Tracing?"
-    )
-    console.print(
-        Panel(f"[bold cyan]Query:[/] {query}", title="Jama Guide Knowledge Graph Test")
-    )
+    query = sys.argv[1] if len(sys.argv) > 1 else "What can you tell me about Requirements Tracing?"
+    console.print(Panel(f"[bold cyan]Query:[/] {query}", title="Jama Guide Knowledge Graph Test"))
 
     driver = get_driver()
     try:
@@ -207,12 +201,8 @@ def main() -> None:
 
         # 2. Entities from retrieved chunks
         valid_chunk_ids = [cid for cid in chunk_ids if cid]
-        entities = (
-            get_entities_from_chunks(driver, valid_chunk_ids) if valid_chunk_ids else []
-        )
-        display_entity_table(
-            entities, "2. Entities Mentioned in Retrieved Chunks", "Mentions"
-        )
+        entities = get_entities_from_chunks(driver, valid_chunk_ids) if valid_chunk_ids else []
+        display_entity_table(entities, "2. Entities Mentioned in Retrieved Chunks", "Mentions")
 
         # 3. Direct entity search
         direct_results = search_entities_by_name(driver, "trac")
