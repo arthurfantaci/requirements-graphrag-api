@@ -1,0 +1,40 @@
+{
+  "recommendations": [
+    // Python Development
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "charliermarsh.ruff",
+
+    // Testing
+    "ms-python.debugpy",
+
+    // Neo4j & Cypher
+    "jakeboone02.cypher-query-language",
+
+    // API Development
+    "humao.rest-client",
+
+    // Configuration Files
+    "tamasfe.even-better-toml",
+    "mikestead.dotenv",
+    "esbenp.prettier-vscode",
+
+    // Git
+    "eamodio.gitlens",
+    "mhutchie.git-graph",
+
+    // Productivity
+    "usernamehw.errorlens",
+    "christian-kohler.path-intellisense",
+    "streetsidesoftware.code-spell-checker",
+
+    // Docker (optional)
+    "ms-azuretools.vscode-docker"
+  ],
+  "unwantedRecommendations": [
+    // Avoid conflicts with Ruff
+    "ms-python.black-formatter",
+    "ms-python.isort",
+    "ms-python.flake8"
+  ]
+}

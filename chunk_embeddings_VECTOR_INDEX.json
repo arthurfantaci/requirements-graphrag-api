@@ -1,0 +1,30 @@
+[
+  {
+    "id": 15,
+    "name": "chunk_embeddings",
+    "state": "ONLINE",
+    "populationPercent": 100.0,
+    "type": "VECTOR",
+    "entityType": "NODE",
+    "labelsOrTypes": [
+      "Chunk"
+    ],
+    "properties": [
+      "embedding"
+    ],
+    "indexProvider": "vector-3.0",
+    "owningConstraint": null,
+    "lastRead": {
+      "year": 2026,
+      "month": 1,
+      "day": 16,
+      "hour": 18,
+      "minute": 16,
+      "second": 46,
+      "nanosecond": 581000000,
+      "timeZoneOffsetSeconds": 0,
+      "timeZoneId": null
+    },
+    "readCount": 11
+  }
+]

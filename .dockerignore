@@ -1,0 +1,44 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv
+venv
+ENV
+.eggs
+*.egg-info
+.pytest_cache
+.coverage
+htmlcov
+.mypy_cache
+.ruff_cache
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+.claude
+
+# Project specific
+.env
+.env.*
+!.env.example
+*.log
+tests/
+docs/
+*.md
+!README.md
+
+# Build artifacts
+dist
+build
+
+# uv lock (already have copy in build)
+# Note: We DO copy uv.lock as it's needed for reproducible builds

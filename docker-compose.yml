@@ -1,0 +1,90 @@
+# Docker Compose for local development
+version: "3.9"
+
+services:
+  # GraphRAG REST API (main service)
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: jama-graphrag-api
+    ports:
+      - "8000:8000"
+    environment:
+      - NEO4J_URI=${NEO4J_URI}
+      - NEO4J_USERNAME=${NEO4J_USERNAME}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD}
+      - NEO4J_DATABASE=${NEO4J_DATABASE:-neo4j}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-ada-002}
+      - VECTOR_INDEX_NAME=${VECTOR_INDEX_NAME:-chunk_embeddings}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - graphrag-network
+
+  # MCP Server (for Claude Desktop integration)
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: jama-graphrag-mcp
+    ports:
+      - "8001:8000"
+    environment:
+      - NEO4J_URI=${NEO4J_URI}
+      - NEO4J_USERNAME=${NEO4J_USERNAME}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD}
+      - NEO4J_DATABASE=${NEO4J_DATABASE:-neo4j}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-ada-002}
+      - VECTOR_INDEX_NAME=${VECTOR_INDEX_NAME:-chunk_embeddings}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    env_file:
+      - .env
+    command: ["python", "-m", "jama_mcp_server_graphrag.server", "--transport", "http", "--port", "8000"]
+    restart: unless-stopped
+    networks:
+      - graphrag-network
+
+  # Optional: Local Neo4j for development (comment out if using remote AuraDB)
+  # neo4j:
+  #   image: neo4j:5.15-community
+  #   container_name: graphrag-neo4j
+  #   ports:
+  #     - "7474:7474"  # HTTP
+  #     - "7687:7687"  # Bolt
+  #   environment:
+  #     - NEO4J_AUTH=neo4j/your-password
+  #     - NEO4J_PLUGINS=["apoc", "graph-data-science"]
+  #   volumes:
+  #     - neo4j_data:/data
+  #     - neo4j_logs:/logs
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:7474"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 5
+  #   networks:
+  #     - graphrag-network
+
+networks:
+  graphrag-network:
+    driver: bridge
+
+# volumes:
+#   neo4j_data:
+#   neo4j_logs:
