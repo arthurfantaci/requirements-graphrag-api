@@ -26,7 +26,7 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: uv sync --group dev
+        run: uv sync --extra dev
 
       - name: Run Ruff linter
         run: uv run ruff check . --output-format=github
@@ -50,7 +50,7 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: uv sync --group dev
+        run: uv sync --extra dev
 
       - name: Run tests with coverage
         run: uv run pytest --cov=jama_mcp_server_graphrag --cov-report=xml --cov-report=html
@@ -130,7 +130,7 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: uv sync --group dev
+        run: uv sync --extra dev
 
       - name: Run integration tests
         run: uv run pytest -m integration --tb=short
