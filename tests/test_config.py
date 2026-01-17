@@ -129,7 +129,7 @@ class TestAppConfig:
         assert config.neo4j_database == "neo4j"
         assert config.openai_api_key == ""
         assert config.chat_model == "gpt-4o"
-        assert config.embedding_model == "text-embedding-ada-002"
+        assert config.embedding_model == "text-embedding-3-small"
         assert config.vector_index_name == "chunk_embeddings"
         assert config.similarity_k == 6
         assert config.log_level == "INFO"

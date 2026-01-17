@@ -1,4 +1,8 @@
-"""Tests for chat endpoint."""
+"""Tests for chat endpoint.
+
+Updated Data Model (2026-01):
+- Uses app.state.driver and app.state.retriever instead of graph/vector_store
+"""
 
 from __future__ import annotations
 
@@ -32,8 +36,8 @@ def mock_config() -> MagicMock:
 def client(mock_app: FastAPI, mock_config: MagicMock) -> TestClient:
     """Create a test client with mocked dependencies."""
     mock_app.state.config = mock_config
-    mock_app.state.graph = MagicMock()
-    mock_app.state.vector_store = MagicMock()
+    mock_app.state.driver = MagicMock()
+    mock_app.state.retriever = MagicMock()
     return TestClient(mock_app)
 
 

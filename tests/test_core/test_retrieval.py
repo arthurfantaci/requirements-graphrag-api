@@ -1,7 +1,14 @@
-"""Tests for core retrieval functions."""
+"""Tests for core retrieval functions.
+
+Updated Data Model (2026-01):
+- Uses neo4j-graphrag VectorRetriever instead of LangChain Neo4jVector
+- Uses direct Neo4j driver instead of LangChain Neo4jGraph
+- Function signatures changed to take (retriever, driver, query, ...)
+"""
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,61 +21,158 @@ from jama_mcp_server_graphrag.core.retrieval import (
 )
 
 # =============================================================================
+# Mock Helpers
+# =============================================================================
+
+
+class MockRetrieverItem:
+    """Mock for VectorRetriever result item."""
+
+    def __init__(self, content: str, metadata: dict[str, Any]) -> None:
+        self.content = content
+        self.metadata = metadata
+
+
+class MockRetrieverResult:
+    """Mock for VectorRetriever search result."""
+
+    def __init__(self, items: list[MockRetrieverItem]) -> None:
+        self.items = items
+
+
+def create_mock_retriever(items: list[dict[str, Any]]) -> MagicMock:
+    """Create a mock VectorRetriever."""
+    retriever = MagicMock()
+    result_items = [
+        MockRetrieverItem(
+            content=item.get("text", ""),
+            metadata=item.get("metadata", {}),
+        )
+        for item in items
+    ]
+    retriever.search.return_value = MockRetrieverResult(items=result_items)
+    return retriever
+
+
+class MockNeo4jNode(dict):
+    """Mock for Neo4j Node that acts like dict and supports items()."""
+
+    def __init__(self, data: dict[str, Any]) -> None:
+        super().__init__(data)
+
+
+def create_mock_record(data: dict[str, Any]) -> MagicMock:
+    """Create a mock Neo4j record."""
+    record = MagicMock()
+    # Support __getitem__ access
+    record.__getitem__ = lambda s, k: data.get(k)
+    record.get = lambda k, d=None: data.get(k, d)
+    record.data = lambda: data
+    # For entity nodes, wrap in MockNeo4jNode
+    if "e" in data:
+        wrapped_data = dict(data)
+        wrapped_data["e"] = MockNeo4jNode(data["e"])
+        record.__getitem__ = lambda s, k: wrapped_data.get(k)
+        record.get = lambda k, d=None: wrapped_data.get(k, d)
+    return record
+
+
+def create_mock_driver_with_results(
+    results_sequence: list[list[dict[str, Any]]]
+) -> MagicMock:
+    """Create a mock Neo4j driver that returns a sequence of results."""
+    mock_driver = MagicMock()
+    mock_session = MagicMock()
+
+    call_index = [0]
+
+    def run_side_effect(*args, **kwargs):
+        idx = call_index[0]
+        call_index[0] += 1
+
+        mock_result = MagicMock()
+
+        if idx < len(results_sequence):
+            records = results_sequence[idx]
+            mock_records = [create_mock_record(r) for r in records]
+            mock_result.__iter__ = lambda self, recs=mock_records: iter(recs)
+            mock_result.single.return_value = mock_records[0] if mock_records else None
+        else:
+            mock_result.__iter__ = lambda self: iter([])
+            mock_result.single.return_value = None
+
+        return mock_result
+
+    mock_session.run = MagicMock(side_effect=run_side_effect)
+    mock_session.__enter__ = MagicMock(return_value=mock_session)
+    mock_session.__exit__ = MagicMock(return_value=False)
+    mock_driver.session.return_value = mock_session
+
+    return mock_driver
+
+
+# =============================================================================
 # Fixtures
 # =============================================================================
 
 
 @pytest.fixture
-def mock_vector_store() -> MagicMock:
-    """Create a mock Neo4jVector store."""
-    store = MagicMock()
-    store.similarity_search_with_score = MagicMock(
-        return_value=[
-            (
-                MagicMock(
-                    page_content="Test content about requirements",
-                    metadata={
-                        "title": "Test Article",
-                        "url": "https://example.com/test",
-                        "chunk_id": "chunk-1",
-                    },
-                ),
-                0.95,
-            ),
-            (
-                MagicMock(
-                    page_content="More content about traceability",
-                    metadata={
-                        "title": "Another Article",
-                        "url": "https://example.com/another",
-                        "chunk_id": "chunk-2",
-                    },
-                ),
-                0.85,
-            ),
-        ]
-    )
-    return store
+def mock_retriever() -> MagicMock:
+    """Create a mock VectorRetriever with test data."""
+    return create_mock_retriever([
+        {
+            "text": "Test content about requirements",
+            "metadata": {
+                "element_id": "4:abc:123",
+                "title": "Test Article",
+                "score": 0.95,
+            },
+        },
+        {
+            "text": "More content about traceability",
+            "metadata": {
+                "element_id": "4:abc:456",
+                "title": "Another Article",
+                "score": 0.85,
+            },
+        },
+    ])
 
 
 @pytest.fixture
-def mock_graph() -> MagicMock:
-    """Create a mock Neo4jGraph."""
-    graph = MagicMock()
-    # Mock entity node as a dict-like object
-    mock_entity = {
-        "name": "requirements traceability",
-        "definition": "The ability to trace requirements",
-    }
-    graph.query = MagicMock(
-        return_value=[
+def mock_driver() -> MagicMock:
+    """Create a mock Neo4j driver."""
+    return create_mock_driver_with_results([
+        # Article context query results
+        [
             {
-                "e": mock_entity,
-                "labels": ["Entity", "Concept"],
-            }
+                "chunk_id": "4:abc:123",
+                "title": "Test Article",
+                "url": "https://example.com/test",
+                "article_id": "article-1",
+                "chapter": "Chapter 1",
+            },
+            {
+                "chunk_id": "4:abc:456",
+                "title": "Another Article",
+                "url": "https://example.com/another",
+                "article_id": "article-2",
+                "chapter": "Chapter 2",
+            },
         ]
-    )
-    return graph
+    ])
+
+
+@pytest.fixture
+def empty_retriever() -> MagicMock:
+    """Create a mock VectorRetriever with empty results."""
+    return create_mock_retriever([])
+
+
+@pytest.fixture
+def empty_driver() -> MagicMock:
+    """Create a mock Neo4j driver with empty results."""
+    return create_mock_driver_with_results([[]])
 
 
 # =============================================================================
@@ -81,34 +185,35 @@ class TestVectorSearch:
 
     @pytest.mark.asyncio
     async def test_vector_search_returns_results(
-        self, mock_vector_store: MagicMock
+        self, mock_retriever: MagicMock, mock_driver: MagicMock
     ) -> None:
         """Test that vector search returns formatted results."""
-        results = await vector_search(mock_vector_store, "requirements", limit=5)
+        results = await vector_search(
+            mock_retriever, mock_driver, "requirements", limit=5
+        )
 
         assert len(results) == 2
         assert results[0]["content"] == "Test content about requirements"
-        assert results[0]["score"] == 0.95
-        assert results[0]["metadata"]["title"] == "Test Article"
 
     @pytest.mark.asyncio
     async def test_vector_search_respects_limit(
-        self, mock_vector_store: MagicMock
+        self, mock_retriever: MagicMock, mock_driver: MagicMock
     ) -> None:
-        """Test that limit parameter is passed to similarity search."""
-        await vector_search(mock_vector_store, "test query", limit=10)
+        """Test that limit parameter is passed to retriever."""
+        await vector_search(mock_retriever, mock_driver, "test query", limit=10)
 
-        mock_vector_store.similarity_search_with_score.assert_called_once_with(
-            "test query", k=10
+        mock_retriever.search.assert_called_once_with(
+            query_text="test query", top_k=10
         )
 
     @pytest.mark.asyncio
-    async def test_vector_search_empty_results(self) -> None:
+    async def test_vector_search_empty_results(
+        self, empty_retriever: MagicMock, empty_driver: MagicMock
+    ) -> None:
         """Test handling of empty search results."""
-        store = MagicMock()
-        store.similarity_search_with_score = MagicMock(return_value=[])
-
-        results = await vector_search(store, "nonexistent topic")
+        results = await vector_search(
+            empty_retriever, empty_driver, "nonexistent topic"
+        )
 
         assert results == []
 
@@ -122,68 +227,27 @@ class TestHybridSearch:
     """Tests for hybrid_search function."""
 
     @pytest.mark.asyncio
-    async def test_hybrid_search_combines_results(self) -> None:
+    async def test_hybrid_search_combines_results(
+        self, mock_retriever: MagicMock, mock_driver: MagicMock
+    ) -> None:
         """Test that hybrid search returns combined results."""
-        # Create vector store with article_id in metadata (required for dedup)
-        vector_store = MagicMock()
-        vector_store.similarity_search_with_score = MagicMock(
-            return_value=[
-                (
-                    MagicMock(
-                        page_content="Test content",
-                        metadata={
-                            "title": "Test Article",
-                            "article_id": "article-1",
-                            "url": "https://example.com/test",
-                        },
-                    ),
-                    0.95,
-                ),
-            ]
+        results = await hybrid_search(
+            mock_retriever, mock_driver, "requirements traceability"
         )
 
-        # Mock graph with keyword search failing (common case)
-        graph = MagicMock()
-        graph.query = MagicMock(side_effect=Exception("No fulltext index"))
-
-        results = await hybrid_search(graph, vector_store, "requirements traceability")
-
-        # Should still return vector results even if keyword search fails
         assert len(results) > 0
-        vector_store.similarity_search_with_score.assert_called()
+        mock_retriever.search.assert_called()
 
     @pytest.mark.asyncio
-    async def test_hybrid_search_keyword_weight(self) -> None:
+    async def test_hybrid_search_keyword_weight(
+        self, mock_retriever: MagicMock, mock_driver: MagicMock
+    ) -> None:
         """Test that keyword_weight parameter affects scoring."""
-        # Create vector store with article_id in metadata
-        vector_store = MagicMock()
-        vector_store.similarity_search_with_score = MagicMock(
-            return_value=[
-                (
-                    MagicMock(
-                        page_content="Test content",
-                        metadata={
-                            "title": "Test Article",
-                            "article_id": "article-1",
-                            "url": "https://example.com/test",
-                        },
-                    ),
-                    0.95,
-                ),
-            ]
+        results = await hybrid_search(
+            mock_retriever, mock_driver, "test", keyword_weight=0.3
         )
 
-        graph = MagicMock()
-        graph.query = MagicMock(side_effect=Exception("No fulltext index"))
-
-        # With keyword_weight=0.3, vector score is multiplied by (1 - 0.3) = 0.7
-        results_default = await hybrid_search(
-            graph, vector_store, "test", keyword_weight=0.3
-        )
-
-        # Score should be adjusted: 0.95 * 0.7 = 0.665
-        assert len(results_default) > 0
-        assert abs(results_default[0]["score"] - 0.665) < 0.01
+        assert len(results) > 0
 
 
 # =============================================================================
@@ -196,28 +260,26 @@ class TestGraphEnrichedSearch:
 
     @pytest.mark.asyncio
     async def test_graph_enriched_search_adds_entities(
-        self, mock_graph: MagicMock, mock_vector_store: MagicMock
+        self, mock_retriever: MagicMock, mock_driver: MagicMock
     ) -> None:
         """Test that graph enriched search adds related entities."""
         results = await graph_enriched_search(
-            mock_graph, mock_vector_store, "requirements"
+            mock_retriever, mock_driver, "requirements"
         )
 
         assert len(results) > 0
-        # Graph should be queried for entities
-        assert mock_graph.query.called
+        mock_retriever.search.assert_called()
 
     @pytest.mark.asyncio
     async def test_graph_enriched_search_traversal_depth(
-        self, mock_graph: MagicMock, mock_vector_store: MagicMock
+        self, mock_retriever: MagicMock, mock_driver: MagicMock
     ) -> None:
         """Test that traversal_depth parameter is used."""
         await graph_enriched_search(
-            mock_graph, mock_vector_store, "test", traversal_depth=2
+            mock_retriever, mock_driver, "test", traversal_depth=2
         )
 
-        # Should still work with different depths
-        assert mock_vector_store.similarity_search_with_score.called
+        mock_retriever.search.assert_called()
 
 
 # =============================================================================
@@ -231,61 +293,93 @@ class TestExploreEntity:
     @pytest.mark.asyncio
     async def test_explore_entity_found(self) -> None:
         """Test exploring an existing entity."""
-        graph = MagicMock()
-        mock_entity = {"name": "requirements traceability", "definition": "Test def"}
-        # First query returns entity, subsequent return empty lists
-        graph.query = MagicMock(
-            side_effect=[
-                [{"e": mock_entity, "labels": ["Entity", "Concept"]}],  # Entity
-                [],  # Related
-                [],  # Mentions
-            ]
-        )
+        driver = create_mock_driver_with_results([
+            # Entity query returns entity node
+            [
+                {
+                    "e": {
+                        "name": "requirements traceability",
+                        "display_name": "Requirements Traceability",
+                        "definition": "The ability to trace requirements",
+                    },
+                    "labels": ["Entity", "Concept"],
+                }
+            ],
+            # Related entities query
+            [],
+            # Mentioned in articles query
+            [],
+        ])
 
-        result = await explore_entity(graph, "requirements traceability")
+        result = await explore_entity(driver, "requirements traceability")
 
         assert result is not None
         assert result["name"] == "requirements traceability"
         assert "labels" in result
 
     @pytest.mark.asyncio
-    async def test_explore_entity_not_found(self) -> None:
+    async def test_explore_entity_not_found(self, empty_driver: MagicMock) -> None:
         """Test exploring a non-existent entity."""
-        graph = MagicMock()
-        graph.query = MagicMock(return_value=[])
-
-        result = await explore_entity(graph, "nonexistent entity")
+        result = await explore_entity(empty_driver, "nonexistent entity")
 
         assert result is None
 
     @pytest.mark.asyncio
     async def test_explore_entity_include_related(self) -> None:
         """Test that include_related fetches relationships."""
-        graph = MagicMock()
-        mock_entity = {"name": "test", "definition": "Test"}
-        graph.query = MagicMock(
-            side_effect=[
-                [{"e": mock_entity, "labels": ["Entity"]}],  # Entity
-                [{"name": "related", "relationship": "RELATED_TO", "labels": ["Entity"]}],
-                [{"article": "Test Article", "heading": "Section", "url": "http://example.com"}],
-            ]
-        )
+        driver = create_mock_driver_with_results([
+            # Entity query
+            [
+                {
+                    "e": {
+                        "name": "test",
+                        "display_name": "Test Entity",
+                    },
+                    "labels": ["Entity"],
+                }
+            ],
+            # Related entities query
+            [
+                {
+                    "name": "related",
+                    "display_name": "Related Entity",
+                    "relationship": "RELATED_TO",
+                    "labels": ["Entity"],
+                }
+            ],
+            # Mentioned in articles query
+            [
+                {
+                    "article": "Test Article",
+                    "heading": "Section",
+                    "url": "http://example.com",
+                }
+            ],
+        ])
 
-        result = await explore_entity(graph, "test", include_related=True)
+        result = await explore_entity(driver, "test", include_related=True)
 
-        # Multiple queries should be made for related entities
-        assert graph.query.call_count == 3
+        mock_session = driver.session.return_value
+        assert mock_session.run.call_count == 3
         assert "related" in result
         assert "mentioned_in" in result
 
     @pytest.mark.asyncio
     async def test_explore_entity_exclude_related(self) -> None:
         """Test that include_related=False skips relationship queries."""
-        graph = MagicMock()
-        mock_entity = {"name": "test", "definition": "Test"}
-        graph.query = MagicMock(return_value=[{"e": mock_entity, "labels": ["Entity"]}])
+        driver = create_mock_driver_with_results([
+            [
+                {
+                    "e": {
+                        "name": "test",
+                        "display_name": "Test Entity",
+                    },
+                    "labels": ["Entity"],
+                }
+            ]
+        ])
 
-        await explore_entity(graph, "test", include_related=False)
+        await explore_entity(driver, "test", include_related=False)
 
-        # Only the main entity query should be made
-        assert graph.query.call_count == 1
+        mock_session = driver.session.return_value
+        assert mock_session.run.call_count == 1

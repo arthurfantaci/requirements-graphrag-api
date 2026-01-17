@@ -144,6 +144,7 @@ convention = "google"
     "ANN",     # Don't require annotations in tests
     "D",       # Don't require docstrings in tests
     "PLR2004", # Allow magic values in tests
+    "ARG",     # Allow unused arguments in tests (common for mocks)
 ]
 
 [tool.ruff.format]

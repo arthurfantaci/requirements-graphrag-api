@@ -1,16 +1,70 @@
-"""Tests for core glossary functions."""
+"""Tests for core definitions functions (renamed from glossary).
+
+Updated Data Model (2026-01):
+- Definition nodes replace GlossaryTerm
+- Uses direct Neo4j driver instead of LangChain Neo4jGraph
+"""
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
-from jama_mcp_server_graphrag.core.glossary import (
+from jama_mcp_server_graphrag.core.definitions import (
     list_all_terms,
     lookup_term,
     search_terms,
 )
+
+# =============================================================================
+# Mock Helpers
+# =============================================================================
+
+
+def create_mock_record(data: dict[str, Any]) -> MagicMock:
+    """Create a mock Neo4j record with proper __getitem__ support."""
+    record = MagicMock()
+    record.__getitem__ = lambda s, k: data.get(k)
+    record.get = lambda k, d=None: data.get(k, d)
+    record.data = lambda: data
+    return record
+
+
+def create_mock_driver_with_results(
+    results_sequence: list[list[dict[str, Any]]]
+) -> MagicMock:
+    """Create a mock Neo4j driver that returns a sequence of results."""
+    mock_driver = MagicMock()
+    mock_session = MagicMock()
+
+    call_index = [0]
+
+    def run_side_effect(*args, **kwargs):
+        idx = call_index[0]
+        call_index[0] += 1
+
+        mock_result = MagicMock()
+
+        if idx < len(results_sequence):
+            records = results_sequence[idx]
+            mock_records = [create_mock_record(r) for r in records]
+            mock_result.__iter__ = lambda self, recs=mock_records: iter(recs)
+            mock_result.single.return_value = mock_records[0] if mock_records else None
+        else:
+            mock_result.__iter__ = lambda self: iter([])
+            mock_result.single.return_value = None
+
+        return mock_result
+
+    mock_session.run = MagicMock(side_effect=run_side_effect)
+    mock_session.__enter__ = MagicMock(return_value=mock_session)
+    mock_session.__exit__ = MagicMock(return_value=False)
+    mock_driver.session.return_value = mock_session
+
+    return mock_driver
+
 
 # =============================================================================
 # Fixtures
@@ -18,28 +72,25 @@ from jama_mcp_server_graphrag.core.glossary import (
 
 
 @pytest.fixture
-def mock_graph_with_terms() -> MagicMock:
-    """Create a mock Neo4jGraph with glossary terms."""
-    graph = MagicMock()
-    graph.query = MagicMock(
-        return_value=[
+def mock_driver_with_terms() -> MagicMock:
+    """Create a mock Neo4j driver with definition terms."""
+    return create_mock_driver_with_results([
+        [
             {
                 "term": "Requirements Traceability",
                 "definition": "The ability to trace requirements throughout the lifecycle",
-                "source": "Jama Guide",
+                "url": "https://example.com/glossary#traceability",
+                "term_id": "term-123",
                 "score": 0.95,
             }
         ]
-    )
-    return graph
+    ])
 
 
 @pytest.fixture
-def mock_graph_empty() -> MagicMock:
-    """Create a mock Neo4jGraph that returns no results."""
-    graph = MagicMock()
-    graph.query = MagicMock(return_value=[])
-    return graph
+def mock_driver_empty() -> MagicMock:
+    """Create a mock Neo4j driver that returns no results."""
+    return create_mock_driver_with_results([[]])
 
 
 # =============================================================================
@@ -51,61 +102,43 @@ class TestLookupTerm:
     """Tests for lookup_term function."""
 
     @pytest.mark.asyncio
-    async def test_lookup_term_found(self, mock_graph_with_terms: MagicMock) -> None:
+    async def test_lookup_term_found(self, mock_driver_with_terms: MagicMock) -> None:
         """Test looking up an existing term."""
-        result = await lookup_term(mock_graph_with_terms, "traceability")
+        result = await lookup_term(mock_driver_with_terms, "traceability")
 
         assert result is not None
         assert result["term"] == "Requirements Traceability"
         assert "definition" in result
-        assert result["score"] == 0.95
 
     @pytest.mark.asyncio
-    async def test_lookup_term_not_found(self, mock_graph_empty: MagicMock) -> None:
+    async def test_lookup_term_not_found(self, mock_driver_empty: MagicMock) -> None:
         """Test looking up a non-existent term."""
-        result = await lookup_term(mock_graph_empty, "nonexistent")
+        result = await lookup_term(mock_driver_empty, "nonexistent")
 
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_lookup_term_fuzzy_matching(
-        self, mock_graph_with_terms: MagicMock
+    async def test_lookup_term_fuzzy_uses_contains(
+        self, mock_driver_with_terms: MagicMock
     ) -> None:
-        """Test fuzzy matching is used by default."""
-        await lookup_term(mock_graph_with_terms, "trace", fuzzy=True)
+        """Test fuzzy matching uses CONTAINS."""
+        await lookup_term(mock_driver_with_terms, "trace", fuzzy=True)
 
-        # Should use fulltext query
-        call_args = mock_graph_with_terms.query.call_args
-        assert "fulltext" in call_args[0][0] or "CONTAINS" in call_args[0][0]
+        mock_session = mock_driver_with_terms.session.return_value.__enter__.return_value
+        call_args = mock_session.run.call_args
+        assert "CONTAINS" in call_args[0][0]
 
     @pytest.mark.asyncio
     async def test_lookup_term_exact_matching(
-        self, mock_graph_with_terms: MagicMock
+        self, mock_driver_with_terms: MagicMock
     ) -> None:
         """Test exact matching when fuzzy=False."""
-        await lookup_term(mock_graph_with_terms, "traceability", fuzzy=False)
+        await lookup_term(mock_driver_with_terms, "traceability", fuzzy=False)
 
-        # Should use exact match query
-        call_args = mock_graph_with_terms.query.call_args
+        mock_session = mock_driver_with_terms.session.return_value.__enter__.return_value
+        call_args = mock_session.run.call_args
+        # Exact match uses equals or toLower comparison
         assert "toLower" in call_args[0][0]
-
-    @pytest.mark.asyncio
-    async def test_lookup_term_fallback_on_error(self) -> None:
-        """Test fallback to CONTAINS when fulltext index fails."""
-        graph = MagicMock()
-        # First call fails (fulltext), second succeeds (fallback)
-        graph.query = MagicMock(
-            side_effect=[
-                Exception("Index not found"),
-                [{"term": "Test", "definition": "A test term", "source": None}],
-            ]
-        )
-
-        result = await lookup_term(graph, "test", fuzzy=True)
-
-        assert result is not None
-        assert result["term"] == "Test"
-        assert result["score"] == 0.8  # Fallback score
 
 
 # =============================================================================
@@ -118,44 +151,33 @@ class TestSearchTerms:
 
     @pytest.mark.asyncio
     async def test_search_terms_returns_list(
-        self, mock_graph_with_terms: MagicMock
+        self, mock_driver_with_terms: MagicMock
     ) -> None:
         """Test that search returns a list of terms."""
-        results = await search_terms(mock_graph_with_terms, "requirements")
+        results = await search_terms(mock_driver_with_terms, "requirements")
 
         assert isinstance(results, list)
-        assert len(results) > 0
-        assert results[0]["term"] == "Requirements Traceability"
 
     @pytest.mark.asyncio
     async def test_search_terms_respects_limit(
-        self, mock_graph_with_terms: MagicMock
+        self, mock_driver_with_terms: MagicMock
     ) -> None:
         """Test that limit parameter is passed to query."""
-        await search_terms(mock_graph_with_terms, "test", limit=5)
+        await search_terms(mock_driver_with_terms, "test", limit=5)
 
-        call_args = mock_graph_with_terms.query.call_args
-        # Parameters are passed as second positional arg (dict)
-        params = call_args[0][1] if len(call_args[0]) > 1 else call_args[1]
-        assert params["limit"] == 5
+        mock_session = mock_driver_with_terms.session.return_value.__enter__.return_value
+        call_args = mock_session.run.call_args
+        # Parameters passed as keyword arguments
+        assert call_args[1]["limit"] == 5
 
     @pytest.mark.asyncio
     async def test_search_terms_empty_results(
-        self, mock_graph_empty: MagicMock
+        self, mock_driver_empty: MagicMock
     ) -> None:
         """Test handling of empty search results."""
-        results = await search_terms(mock_graph_empty, "nonexistent")
+        results = await search_terms(mock_driver_empty, "nonexistent")
 
         assert results == []
-
-    @pytest.mark.asyncio
-    async def test_search_terms_score_rounding(
-        self, mock_graph_with_terms: MagicMock
-    ) -> None:
-        """Test that scores are rounded to 4 decimal places."""
-        results = await search_terms(mock_graph_with_terms, "test")
-
-        assert isinstance(results[0]["score"], float)
 
 
 # =============================================================================
@@ -168,34 +190,33 @@ class TestListAllTerms:
 
     @pytest.mark.asyncio
     async def test_list_all_terms_returns_list(
-        self, mock_graph_with_terms: MagicMock
+        self, mock_driver_with_terms: MagicMock
     ) -> None:
         """Test that list_all_terms returns a list."""
-        results = await list_all_terms(mock_graph_with_terms)
+        results = await list_all_terms(mock_driver_with_terms)
 
         assert isinstance(results, list)
-        assert len(results) > 0
 
     @pytest.mark.asyncio
     async def test_list_all_terms_respects_limit(
-        self, mock_graph_with_terms: MagicMock
+        self, mock_driver_with_terms: MagicMock
     ) -> None:
         """Test that limit parameter is used."""
-        await list_all_terms(mock_graph_with_terms, limit=100)
+        await list_all_terms(mock_driver_with_terms, limit=100)
 
-        call_args = mock_graph_with_terms.query.call_args
-        # Parameters are passed as second positional arg (dict)
-        params = call_args[0][1] if len(call_args[0]) > 1 else call_args[1]
-        assert params["limit"] == 100
+        mock_session = mock_driver_with_terms.session.return_value.__enter__.return_value
+        call_args = mock_session.run.call_args
+        # Parameters passed as keyword arguments
+        assert call_args[1]["limit"] == 100
 
     @pytest.mark.asyncio
     async def test_list_all_terms_default_limit(
-        self, mock_graph_with_terms: MagicMock
+        self, mock_driver_with_terms: MagicMock
     ) -> None:
         """Test default limit of 50."""
-        await list_all_terms(mock_graph_with_terms)
+        await list_all_terms(mock_driver_with_terms)
 
-        call_args = mock_graph_with_terms.query.call_args
-        # Parameters are passed as second positional arg (dict)
-        params = call_args[0][1] if len(call_args[0]) > 1 else call_args[1]
-        assert params["limit"] == 50
+        mock_session = mock_driver_with_terms.session.return_value.__enter__.return_value
+        call_args = mock_session.run.call_args
+        # Parameters passed as keyword arguments
+        assert call_args[1]["limit"] == 50

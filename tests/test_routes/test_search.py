@@ -1,4 +1,8 @@
-"""Tests for search endpoints."""
+"""Tests for search endpoints.
+
+Updated Data Model (2026-01):
+- Uses app.state.driver and app.state.retriever instead of graph/vector_store
+"""
 
 from __future__ import annotations
 
@@ -20,24 +24,24 @@ def mock_app() -> FastAPI:
 
 
 @pytest.fixture
-def mock_graph() -> MagicMock:
-    """Create a mock Neo4jGraph."""
+def mock_driver() -> MagicMock:
+    """Create a mock Neo4j driver."""
     return MagicMock()
 
 
 @pytest.fixture
-def mock_vector_store() -> MagicMock:
-    """Create a mock Neo4jVector store."""
+def mock_retriever() -> MagicMock:
+    """Create a mock VectorRetriever."""
     return MagicMock()
 
 
 @pytest.fixture
 def client(
-    mock_app: FastAPI, mock_graph: MagicMock, mock_vector_store: MagicMock
+    mock_app: FastAPI, mock_driver: MagicMock, mock_retriever: MagicMock
 ) -> TestClient:
     """Create a test client with mocked dependencies."""
-    mock_app.state.graph = mock_graph
-    mock_app.state.vector_store = mock_vector_store
+    mock_app.state.driver = mock_driver
+    mock_app.state.retriever = mock_retriever
     return TestClient(mock_app)
 
 
