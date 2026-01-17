@@ -1,4 +1,8 @@
-"""Tests for health check endpoint."""
+"""Tests for health check endpoint.
+
+Updated Data Model (2026-01):
+- Uses direct Neo4j driver instead of LangChain Neo4jGraph
+"""
 
 from __future__ import annotations
 
@@ -20,26 +24,30 @@ def mock_app() -> FastAPI:
 
 
 @pytest.fixture
-def mock_graph() -> MagicMock:
-    """Create a mock Neo4jGraph."""
-    graph = MagicMock()
-    graph.query = MagicMock(return_value=[{"connected": 1}])
-    return graph
+def mock_driver() -> MagicMock:
+    """Create a mock Neo4j driver."""
+    driver = MagicMock()
+    mock_session = MagicMock()
+    mock_session.run = MagicMock(return_value=MagicMock())
+    mock_session.__enter__ = MagicMock(return_value=mock_session)
+    mock_session.__exit__ = MagicMock(return_value=False)
+    driver.session.return_value = mock_session
+    return driver
 
 
 @pytest.fixture
-def client_with_graph(mock_app: FastAPI, mock_graph: MagicMock) -> TestClient:
-    """Create a test client with mocked graph."""
-    mock_app.state.graph = mock_graph
+def client_with_driver(mock_app: FastAPI, mock_driver: MagicMock) -> TestClient:
+    """Create a test client with mocked driver."""
+    mock_app.state.driver = mock_driver
     return TestClient(mock_app)
 
 
 class TestHealthEndpoint:
     """Tests for /health endpoint."""
 
-    def test_health_check_healthy(self, client_with_graph: TestClient) -> None:
+    def test_health_check_healthy(self, client_with_driver: TestClient) -> None:
         """Test health check when Neo4j is connected."""
-        response = client_with_graph.get("/health")
+        response = client_with_driver.get("/health")
 
         assert response.status_code == 200
         data = response.json()
@@ -49,10 +57,14 @@ class TestHealthEndpoint:
 
     def test_health_check_degraded(self, mock_app: FastAPI) -> None:
         """Test health check when Neo4j connection fails."""
-        # Create graph that raises exception on query
-        mock_graph = MagicMock()
-        mock_graph.query = MagicMock(side_effect=Exception("Connection failed"))
-        mock_app.state.graph = mock_graph
+        # Create driver that raises exception on query
+        mock_driver = MagicMock()
+        mock_session = MagicMock()
+        mock_session.run = MagicMock(side_effect=Exception("Connection failed"))
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_driver.session.return_value = mock_session
+        mock_app.state.driver = mock_driver
 
         client = TestClient(mock_app)
         response = client.get("/health")
@@ -61,3 +73,14 @@ class TestHealthEndpoint:
         data = response.json()
         assert data["status"] == "degraded"
         assert data["neo4j"] == "disconnected"
+
+    def test_health_check_no_driver(self, mock_app: FastAPI) -> None:
+        """Test health check when driver is not configured."""
+        # Don't set driver on app state
+        client = TestClient(mock_app)
+        response = client.get("/health")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "degraded"
+        assert data["neo4j"] == "not configured"
