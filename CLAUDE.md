@@ -33,7 +33,7 @@ Both interfaces share the same core GraphRAG logic, Neo4j connection, and retrie
 - LangChain + langchain-neo4j for GraphRAG
 - LangGraph for agentic workflows
 - Neo4j AuraDB (neo4j+s:// connection)
-- OpenAI embeddings (text-embedding-ada-002)
+- OpenAI embeddings (text-embedding-3-small)
 - Docker for containerization
 - Vercel for serverless deployment
 

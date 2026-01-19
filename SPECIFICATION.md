@@ -3278,19 +3278,53 @@ router = APIRouter()
 
 class ChatRequest(BaseModel):
     """Chat request model."""
-    
+
     message: str = Field(..., min_length=1, max_length=2000)
     conversation_id: str | None = None
     options: dict | None = None
 
 
+class SourceInfo(BaseModel):
+    """Source citation information."""
+
+    title: str
+    url: str | None
+    chunk_id: str | None
+    relevance_score: float
+
+
+class EntityInfo(BaseModel):
+    """Related entity information."""
+
+    name: str
+    type: str | None = None
+
+
+class ImageInfo(BaseModel):
+    """Image from knowledge base.
+
+    Images are retrieved from articles related to the search results.
+    URLs point to externally hosted images (Jama CDN).
+    """
+
+    url: str
+    alt_text: str = ""
+    context: str = ""
+    source_title: str = ""
+
+
 class ChatResponse(BaseModel):
-    """Chat response model."""
-    
+    """Chat response model.
+
+    Includes answer, sources, entities, and relevant images from the
+    knowledge graph. Images are limited to 5 per response.
+    """
+
     answer: str
-    sources: list[dict]
-    entities: list[dict]
-    conversation_id: str
+    sources: list[SourceInfo]
+    entities: list[EntityInfo]
+    images: list[ImageInfo] = []
+    conversation_id: str | None
 
 
 def get_driver(request: Request) -> Driver:
@@ -3315,7 +3349,8 @@ async def chat(
         answer=answer,
         sources=sources,
         entities=entities,
-        conversation_id=request.conversation_id or generate_uuid(),
+        images=images,
+        conversation_id=request.conversation_id,
     )
 ```
 
