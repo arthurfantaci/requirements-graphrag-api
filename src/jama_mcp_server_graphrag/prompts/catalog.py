@@ -127,15 +127,16 @@ class PromptCatalog:
         hub_path = self._get_hub_path(name)
 
         try:
-            # Import langchain hub at runtime (optional dependency)
-            from langchain import hub  # noqa: PLC0415
+            # Import langsmith at runtime (optional dependency)
+            from langsmith import Client  # noqa: PLC0415
 
             # Pull with environment tag if not development
             if self.environment != "development":
                 hub_path = f"{hub_path}:{self.environment}"
 
             logger.debug("Pulling prompt from hub: %s", hub_path)
-            prompt = await asyncio.to_thread(hub.pull, hub_path)
+            client = Client()
+            prompt = await asyncio.to_thread(client.pull_prompt, hub_path)
 
             if isinstance(prompt, ChatPromptTemplate):
                 logger.info("Successfully pulled prompt from hub: %s", hub_path)
