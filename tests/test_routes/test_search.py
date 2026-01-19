@@ -133,10 +133,19 @@ class TestGraphSearchEndpoint:
     def test_graph_search_success(
         self, client: TestClient, sample_search_results: list[dict]
     ) -> None:
-        """Test successful graph-enriched search."""
-        # Add entity data to results
+        """Test successful graph-enriched search with new structure."""
+        # Add enriched data with new structure
         enriched_results = [
-            {**r, "related_entities": ["entity1"], "glossary_terms": ["term1"]}
+            {
+                **r,
+                "entities": [{"name": "entity1", "type": "Concept", "definition": "A concept"}],
+                "glossary_definitions": [{"term": "term1", "definition": "A definition"}],
+                "context_window": {"prev_context": "prev", "next_context": "next"},
+                "semantic_relationships": [],
+                "industry_standards": [],
+                "media": {"images": [], "webinars": [], "videos": []},
+                "related_articles": [],
+            }
             for r in sample_search_results
         ]
 
@@ -145,19 +154,48 @@ class TestGraphSearchEndpoint:
 
             response = client.post(
                 "/api/v1/search/graph",
-                json={"query": "requirements", "limit": 5, "traversal_depth": 2},
+                json={"query": "requirements", "limit": 5},
             )
 
             assert response.status_code == 200
             data = response.json()
             assert data["total"] == 2
-            assert "related_entities" in data["results"][0]
+            # Check new structure fields
+            assert "entities" in data["results"][0]
+            assert "glossary_definitions" in data["results"][0]
+            assert "context_window" in data["results"][0]
 
-    def test_graph_search_validates_traversal_depth(self, client: TestClient) -> None:
-        """Test that invalid traversal_depth is rejected."""
-        response = client.post(
-            "/api/v1/search/graph",
-            json={"query": "test", "limit": 5, "traversal_depth": 10},
-        )
+    def test_graph_search_returns_enrichment_fields(
+        self, client: TestClient, sample_search_results: list[dict]
+    ) -> None:
+        """Test that graph search returns all enrichment fields."""
+        enriched_results = [
+            {
+                **r,
+                "entities": [{"name": "traceability", "type": "Concept"}],
+                "semantic_relationships": [
+                    {
+                        "from_entity": "traceability",
+                        "relationship": "ADDRESSES",
+                        "to_entity": "compliance",
+                    }
+                ],
+                "industry_standards": [{"industry": "Automotive", "standard": "ISO 26262"}],
+            }
+            for r in sample_search_results
+        ]
 
-        assert response.status_code == 422  # traversal_depth > 3
+        with patch("jama_mcp_server_graphrag.routes.search.graph_enriched_search") as mock_search:
+            mock_search.return_value = enriched_results
+
+            response = client.post(
+                "/api/v1/search/graph",
+                json={"query": "test", "limit": 5},
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            result = data["results"][0]
+            assert result["entities"][0]["name"] == "traceability"
+            assert result["semantic_relationships"][0]["relationship"] == "ADDRESSES"
+            assert result["industry_standards"][0]["standard"] == "ISO 26262"

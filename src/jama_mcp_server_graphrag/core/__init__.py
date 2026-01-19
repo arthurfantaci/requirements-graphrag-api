@@ -15,6 +15,8 @@ from jama_mcp_server_graphrag.core.definitions import (
 )
 from jama_mcp_server_graphrag.core.generation import chat, generate_answer
 from jama_mcp_server_graphrag.core.retrieval import (
+    DEFAULT_ENRICHMENT_OPTIONS,
+    GraphEnrichmentOptions,
     create_vector_retriever,
     explore_entity,
     get_entities_from_chunks,
@@ -33,6 +35,8 @@ from jama_mcp_server_graphrag.core.standards import (
 from jama_mcp_server_graphrag.core.text2cypher import generate_cypher, text2cypher_query
 
 __all__ = [
+    "DEFAULT_ENRICHMENT_OPTIONS",
+    "GraphEnrichmentOptions",
     "chat",
     "create_vector_retriever",
     "explore_entity",

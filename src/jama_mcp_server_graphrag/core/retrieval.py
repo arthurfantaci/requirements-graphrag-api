@@ -12,7 +12,12 @@ Updated Data Model (2026-01):
 Retrieval Patterns:
 1. Vector Search - Pure semantic similarity using embeddings
 2. Hybrid Search - Combines vector + keyword (fulltext) search
-3. Graph-Enriched - Adds related entities via graph traversal
+3. Graph-Enriched - Multi-level graph traversal with:
+   - Window expansion (NEXT_CHUNK)
+   - Entity extraction with properties
+   - Semantic relationship traversal (RELATED_TO, ADDRESSES, REQUIRES)
+   - Industry-aware context (APPLIES_TO)
+   - Media enrichment (Images, Webinars)
 """
 
 from __future__ import annotations
@@ -20,6 +25,7 @@ from __future__ import annotations
 import ast
 import logging
 import os
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from jama_mcp_server_graphrag.observability import traceable
@@ -31,6 +37,39 @@ if TYPE_CHECKING:
     from jama_mcp_server_graphrag.config import AppConfig
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class GraphEnrichmentOptions:
+    """Configuration options for graph enrichment levels.
+
+    Controls which enrichment features are enabled and their limits.
+    All options are enabled by default for maximum context.
+    """
+
+    # Level 1: Window expansion
+    enable_window_expansion: bool = True
+    window_size: int = 1  # Number of adjacent chunks to include
+
+    # Level 2: Entity extraction
+    enable_entity_extraction: bool = True
+    max_entities_per_chunk: int = 10
+    include_entity_properties: bool = True  # Include definition, benefit, impact
+
+    # Level 3: Semantic relationships
+    enable_semantic_traversal: bool = True
+    max_related_per_entity: int = 5
+    relationship_types: tuple[str, ...] = ("RELATED_TO", "ADDRESSES", "REQUIRES", "COMPONENT_OF")
+
+    # Level 4: Domain context
+    enable_industry_context: bool = True
+    enable_media_enrichment: bool = True
+    enable_cross_references: bool = True
+    max_media_items: int = 3
+
+
+# Default options instance
+DEFAULT_ENRICHMENT_OPTIONS = GraphEnrichmentOptions()
 
 
 def create_vector_retriever(
@@ -283,6 +322,424 @@ async def hybrid_search(
     return results
 
 
+# =============================================================================
+# Graph Enrichment Helper Functions
+# =============================================================================
+
+
+def _enrich_with_window_context(
+    driver: Driver,
+    chunk_ids: list[str],
+    window_size: int = 1,  # noqa: ARG001 - reserved for multi-hop expansion
+) -> dict[str, dict[str, str | None]]:
+    """Expand context window using NEXT_CHUNK relationships.
+
+    Retrieves adjacent chunks to provide surrounding context for each
+    retrieved chunk. This helps when chunks are split mid-paragraph.
+
+    Args:
+        driver: Neo4j driver instance.
+        chunk_ids: List of chunk element IDs.
+        window_size: Number of chunks before/after to include.
+
+    Returns:
+        Dictionary mapping chunk_id to {prev_context, next_context}.
+    """
+    if not chunk_ids:
+        return {}
+
+    window_context: dict[str, dict[str, str | None]] = {}
+
+    with driver.session() as session:
+        result = session.run(
+            """
+            UNWIND $chunk_ids AS cid
+            MATCH (c:Chunk) WHERE elementId(c) = cid
+            OPTIONAL MATCH (prev:Chunk)-[:NEXT_CHUNK]->(c)
+            OPTIONAL MATCH (c)-[:NEXT_CHUNK]->(next:Chunk)
+            RETURN cid AS chunk_id,
+                   prev.text AS prev_context,
+                   next.text AS next_context
+            """,
+            chunk_ids=chunk_ids,
+        )
+        for record in result:
+            window_context[record["chunk_id"]] = {
+                "prev_context": record["prev_context"],
+                "next_context": record["next_context"],
+            }
+
+    logger.debug("Window expansion: enriched %d chunks", len(window_context))
+    return window_context
+
+
+def _enrich_with_entities(
+    driver: Driver,
+    chunk_ids: list[str],
+    max_entities: int = 10,
+    include_properties: bool = True,
+) -> dict[str, list[dict[str, Any]]]:
+    """Extract entities mentioned in chunks with their properties.
+
+    Uses MENTIONED_IN relationship (Entity -> Chunk direction) and
+    returns entity properties including definition, benefit, and impact.
+
+    Args:
+        driver: Neo4j driver instance.
+        chunk_ids: List of chunk element IDs.
+        max_entities: Maximum entities per chunk.
+        include_properties: Whether to include definition/benefit/impact.
+
+    Returns:
+        Dictionary mapping chunk_id to list of entity dictionaries.
+    """
+    if not chunk_ids:
+        return {}
+
+    entities_by_chunk: dict[str, list[dict[str, Any]]] = {}
+
+    # Build return clause based on whether we want properties
+    if include_properties:
+        return_clause = """
+            collect(DISTINCT {
+                name: entity.display_name,
+                type: labels(entity)[0],
+                definition: entity.definition,
+                benefit: entity.benefit,
+                impact: entity.impact
+            })[..$max_entities] AS entities
+        """
+    else:
+        return_clause = """
+            collect(DISTINCT entity.display_name)[..$max_entities] AS entities
+        """
+
+    with driver.session() as session:
+        result = session.run(
+            f"""
+            MATCH (entity)-[:MENTIONED_IN]->(c:Chunk)
+            WHERE elementId(c) IN $chunk_ids
+            WITH elementId(c) AS chunk_id, entity
+            ORDER BY size((entity)-[:MENTIONED_IN]->()) DESC
+            WITH chunk_id, collect(entity)[..$max_entities] AS top_entities
+            UNWIND top_entities AS entity
+            WITH chunk_id,
+                 {return_clause}
+            RETURN chunk_id, entities
+            """,
+            chunk_ids=chunk_ids,
+            max_entities=max_entities,
+        )
+        for record in result:
+            entities_by_chunk[record["chunk_id"]] = record["entities"] or []
+
+    logger.debug("Entity extraction: found entities for %d chunks", len(entities_by_chunk))
+    return entities_by_chunk
+
+
+def _enrich_with_semantic_relationships(
+    driver: Driver,
+    chunk_ids: list[str],
+    relationship_types: tuple[str, ...],
+    max_related: int = 5,
+) -> dict[str, list[dict[str, Any]]]:
+    """Traverse semantic relationships from entities in chunks.
+
+    Follows relationships like RELATED_TO, ADDRESSES, REQUIRES to find
+    related concepts, challenges addressed, and dependencies.
+
+    Args:
+        driver: Neo4j driver instance.
+        chunk_ids: List of chunk element IDs.
+        relationship_types: Tuple of relationship types to traverse.
+        max_related: Maximum related entities per chunk.
+
+    Returns:
+        Dictionary mapping chunk_id to list of related entity info.
+    """
+    if not chunk_ids or not relationship_types:
+        return {}
+
+    relationships_by_chunk: dict[str, list[dict[str, Any]]] = {}
+
+    # Build dynamic relationship pattern
+    rel_pattern = "|".join(relationship_types)
+
+    with driver.session() as session:
+        result = session.run(
+            f"""
+            MATCH (entity)-[:MENTIONED_IN]->(c:Chunk)
+            WHERE elementId(c) IN $chunk_ids
+            OPTIONAL MATCH (entity)-[r:{rel_pattern}]->(related)
+            WHERE related IS NOT NULL
+            WITH elementId(c) AS chunk_id,
+                 collect(DISTINCT {{
+                     from_entity: entity.display_name,
+                     relationship: type(r),
+                     to_entity: related.display_name,
+                     to_type: labels(related)[0],
+                     to_definition: related.definition
+                 }})[..$max_related] AS relationships
+            WHERE size(relationships) > 0
+            RETURN chunk_id, relationships
+            """,
+            chunk_ids=chunk_ids,
+            max_related=max_related,
+        )
+        for record in result:
+            if record["relationships"]:
+                relationships_by_chunk[record["chunk_id"]] = record["relationships"]
+
+    logger.debug(
+        "Semantic traversal: found relationships for %d chunks",
+        len(relationships_by_chunk),
+    )
+    return relationships_by_chunk
+
+
+def _enrich_with_industry_context(
+    driver: Driver,
+    chunk_ids: list[str],
+) -> dict[str, list[dict[str, Any]]]:
+    """Find industry-specific standards that apply to entities in chunks.
+
+    Uses APPLIES_TO relationship to surface relevant industry standards
+    when industry or standard entities are mentioned.
+
+    Args:
+        driver: Neo4j driver instance.
+        chunk_ids: List of chunk element IDs.
+
+    Returns:
+        Dictionary mapping chunk_id to list of industry/standard info.
+    """
+    if not chunk_ids:
+        return {}
+
+    industry_context: dict[str, list[dict[str, Any]]] = {}
+
+    with driver.session() as session:
+        result = session.run(
+            """
+            MATCH (entity)-[:MENTIONED_IN]->(c:Chunk)
+            WHERE elementId(c) IN $chunk_ids
+              AND (entity:Industry OR entity:Standard)
+            OPTIONAL MATCH (standard:Standard)-[:APPLIES_TO]->(industry:Industry)
+            WHERE standard = entity OR industry = entity
+            WITH elementId(c) AS chunk_id,
+                 collect(DISTINCT {
+                     industry: industry.display_name,
+                     standard: standard.display_name,
+                     organization: standard.organization,
+                     standard_definition: standard.definition
+                 })[..5] AS context
+            WHERE size(context) > 0
+            RETURN chunk_id, context
+            """,
+            chunk_ids=chunk_ids,
+        )
+        for record in result:
+            if record["context"]:
+                industry_context[record["chunk_id"]] = record["context"]
+
+    logger.debug("Industry context: found for %d chunks", len(industry_context))
+    return industry_context
+
+
+def _enrich_with_media(
+    driver: Driver,
+    chunk_ids: list[str],
+    max_items: int = 3,
+) -> dict[str, dict[str, list[dict[str, Any]]]]:
+    """Find related media (images, webinars, videos) from source articles.
+
+    Args:
+        driver: Neo4j driver instance.
+        chunk_ids: List of chunk element IDs.
+        max_items: Maximum media items per type.
+
+    Returns:
+        Dictionary mapping chunk_id to {images, webinars, videos}.
+    """
+    if not chunk_ids:
+        return {}
+
+    media_by_chunk: dict[str, dict[str, list[dict[str, Any]]]] = {}
+
+    with driver.session() as session:
+        result = session.run(
+            """
+            MATCH (c:Chunk)-[:FROM_ARTICLE]->(a:Article)
+            WHERE elementId(c) IN $chunk_ids
+            OPTIONAL MATCH (a)-[:HAS_IMAGE]->(img:Image)
+            OPTIONAL MATCH (a)-[:HAS_WEBINAR]->(web:Webinar)
+            OPTIONAL MATCH (a)-[:HAS_VIDEO]->(vid:Video)
+            WITH elementId(c) AS chunk_id,
+                 collect(DISTINCT {url: img.url, alt_text: img.alt_text})[..$max_items] AS images,
+                 collect(DISTINCT {title: web.title, url: web.url})[..$max_items] AS webinars,
+                 collect(DISTINCT {title: vid.title, url: vid.url})[..$max_items] AS videos
+            RETURN chunk_id, images, webinars, videos
+            """,
+            chunk_ids=chunk_ids,
+            max_items=max_items,
+        )
+        for record in result:
+            # Filter out null entries from collections
+            images = [i for i in (record["images"] or []) if i.get("url")]
+            webinars = [w for w in (record["webinars"] or []) if w.get("url")]
+            videos = [v for v in (record["videos"] or []) if v.get("url")]
+
+            if images or webinars or videos:
+                media_by_chunk[record["chunk_id"]] = {
+                    "images": images,
+                    "webinars": webinars,
+                    "videos": videos,
+                }
+
+    logger.debug("Media enrichment: found for %d chunks", len(media_by_chunk))
+    return media_by_chunk
+
+
+def _enrich_with_cross_references(
+    driver: Driver,
+    chunk_ids: list[str],
+) -> dict[str, list[dict[str, str]]]:
+    """Find cross-referenced articles via REFERENCES relationship.
+
+    Args:
+        driver: Neo4j driver instance.
+        chunk_ids: List of chunk element IDs.
+
+    Returns:
+        Dictionary mapping chunk_id to list of referenced articles.
+    """
+    if not chunk_ids:
+        return {}
+
+    references_by_chunk: dict[str, list[dict[str, str]]] = {}
+
+    with driver.session() as session:
+        result = session.run(
+            """
+            MATCH (c:Chunk)-[:FROM_ARTICLE]->(a:Article)-[:REFERENCES]->(ref:Article)
+            WHERE elementId(c) IN $chunk_ids
+            WITH elementId(c) AS chunk_id,
+                 collect(DISTINCT {
+                     title: ref.article_title,
+                     url: ref.url,
+                     chapter: ref.chapter_title
+                 })[..5] AS references
+            WHERE size(references) > 0
+            RETURN chunk_id, references
+            """,
+            chunk_ids=chunk_ids,
+        )
+        for record in result:
+            if record["references"]:
+                references_by_chunk[record["chunk_id"]] = record["references"]
+
+    logger.debug("Cross-references: found for %d chunks", len(references_by_chunk))
+    return references_by_chunk
+
+
+def _enrich_with_definitions(
+    driver: Driver,
+    chunk_ids: list[str],
+) -> dict[str, list[dict[str, str]]]:
+    """Find glossary definitions related to entities in chunks.
+
+    Uses direct Definition node lookup based on entity names.
+
+    Args:
+        driver: Neo4j driver instance.
+        chunk_ids: List of chunk element IDs.
+
+    Returns:
+        Dictionary mapping chunk_id to list of definitions.
+    """
+    if not chunk_ids:
+        return {}
+
+    definitions_by_chunk: dict[str, list[dict[str, str]]] = {}
+
+    with driver.session() as session:
+        result = session.run(
+            """
+            MATCH (entity)-[:MENTIONED_IN]->(c:Chunk)
+            WHERE elementId(c) IN $chunk_ids
+            WITH elementId(c) AS chunk_id, collect(DISTINCT entity.name) AS entity_names
+            UNWIND entity_names AS ename
+            MATCH (d:Definition)
+            WHERE toLower(d.term) = toLower(ename)
+               OR toLower(ename) CONTAINS toLower(d.term)
+            WITH chunk_id,
+                 collect(DISTINCT {
+                     term: d.term,
+                     definition: d.definition,
+                     url: d.url
+                 })[..5] AS definitions
+            WHERE size(definitions) > 0
+            RETURN chunk_id, definitions
+            """,
+            chunk_ids=chunk_ids,
+        )
+        for record in result:
+            if record["definitions"]:
+                definitions_by_chunk[record["chunk_id"]] = record["definitions"]
+
+    logger.debug("Definitions: found for %d chunks", len(definitions_by_chunk))
+    return definitions_by_chunk
+
+
+def _assemble_enriched_result(
+    result: dict[str, Any],
+    enrichment_data: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Assemble enrichment data into a single result dictionary.
+
+    Args:
+        result: Base search result with content, score, metadata.
+        enrichment_data: Dictionary containing all enrichment lookups.
+
+    Returns:
+        Enriched result with all graph context attached.
+    """
+    chunk_id = result["metadata"].get("chunk_id")
+    if not chunk_id:
+        return result
+
+    # Level 1: Window context
+    if chunk_id in enrichment_data["window"]:
+        result["context_window"] = enrichment_data["window"][chunk_id]
+
+    # Level 2: Entities with properties
+    result["entities"] = enrichment_data["entities"].get(chunk_id, [])
+
+    # Level 3: Semantic relationships
+    if chunk_id in enrichment_data["relationships"]:
+        result["semantic_relationships"] = enrichment_data["relationships"][chunk_id]
+
+    # Level 4: Domain context
+    if chunk_id in enrichment_data["industry"]:
+        result["industry_standards"] = enrichment_data["industry"][chunk_id]
+
+    if chunk_id in enrichment_data["media"]:
+        result["media"] = enrichment_data["media"][chunk_id]
+
+    if chunk_id in enrichment_data["references"]:
+        result["related_articles"] = enrichment_data["references"][chunk_id]
+
+    if chunk_id in enrichment_data["definitions"]:
+        result["glossary_definitions"] = enrichment_data["definitions"][chunk_id]
+
+    return result
+
+
+# =============================================================================
+# Main Graph-Enriched Search Function
+# =============================================================================
+
+
 @traceable(name="graph_enriched_search", run_type="retriever")
 async def graph_enriched_search(
     retriever: VectorRetriever,
@@ -290,36 +747,55 @@ async def graph_enriched_search(
     query: str,
     *,
     limit: int = 6,
-    traversal_depth: int = 1,  # noqa: ARG001
+    options: GraphEnrichmentOptions | None = None,
 ) -> list[dict[str, Any]]:
-    """Perform vector search enriched with graph context.
+    """Perform hybrid search enriched with multi-level graph context.
 
-    Combines semantic search with graph traversal to add related
-    entities, concepts, and context to search results.
+    Combines hybrid search (vector + keyword) with comprehensive graph
+    traversal to provide rich context for RAG:
 
-    Note: Uses the reversed MENTIONED_IN relationship direction where
-    entities point to chunks: (Entity)-[:MENTIONED_IN]->(Chunk)
+    Level 1: Window Expansion (NEXT_CHUNK)
+        - Adds previous/next chunk text for context continuity
+
+    Level 2: Entity Extraction
+        - Entities mentioned in chunks with properties (definition, benefit, impact)
+
+    Level 3: Semantic Relationship Traversal
+        - RELATED_TO: Related concepts
+        - ADDRESSES: Challenges that concepts address
+        - REQUIRES: Dependencies
+        - COMPONENT_OF: Parent concepts
+
+    Level 4: Domain Context
+        - Industry standards (APPLIES_TO)
+        - Media content (images, webinars, videos)
+        - Cross-article references (REFERENCES)
+        - Glossary definitions
 
     Args:
         retriever: Configured VectorRetriever instance.
         driver: Neo4j driver for traversal.
         query: Natural language search query.
         limit: Maximum number of base results.
-        traversal_depth: How many hops to traverse for related entities.
+        options: Configuration for enrichment levels. Uses defaults if None.
 
     Returns:
-        List of enriched results with content, score, metadata, and related entities.
+        List of enriched results with content, score, metadata, and graph context.
     """
+    opts = options or DEFAULT_ENRICHMENT_OPTIONS
+
     logger.info(
-        "Graph-enriched search: query='%s', limit=%d",
+        "Graph-enriched search: query='%s', limit=%d, window=%s, semantic=%s",
         query,
         limit,
+        opts.enable_window_expansion,
+        opts.enable_semantic_traversal,
     )
 
-    # Get base vector results
-    base_results = await vector_search(retriever, driver, query, limit=limit)
+    # Get base results using hybrid search (vector + keyword) for better recall
+    base_results = await hybrid_search(retriever, driver, query, limit=limit)
 
-    # Collect all chunk IDs for batch query
+    # Collect all chunk IDs for batch queries
     chunk_ids = [
         r["metadata"].get("chunk_id") for r in base_results if r["metadata"].get("chunk_id")
     ]
@@ -327,56 +803,93 @@ async def graph_enriched_search(
     if not chunk_ids:
         return base_results
 
-    # Batch query for entities mentioned in chunks
-    # Note: MENTIONED_IN direction is Entity -> Chunk
-    entities_by_chunk: dict[str, list[str]] = {}
-    definitions_by_chunk: dict[str, list[str]] = {}
-
-    with driver.session() as session:
-        # Get entities that mention these chunks
-        entity_result = session.run(
-            """
-            MATCH (entity)-[:MENTIONED_IN]->(c:Chunk)
-            WHERE elementId(c) IN $chunk_ids
-            WITH elementId(c) AS chunk_id,
-                 collect(DISTINCT entity.display_name)[..10] AS entities
-            RETURN chunk_id, entities
-            """,
-            chunk_ids=chunk_ids,
+    # ==========================================================================
+    # Level 1: Window Expansion
+    # ==========================================================================
+    window_context: dict[str, dict[str, str | None]] = {}
+    if opts.enable_window_expansion:
+        window_context = _enrich_with_window_context(
+            driver, chunk_ids, window_size=opts.window_size
         )
-        for record in entity_result:
-            entities_by_chunk[record["chunk_id"]] = record["entities"]
 
-        # Get any definitions that might be related (via entity relationships)
-        # Since Definition nodes exist, we can try to find related definitions
-        def_result = session.run(
-            """
-            MATCH (entity)-[:MENTIONED_IN]->(c:Chunk)
-            WHERE elementId(c) IN $chunk_ids
-            OPTIONAL MATCH (d:Definition)
-            WHERE toLower(entity.name) CONTAINS toLower(d.term)
-               OR toLower(entity.display_name) CONTAINS toLower(d.term)
-            WITH elementId(c) AS chunk_id,
-                 collect(DISTINCT d.term)[..5] AS terms
-            WHERE terms IS NOT NULL AND size(terms) > 0
-            RETURN chunk_id, terms
-            """,
-            chunk_ids=chunk_ids,
+    # ==========================================================================
+    # Level 2: Entity Extraction with Properties
+    # ==========================================================================
+    entities_by_chunk: dict[str, list[dict[str, Any]]] = {}
+    if opts.enable_entity_extraction:
+        entities_by_chunk = _enrich_with_entities(
+            driver,
+            chunk_ids,
+            max_entities=opts.max_entities_per_chunk,
+            include_properties=opts.include_entity_properties,
         )
-        for record in def_result:
-            if record["terms"]:
-                definitions_by_chunk[record["chunk_id"]] = record["terms"]
 
-    # Enrich results with graph context
-    enriched = []
-    for result in base_results:
-        chunk_id = result["metadata"].get("chunk_id")
-        if chunk_id:
-            result["related_entities"] = entities_by_chunk.get(chunk_id, [])
-            result["glossary_terms"] = definitions_by_chunk.get(chunk_id, [])
-        enriched.append(result)
+    # ==========================================================================
+    # Level 3: Semantic Relationship Traversal
+    # ==========================================================================
+    relationships_by_chunk: dict[str, list[dict[str, Any]]] = {}
+    if opts.enable_semantic_traversal:
+        relationships_by_chunk = _enrich_with_semantic_relationships(
+            driver,
+            chunk_ids,
+            relationship_types=opts.relationship_types,
+            max_related=opts.max_related_per_entity,
+        )
 
-    logger.info("Graph-enriched search returned %d results", len(enriched))
+    # ==========================================================================
+    # Level 4: Domain Context
+    # ==========================================================================
+    industry_context: dict[str, list[dict[str, Any]]] = {}
+    if opts.enable_industry_context:
+        industry_context = _enrich_with_industry_context(driver, chunk_ids)
+
+    media_by_chunk: dict[str, dict[str, list[dict[str, Any]]]] = {}
+    if opts.enable_media_enrichment:
+        media_by_chunk = _enrich_with_media(
+            driver, chunk_ids, max_items=opts.max_media_items
+        )
+
+    references_by_chunk: dict[str, list[dict[str, str]]] = {}
+    if opts.enable_cross_references:
+        references_by_chunk = _enrich_with_cross_references(driver, chunk_ids)
+
+    # Always include definitions (they're core to understanding)
+    definitions_by_chunk = _enrich_with_definitions(driver, chunk_ids)
+
+    # ==========================================================================
+    # Assemble Enriched Results
+    # ==========================================================================
+    # Bundle all enrichment data for assembly
+    enrichment_data = {
+        "window": window_context,
+        "entities": entities_by_chunk,
+        "relationships": relationships_by_chunk,
+        "industry": industry_context,
+        "media": media_by_chunk,
+        "references": references_by_chunk,
+        "definitions": definitions_by_chunk,
+    }
+
+    enriched = [
+        _assemble_enriched_result(result, enrichment_data)
+        for result in base_results
+    ]
+
+    # Log enrichment summary
+    enrichment_stats = {
+        "window": len(window_context),
+        "entities": len(entities_by_chunk),
+        "relationships": len(relationships_by_chunk),
+        "industry": len(industry_context),
+        "media": len(media_by_chunk),
+        "references": len(references_by_chunk),
+        "definitions": len(definitions_by_chunk),
+    }
+    logger.info(
+        "Graph-enriched search returned %d results with enrichment: %s",
+        len(enriched),
+        enrichment_stats,
+    )
     return enriched
 
 

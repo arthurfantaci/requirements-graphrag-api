@@ -124,14 +124,18 @@ async def generate_answer(  # noqa: PLR0913
             }
         )
 
-        # Collect entities
+        # Collect entities from enriched structure
         if include_entities:
-            for entity in result.get("related_entities", []):
-                if entity:
+            for entity in result.get("entities", []):
+                if isinstance(entity, dict) and entity.get("name"):
+                    all_entities.add(entity["name"])
+                elif isinstance(entity, str) and entity:
                     all_entities.add(entity)
-            for term in result.get("glossary_terms", []):
-                if term:
-                    all_entities.add(term)
+            for defn in result.get("glossary_definitions", []):
+                if isinstance(defn, dict) and defn.get("term"):
+                    all_entities.add(defn["term"])
+                elif isinstance(defn, str) and defn:
+                    all_entities.add(defn)
 
     context = "\n".join(context_parts) if context_parts else "No relevant context found."
     entities_str = ", ".join(sorted(all_entities)[:20]) if all_entities else "None identified"

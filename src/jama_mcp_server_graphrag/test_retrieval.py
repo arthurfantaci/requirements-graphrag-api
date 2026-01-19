@@ -62,7 +62,7 @@ async def main() -> int:
     logger.info("Query: 'ISO 26262 automotive safety'")
     logger.info("Results: %d", len(results))
     for i, r in enumerate(results):
-        entities = r.get("related_entities", [])[:3]
+        entities = [e.get("name") if isinstance(e, dict) else e for e in r.get("entities", [])][:3]
         logger.info(
             "  [%d] %.4f - %s (entities: %s)",
             i + 1,

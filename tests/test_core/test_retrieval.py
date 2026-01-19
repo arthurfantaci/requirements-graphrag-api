@@ -261,11 +261,18 @@ class TestGraphEnrichedSearch:
         mock_retriever.search.assert_called()
 
     @pytest.mark.asyncio
-    async def test_graph_enriched_search_traversal_depth(
+    async def test_graph_enriched_search_with_options(
         self, mock_retriever: MagicMock, mock_driver: MagicMock
     ) -> None:
-        """Test that traversal_depth parameter is used."""
-        await graph_enriched_search(mock_retriever, mock_driver, "test", traversal_depth=2)
+        """Test that GraphEnrichmentOptions parameter is used."""
+        from jama_mcp_server_graphrag.core.retrieval import GraphEnrichmentOptions
+
+        # Create custom options with some features disabled
+        options = GraphEnrichmentOptions(
+            enable_window_expansion=False,
+            enable_media_enrichment=False,
+        )
+        await graph_enriched_search(mock_retriever, mock_driver, "test", options=options)
 
         mock_retriever.search.assert_called()
 

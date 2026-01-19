@@ -53,25 +53,66 @@ class HybridSearchRequest(SearchRequest):
     )
 
 
-class GraphSearchRequest(SearchRequest):
-    """Request body for graph-enriched search."""
+class EntityInfo(BaseModel):
+    """Entity information from graph enrichment."""
 
-    traversal_depth: int = Field(
-        default=1,
-        ge=1,
-        le=3,
-        description="Graph traversal depth (1-3)",
-    )
+    name: str | None = None
+    type: str | None = None
+    definition: str | None = None
+    benefit: str | None = None
+    impact: str | None = None
+
+
+class GlossaryDefinition(BaseModel):
+    """Glossary definition from graph enrichment."""
+
+    term: str | None = None
+    definition: str | None = None
+    url: str | None = None
+
+
+class SemanticRelationship(BaseModel):
+    """Semantic relationship between entities."""
+
+    from_entity: str | None = None
+    relationship: str | None = None
+    to_entity: str | None = None
+    to_type: str | None = None
+    to_definition: str | None = None
+
+
+class ContextWindow(BaseModel):
+    """Adjacent chunk context."""
+
+    prev_context: str | None = None
+    next_context: str | None = None
+
+
+class MediaContent(BaseModel):
+    """Media content from source articles."""
+
+    images: list[dict[str, Any]] = []
+    webinars: list[dict[str, Any]] = []
+    videos: list[dict[str, Any]] = []
 
 
 class SearchResult(BaseModel):
-    """A single search result."""
+    """A single search result with graph enrichment."""
 
     content: str
     score: float
     metadata: dict[str, Any]
-    related_entities: list[str] | None = None
-    glossary_terms: list[str] | None = None
+    # Level 1: Window context
+    context_window: ContextWindow | None = None
+    # Level 2: Entities with properties
+    entities: list[EntityInfo] = []
+    # Level 3: Semantic relationships
+    semantic_relationships: list[SemanticRelationship] = []
+    # Level 4: Domain context
+    industry_standards: list[dict[str, Any]] = []
+    media: MediaContent | None = None
+    related_articles: list[dict[str, Any]] = []
+    glossary_definitions: list[GlossaryDefinition] = []
 
 
 class SearchResponse(BaseModel):
@@ -146,19 +187,23 @@ async def hybrid_search_endpoint(
 @router.post("/search/graph", response_model=SearchResponse)
 async def graph_search_endpoint(
     request: Request,
-    body: GraphSearchRequest,
+    body: SearchRequest,
 ) -> dict[str, Any]:
     """Search with knowledge graph enrichment.
 
-    Combines vector search with graph traversal to include
-    related entities and glossary terms.
+    Combines hybrid search (vector + keyword) with multi-level graph
+    traversal to provide rich context:
+    - Level 1: Window expansion (adjacent chunks)
+    - Level 2: Entity extraction with properties
+    - Level 3: Semantic relationship traversal
+    - Level 4: Industry standards, media, cross-references
 
     Args:
         request: FastAPI request object.
-        body: Graph search request body.
+        body: Search request body.
 
     Returns:
-        Search results enriched with graph context.
+        Search results enriched with comprehensive graph context.
     """
     retriever: VectorRetriever = request.app.state.retriever
     driver: Driver = request.app.state.driver
@@ -168,7 +213,6 @@ async def graph_search_endpoint(
         driver,
         body.query,
         limit=body.limit,
-        traversal_depth=body.traversal_depth,
     )
 
     return {
