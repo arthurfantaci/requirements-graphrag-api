@@ -63,10 +63,19 @@ def configure_tracing(config: AppConfig) -> bool:
     os.environ["LANGSMITH_PROJECT"] = config.langsmith_project
     os.environ["LANGCHAIN_PROJECT"] = config.langsmith_project  # Legacy
 
-    logger.info(
-        "LangSmith tracing enabled for project: %s",
-        config.langsmith_project,
-    )
+    # Set workspace ID for org-scoped API keys (X-Tenant-ID header)
+    if config.langsmith_workspace_id:
+        os.environ["LANGSMITH_WORKSPACE_ID"] = config.langsmith_workspace_id
+        logger.info(
+            "LangSmith tracing enabled for project: %s (workspace: %s)",
+            config.langsmith_project,
+            config.langsmith_workspace_id[:8] + "...",  # Truncate for logging
+        )
+    else:
+        logger.info(
+            "LangSmith tracing enabled for project: %s",
+            config.langsmith_project,
+        )
     return True
 
 
@@ -90,4 +99,5 @@ def get_tracing_status() -> dict[str, str | bool]:
         "tracing_enabled": os.getenv("LANGSMITH_TRACING", "false").lower() == "true",
         "project": os.getenv("LANGSMITH_PROJECT", "default"),
         "api_key_set": bool(os.getenv("LANGSMITH_API_KEY")),
+        "workspace_id_set": bool(os.getenv("LANGSMITH_WORKSPACE_ID")),
     }

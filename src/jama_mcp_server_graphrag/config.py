@@ -86,8 +86,9 @@ class AppConfig:
     langsmith_api_key: str = ""
     langsmith_project: str = "jama-graphrag"
     langsmith_tracing_enabled: bool = False
+    langsmith_workspace_id: str = ""  # Required for org-scoped API keys
     # Prompt catalog settings
-    langsmith_org: str = "jama-graphrag"
+    langsmith_org: str = ""
     prompt_environment: str = "development"
     prompt_cache_ttl: int = 300
     prompt_hub_enabled: bool = True
@@ -170,7 +171,8 @@ def get_config() -> AppConfig:
             "LANGSMITH_PROJECT", os.getenv("LANGCHAIN_PROJECT", "jama-graphrag")
         ),
         langsmith_tracing_enabled=tracing_enabled,
-        langsmith_org=os.getenv("LANGSMITH_ORG", "jama-graphrag"),
+        langsmith_workspace_id=os.getenv("LANGSMITH_WORKSPACE_ID", ""),
+        langsmith_org=os.getenv("LANGSMITH_ORG", ""),
         prompt_environment=os.getenv("PROMPT_ENVIRONMENT", "development"),
         prompt_cache_ttl=int(os.getenv("PROMPT_CACHE_TTL", "300")),
         prompt_hub_enabled=prompt_hub_enabled,

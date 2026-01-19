@@ -18,6 +18,7 @@ from functools import lru_cache
 from typing import Final
 
 from langchain_core.prompts import ChatPromptTemplate
+from langsmith import traceable
 
 from jama_mcp_server_graphrag.prompts.definitions import (
     PROMPT_DEFINITIONS,
@@ -168,6 +169,7 @@ class PromptCatalog:
             raise KeyError(f"Unknown prompt name: {name}")
         return PROMPT_DEFINITIONS[name].template
 
+    @traceable(name="prompt_catalog.get_prompt", run_type="retriever")
     async def get_prompt(self, name: PromptName) -> ChatPromptTemplate:
         """Get a prompt template, checking cache and hub first.
 
@@ -183,11 +185,16 @@ class PromptCatalog:
             ChatPromptTemplate for the requested prompt.
         """
         cache_key = f"{name.value}:{self.environment}"
+        definition = PROMPT_DEFINITIONS.get(name)
+        version = definition.metadata.version if definition else "unknown"
 
         # Check cache first
         if self._is_cache_valid(cache_key):
             logger.debug("Cache hit for prompt: %s", name)
-            return self._cache[cache_key].template
+            cached = self._cache[cache_key]
+            # Log prompt metadata for tracing
+            self._log_prompt_metadata(name, cached.source, version, from_cache=True)
+            return cached.template
 
         # Try hub lookup
         template = await self._pull_from_hub(name)
@@ -206,7 +213,35 @@ class PromptCatalog:
         )
         logger.debug("Cached prompt: %s (source: %s)", name, source)
 
+        # Log prompt metadata for tracing
+        self._log_prompt_metadata(name, source, version, from_cache=False)
+
         return template
+
+    def _log_prompt_metadata(
+        self,
+        name: PromptName,
+        source: str,
+        version: str,
+        *,
+        from_cache: bool,
+    ) -> None:
+        """Log prompt metadata for LangSmith tracing.
+
+        Args:
+            name: Prompt name identifier.
+            source: Where the prompt came from ("hub" or "local").
+            version: Prompt version string.
+            from_cache: Whether the prompt was served from cache.
+        """
+        logger.debug(
+            "Prompt loaded: name=%s, version=%s, source=%s, environment=%s, cached=%s",
+            name.value,
+            version,
+            source,
+            self.environment,
+            from_cache,
+        )
 
     def get_prompt_sync(self, name: PromptName) -> ChatPromptTemplate:
         """Synchronous version of get_prompt.
