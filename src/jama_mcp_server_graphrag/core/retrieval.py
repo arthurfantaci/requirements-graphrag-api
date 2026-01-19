@@ -420,7 +420,7 @@ def _enrich_with_entities(
             MATCH (entity)-[:MENTIONED_IN]->(c:Chunk)
             WHERE elementId(c) IN $chunk_ids
             WITH elementId(c) AS chunk_id, entity
-            ORDER BY size((entity)-[:MENTIONED_IN]->()) DESC
+            ORDER BY COUNT {{ (entity)-[:MENTIONED_IN]->() }} DESC
             WITH chunk_id, collect(entity)[..$max_entities] AS top_entities
             UNWIND top_entities AS entity
             WITH chunk_id,
