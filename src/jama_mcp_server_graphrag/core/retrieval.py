@@ -849,9 +849,7 @@ async def graph_enriched_search(
 
     media_by_chunk: dict[str, dict[str, list[dict[str, Any]]]] = {}
     if opts.enable_media_enrichment:
-        media_by_chunk = _enrich_with_media(
-            driver, chunk_ids, max_items=opts.max_media_items
-        )
+        media_by_chunk = _enrich_with_media(driver, chunk_ids, max_items=opts.max_media_items)
 
     references_by_chunk: dict[str, list[dict[str, str]]] = {}
     if opts.enable_cross_references:
@@ -874,10 +872,7 @@ async def graph_enriched_search(
         "definitions": definitions_by_chunk,
     }
 
-    enriched = [
-        _assemble_enriched_result(result, enrichment_data)
-        for result in base_results
-    ]
+    enriched = [_assemble_enriched_result(result, enrichment_data) for result in base_results]
 
     # Log enrichment summary
     enrichment_stats = {

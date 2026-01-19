@@ -217,4 +217,7 @@ class TestChatEndpoint:
             data = response.json()
             # Only the valid image should be included
             assert len(data["images"]) == 1
-            assert data["images"][0]["url"] == "https://jamasoftware.com/images/traceability-matrix.png"
+            assert (
+                data["images"][0]["url"]
+                == "https://jamasoftware.com/images/traceability-matrix.png"
+            )

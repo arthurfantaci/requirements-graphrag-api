@@ -145,12 +145,14 @@ async def generate_answer(  # noqa: PLR0913, PLR0912
                 img_url = img.get("url")
                 if img_url and img_url not in seen_image_urls:
                     seen_image_urls.add(img_url)
-                    all_images.append({
-                        "url": img_url,
-                        "alt_text": img.get("alt_text", ""),
-                        "context": img.get("context", ""),
-                        "source_title": result["metadata"].get("title", ""),
-                    })
+                    all_images.append(
+                        {
+                            "url": img_url,
+                            "alt_text": img.get("alt_text", ""),
+                            "context": img.get("context", ""),
+                            "source_title": result["metadata"].get("title", ""),
+                        }
+                    )
 
     context = "\n".join(context_parts) if context_parts else "No relevant context found."
     entities_str = ", ".join(sorted(all_entities)[:20]) if all_entities else "None identified"
