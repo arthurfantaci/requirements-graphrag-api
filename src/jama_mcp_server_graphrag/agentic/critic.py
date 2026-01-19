@@ -2,6 +2,9 @@
 
 Evaluates whether retrieved context is sufficient to answer
 the user's question and suggests follow-up queries if needed.
+
+This module uses the centralized prompt catalog for prompt management,
+enabling version control, A/B testing, and monitoring via LangSmith Hub.
 """
 
 from __future__ import annotations
@@ -9,42 +12,18 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Final, Literal
+from typing import TYPE_CHECKING, Literal
 
-from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
+
+from jama_mcp_server_graphrag.observability import traceable
+from jama_mcp_server_graphrag.prompts import PromptName, get_prompt_sync
 
 if TYPE_CHECKING:
     from jama_mcp_server_graphrag.config import AppConfig
 
 logger = logging.getLogger(__name__)
-
-ANSWER_CRITIC_PROMPT: Final[str] = """
-You are an answer quality critic for a Requirements Management knowledge graph.
-
-Given the user's original question and the retrieved context, evaluate:
-
-1. ANSWERABLE: Can the question be answered from the retrieved context? (yes/no)
-2. CONFIDENCE: How confident are you? (0.0 - 1.0)
-3. COMPLETENESS: Is the information complete or partial?
-4. FOLLOWUP: If not fully answerable, what follow-up query would help?
-
-Retrieved Context:
-{context}
-
-Original Question: {question}
-
-Return a JSON object:
-{{
-    "answerable": true/false,
-    "confidence": 0.0-1.0,
-    "completeness": "complete" | "partial" | "insufficient",
-    "missing_aspects": ["list of missing information if any"],
-    "followup_query": "suggested query if needed, or null",
-    "reasoning": "brief explanation"
-}}
-"""
 
 
 @dataclass
@@ -60,6 +39,7 @@ class CritiqueResult:
     raw_response: str = ""
 
 
+@traceable(name="critique_answer", run_type="chain")
 async def critique_answer(
     config: AppConfig,
     question: str,
@@ -72,6 +52,11 @@ async def critique_answer(
     2. Identify missing information for follow-up queries
     3. Provide confidence scores for user-facing responses
 
+    The prompt is fetched from the centralized catalog, enabling:
+    - Version control via LangSmith Hub
+    - A/B testing between prompt variants
+    - Performance monitoring and evaluation
+
     Args:
         config: Application configuration.
         question: Original user question.
@@ -82,20 +67,19 @@ async def critique_answer(
     """
     logger.info("Critiquing answer for: '%s'", question[:50])
 
+    # Get prompt from catalog (uses cache if available)
+    prompt_template = get_prompt_sync(PromptName.CRITIC)
+
     llm = ChatOpenAI(
         model=config.chat_model,
         temperature=0,
         api_key=config.openai_api_key,
     )
 
-    system_message = SystemMessage(
-        content=ANSWER_CRITIC_PROMPT.format(context=context, question=question)
-    )
+    # Use the prompt template from the catalog
+    chain = prompt_template | llm | StrOutputParser()
 
-    human_message = HumanMessage(content="Evaluate the context and return the critique as JSON.")
-
-    chain = llm | StrOutputParser()
-    response = await chain.ainvoke([system_message, human_message])
+    response = await chain.ainvoke({"context": context, "question": question})
 
     # Parse JSON response
     try:
@@ -134,3 +118,6 @@ async def critique_answer(
         result.completeness,
     )
     return result
+
+
+__all__ = ["CritiqueResult", "critique_answer"]

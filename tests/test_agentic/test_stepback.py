@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from jama_mcp_server_graphrag.agentic.stepback import generate_stepback_query
+from tests.conftest import create_llm_mock
 
 # =============================================================================
 # Fixtures
@@ -34,12 +35,9 @@ class TestGenerateStepbackQuery:
     async def test_generates_broader_query(self, mock_config: MagicMock) -> None:
         """Test that stepback generates a broader query."""
         with patch("jama_mcp_server_graphrag.agentic.stepback.ChatOpenAI") as mock_llm_class:
-            mock_llm = MagicMock()
-            mock_llm.__or__ = MagicMock(return_value=mock_llm)
-            mock_llm.ainvoke = AsyncMock(
-                return_value="What are the automotive industry safety standards?"
+            mock_llm_class.return_value = create_llm_mock(
+                "What are the automotive industry safety standards?"
             )
-            mock_llm_class.return_value = mock_llm
 
             result = await generate_stepback_query(
                 mock_config,
@@ -55,10 +53,9 @@ class TestGenerateStepbackQuery:
     async def test_strips_whitespace(self, mock_config: MagicMock) -> None:
         """Test that result is stripped of whitespace."""
         with patch("jama_mcp_server_graphrag.agentic.stepback.ChatOpenAI") as mock_llm_class:
-            mock_llm = MagicMock()
-            mock_llm.__or__ = MagicMock(return_value=mock_llm)
-            mock_llm.ainvoke = AsyncMock(return_value="  What are requirements best practices?  \n")
-            mock_llm_class.return_value = mock_llm
+            mock_llm_class.return_value = create_llm_mock(
+                "  What are requirements best practices?  \n"
+            )
 
             result = await generate_stepback_query(mock_config, "Specific question")
 
@@ -70,11 +67,8 @@ class TestGenerateStepbackQuery:
     async def test_handles_already_broad_query(self, mock_config: MagicMock) -> None:
         """Test handling of queries that are already broad."""
         with patch("jama_mcp_server_graphrag.agentic.stepback.ChatOpenAI") as mock_llm_class:
-            mock_llm = MagicMock()
-            mock_llm.__or__ = MagicMock(return_value=mock_llm)
             # LLM might return the same query if it's already broad
-            mock_llm.ainvoke = AsyncMock(return_value="What is requirements management?")
-            mock_llm_class.return_value = mock_llm
+            mock_llm_class.return_value = create_llm_mock("What is requirements management?")
 
             result = await generate_stepback_query(mock_config, "What is requirements management?")
 
@@ -87,10 +81,7 @@ class TestGenerateStepbackQuery:
         mock_config.chat_model = "gpt-4-turbo"
 
         with patch("jama_mcp_server_graphrag.agentic.stepback.ChatOpenAI") as mock_llm_class:
-            mock_llm = MagicMock()
-            mock_llm.__or__ = MagicMock(return_value=mock_llm)
-            mock_llm.ainvoke = AsyncMock(return_value="Broader question")
-            mock_llm_class.return_value = mock_llm
+            mock_llm_class.return_value = create_llm_mock("Broader question")
 
             await generate_stepback_query(mock_config, "Test")
 

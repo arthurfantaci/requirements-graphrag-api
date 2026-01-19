@@ -2,6 +2,9 @@
 
 Analyzes user queries and routes them to the most appropriate
 retrieval tool based on query characteristics.
+
+This module uses the centralized prompt catalog for prompt management,
+enabling version control, A/B testing, and monitoring via LangSmith Hub.
 """
 
 from __future__ import annotations
@@ -11,9 +14,11 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final
 
-from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
+
+from jama_mcp_server_graphrag.observability import traceable
+from jama_mcp_server_graphrag.prompts import PromptName, get_prompt_sync
 
 if TYPE_CHECKING:
     from jama_mcp_server_graphrag.config import AppConfig
@@ -21,6 +26,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Tool descriptions for routing decisions
+# These are passed as input to the prompt template
 RETRIEVER_TOOLS: Final[dict[str, str]] = {
     "graphrag_vector_search": """
         Basic semantic search using vector embeddings.
@@ -64,38 +70,6 @@ RETRIEVER_TOOLS: Final[dict[str, str]] = {
     """,
 }
 
-ROUTER_SYSTEM_PROMPT: Final[str] = """
-You are a retrieval router for a Requirements Management knowledge graph.
-
-Your task is to analyze the user's question and select the best retrieval tool(s).
-
-Available tools:
-{tools}
-
-Selection Guidelines:
-1. For simple lookups or general questions -> graphrag_vector_search or graphrag_hybrid_search
-2. For questions about how concepts relate -> graphrag_graph_enriched_search
-3. For deep dives into specific entities -> graphrag_explore_entity
-4. For regulatory/compliance questions -> graphrag_lookup_standard
-5. For terminology definitions -> graphrag_lookup_term
-6. For aggregations or complex patterns -> graphrag_text2cypher
-7. For multi-faceted questions requiring synthesis -> graphrag_chat
-
-You may select multiple tools if the question has multiple parts.
-
-Return a JSON object with:
-{{
-    "selected_tools": ["tool_name1", "tool_name2"],
-    "reasoning": "Brief explanation of why these tools were selected",
-    "tool_params": {{
-        "tool_name1": {{"query": "refined query for this tool"}},
-        "tool_name2": {{"query": "refined query for this tool"}}
-    }}
-}}
-
-User Question: {question}
-"""
-
 
 @dataclass
 class RoutingResult:
@@ -107,6 +81,16 @@ class RoutingResult:
     raw_response: str
 
 
+def _format_tools_for_prompt() -> str:
+    """Format tool descriptions for the router prompt.
+
+    Returns:
+        Formatted string of tool descriptions.
+    """
+    return "\n".join(f"- {name}: {desc.strip()}" for name, desc in RETRIEVER_TOOLS.items())
+
+
+@traceable(name="route_query", run_type="chain")
 async def route_query(
     config: AppConfig,
     question: str,
@@ -115,6 +99,11 @@ async def route_query(
 
     Uses an LLM to analyze the query and select the optimal retrieval
     strategy based on query characteristics.
+
+    The prompt is fetched from the centralized catalog, enabling:
+    - Version control via LangSmith Hub
+    - A/B testing between prompt variants
+    - Performance monitoring and evaluation
 
     Args:
         config: Application configuration.
@@ -125,8 +114,11 @@ async def route_query(
     """
     logger.info("Routing query: '%s'", question[:50])
 
-    # Format tools for prompt
-    tools_text = "\n".join(f"- {name}: {desc.strip()}" for name, desc in RETRIEVER_TOOLS.items())
+    # Get prompt from catalog (uses cache if available)
+    prompt_template = get_prompt_sync(PromptName.ROUTER)
+
+    # Format tools for the prompt
+    tools_text = _format_tools_for_prompt()
 
     llm = ChatOpenAI(
         model=config.chat_model,
@@ -134,16 +126,10 @@ async def route_query(
         api_key=config.openai_api_key,
     )
 
-    system_message = SystemMessage(
-        content=ROUTER_SYSTEM_PROMPT.format(tools=tools_text, question=question)
-    )
+    # Use the prompt template from the catalog
+    chain = prompt_template | llm | StrOutputParser()
 
-    human_message = HumanMessage(
-        content="Analyze the question and return the routing decision as JSON."
-    )
-
-    chain = llm | StrOutputParser()
-    response = await chain.ainvoke([system_message, human_message])
+    response = await chain.ainvoke({"tools": tools_text, "question": question})
 
     # Parse JSON response
     try:
@@ -173,3 +159,6 @@ async def route_query(
 
     logger.info("Routed to: %s", result.selected_tools)
     return result
+
+
+__all__ = ["RETRIEVER_TOOLS", "RoutingResult", "route_query"]

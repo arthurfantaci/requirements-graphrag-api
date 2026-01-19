@@ -1,44 +1,29 @@
 """Query updater for multi-part questions.
 
 Updates remaining questions with context from previously answered parts.
+
+This module uses the centralized prompt catalog for prompt management,
+enabling version control, A/B testing, and monitoring via LangSmith Hub.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING
 
-from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
+
+from jama_mcp_server_graphrag.observability import traceable
+from jama_mcp_server_graphrag.prompts import PromptName, get_prompt_sync
 
 if TYPE_CHECKING:
     from jama_mcp_server_graphrag.config import AppConfig
 
 logger = logging.getLogger(__name__)
 
-QUERY_UPDATE_PROMPT: Final[str] = """
-You are an expert at updating questions to make them more atomic,
-specific, and easier to answer.
 
-You do this by filling in missing information in the question with
-the extra information provided from previous answers.
-
-Rules:
-1. Only edit the question if needed
-2. If the original question is already complete, keep it unchanged
-3. Do not ask for more information than the original question
-4. Only rephrase to make the question more complete with known context
-
-Previous Answers:
-{previous_answers}
-
-Original Question: {question}
-
-Return the updated question (just the question, no explanations):
-"""
-
-
+@traceable(name="update_query", run_type="chain")
 async def update_query(
     config: AppConfig,
     question: str,
@@ -49,6 +34,11 @@ async def update_query(
     For multi-part questions, this function refines subsequent queries
     by incorporating information from earlier answers, making retrieval
     more accurate and focused.
+
+    The prompt is fetched from the centralized catalog, enabling:
+    - Version control via LangSmith Hub
+    - A/B testing between prompt variants
+    - Performance monitoring and evaluation
 
     Args:
         config: Application configuration.
@@ -68,24 +58,27 @@ async def update_query(
     # Format previous answers
     answers_text = "\n".join(f"Q: {qa['question']}\nA: {qa['answer']}" for qa in previous_answers)
 
+    # Get prompt from catalog (uses cache if available)
+    prompt_template = get_prompt_sync(PromptName.QUERY_UPDATER)
+
     llm = ChatOpenAI(
         model=config.chat_model,
         temperature=0,
         api_key=config.openai_api_key,
     )
 
-    system_message = SystemMessage(
-        content=QUERY_UPDATE_PROMPT.format(previous_answers=answers_text, question=question)
-    )
+    # Use the prompt template from the catalog
+    chain = prompt_template | llm | StrOutputParser()
 
-    human_message = HumanMessage(
-        content="Return the updated question based on the context provided."
-    )
-
-    chain = llm | StrOutputParser()
-    updated_query = await chain.ainvoke([system_message, human_message])
+    updated_query = await chain.ainvoke({
+        "previous_answers": answers_text,
+        "question": question,
+    })
 
     updated_query = updated_query.strip()
     logger.info("Updated query: '%s'", updated_query[:50])
 
     return updated_query
+
+
+__all__ = ["update_query"]

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from jama_mcp_server_graphrag.agentic.critic import CritiqueResult, critique_answer
+from tests.conftest import create_llm_mock
 
 # =============================================================================
 # Fixtures
@@ -74,16 +75,12 @@ class TestCritiqueAnswer:
     @pytest.mark.asyncio
     async def test_critique_returns_result(self, mock_config: MagicMock) -> None:
         """Test that critique_answer returns a CritiqueResult."""
+        response = (
+            '{"answerable": true, "confidence": 0.9, "completeness": "complete", '
+            '"missing_aspects": [], "followup_query": null, "reasoning": "Good context"}'
+        )
         with patch("jama_mcp_server_graphrag.agentic.critic.ChatOpenAI") as mock_llm_class:
-            mock_llm = MagicMock()
-            mock_llm.__or__ = MagicMock(return_value=mock_llm)
-            mock_llm.ainvoke = AsyncMock(
-                return_value=(
-                    '{"answerable": true, "confidence": 0.9, "completeness": "complete", '
-                    '"missing_aspects": [], "followup_query": null, "reasoning": "Good context"}'
-                )
-            )
-            mock_llm_class.return_value = mock_llm
+            mock_llm_class.return_value = create_llm_mock(response)
 
             result = await critique_answer(
                 mock_config,
@@ -98,17 +95,13 @@ class TestCritiqueAnswer:
     @pytest.mark.asyncio
     async def test_critique_identifies_insufficient_context(self, mock_config: MagicMock) -> None:
         """Test critique identifies when context is insufficient."""
+        response = (
+            '{"answerable": false, "confidence": 0.2, "completeness": "insufficient", '
+            '"missing_aspects": ["FDA regulations"], '
+            '"followup_query": "What are FDA requirements?", "reasoning": "No FDA info"}'
+        )
         with patch("jama_mcp_server_graphrag.agentic.critic.ChatOpenAI") as mock_llm_class:
-            mock_llm = MagicMock()
-            mock_llm.__or__ = MagicMock(return_value=mock_llm)
-            mock_llm.ainvoke = AsyncMock(
-                return_value=(
-                    '{"answerable": false, "confidence": 0.2, "completeness": "insufficient", '
-                    '"missing_aspects": ["FDA regulations"], '
-                    '"followup_query": "What are FDA requirements?", "reasoning": "No FDA info"}'
-                )
-            )
-            mock_llm_class.return_value = mock_llm
+            mock_llm_class.return_value = create_llm_mock(response)
 
             result = await critique_answer(
                 mock_config,
@@ -124,10 +117,7 @@ class TestCritiqueAnswer:
     async def test_critique_handles_invalid_json(self, mock_config: MagicMock) -> None:
         """Test that invalid JSON returns conservative defaults."""
         with patch("jama_mcp_server_graphrag.agentic.critic.ChatOpenAI") as mock_llm_class:
-            mock_llm = MagicMock()
-            mock_llm.__or__ = MagicMock(return_value=mock_llm)
-            mock_llm.ainvoke = AsyncMock(return_value="Invalid JSON response")
-            mock_llm_class.return_value = mock_llm
+            mock_llm_class.return_value = create_llm_mock("Invalid JSON response")
 
             result = await critique_answer(mock_config, "Test", "Context")
 
@@ -139,17 +129,13 @@ class TestCritiqueAnswer:
     @pytest.mark.asyncio
     async def test_critique_strips_markdown(self, mock_config: MagicMock) -> None:
         """Test that markdown code blocks are stripped."""
+        response = (
+            '```json\n{"answerable": true, "confidence": 0.8, '
+            '"completeness": "complete", "missing_aspects": [], '
+            '"followup_query": null, "reasoning": "OK"}\n```'
+        )
         with patch("jama_mcp_server_graphrag.agentic.critic.ChatOpenAI") as mock_llm_class:
-            mock_llm = MagicMock()
-            mock_llm.__or__ = MagicMock(return_value=mock_llm)
-            mock_llm.ainvoke = AsyncMock(
-                return_value=(
-                    '```json\n{"answerable": true, "confidence": 0.8, '
-                    '"completeness": "complete", "missing_aspects": [], '
-                    '"followup_query": null, "reasoning": "OK"}\n```'
-                )
-            )
-            mock_llm_class.return_value = mock_llm
+            mock_llm_class.return_value = create_llm_mock(response)
 
             result = await critique_answer(mock_config, "Test", "Context")
 
@@ -165,10 +151,7 @@ class TestCritiqueAnswer:
         )
 
         with patch("jama_mcp_server_graphrag.agentic.critic.ChatOpenAI") as mock_llm_class:
-            mock_llm = MagicMock()
-            mock_llm.__or__ = MagicMock(return_value=mock_llm)
-            mock_llm.ainvoke = AsyncMock(return_value=raw_response)
-            mock_llm_class.return_value = mock_llm
+            mock_llm_class.return_value = create_llm_mock(raw_response)
 
             result = await critique_answer(mock_config, "Test", "Context")
 

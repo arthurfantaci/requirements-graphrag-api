@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -11,6 +11,7 @@ from jama_mcp_server_graphrag.agentic.router import (
     RoutingResult,
     route_query,
 )
+from tests.conftest import create_llm_mock
 
 # =============================================================================
 # Fixtures
@@ -67,16 +68,12 @@ class TestRouteQuery:
     @pytest.mark.asyncio
     async def test_route_query_returns_routing_result(self, mock_config: MagicMock) -> None:
         """Test that route_query returns a RoutingResult."""
+        response = (
+            '{"selected_tools": ["graphrag_chat"], '
+            '"reasoning": "Complex question", "tool_params": {}}'
+        )
         with patch("jama_mcp_server_graphrag.agentic.router.ChatOpenAI") as mock_llm_class:
-            mock_llm = MagicMock()
-            mock_llm.__or__ = MagicMock(return_value=mock_llm)
-            mock_llm.ainvoke = AsyncMock(
-                return_value=(
-                    '{"selected_tools": ["graphrag_chat"], '
-                    '"reasoning": "Complex question", "tool_params": {}}'
-                )
-            )
-            mock_llm_class.return_value = mock_llm
+            mock_llm_class.return_value = create_llm_mock(response)
 
             result = await route_query(mock_config, "What is requirements traceability?")
 
@@ -87,17 +84,13 @@ class TestRouteQuery:
     @pytest.mark.asyncio
     async def test_route_query_selects_appropriate_tool(self, mock_config: MagicMock) -> None:
         """Test that router selects appropriate tools based on query."""
+        response = (
+            '{"selected_tools": ["graphrag_lookup_term"], '
+            '"reasoning": "Definition lookup", '
+            '"tool_params": {"graphrag_lookup_term": {"query": "baseline"}}}'
+        )
         with patch("jama_mcp_server_graphrag.agentic.router.ChatOpenAI") as mock_llm_class:
-            mock_llm = MagicMock()
-            mock_llm.__or__ = MagicMock(return_value=mock_llm)
-            mock_llm.ainvoke = AsyncMock(
-                return_value=(
-                    '{"selected_tools": ["graphrag_lookup_term"], '
-                    '"reasoning": "Definition lookup", '
-                    '"tool_params": {"graphrag_lookup_term": {"query": "baseline"}}}'
-                )
-            )
-            mock_llm_class.return_value = mock_llm
+            mock_llm_class.return_value = create_llm_mock(response)
 
             result = await route_query(mock_config, "Define baseline")
 
@@ -107,10 +100,7 @@ class TestRouteQuery:
     async def test_route_query_handles_invalid_json(self, mock_config: MagicMock) -> None:
         """Test that invalid JSON responses default to chat."""
         with patch("jama_mcp_server_graphrag.agentic.router.ChatOpenAI") as mock_llm_class:
-            mock_llm = MagicMock()
-            mock_llm.__or__ = MagicMock(return_value=mock_llm)
-            mock_llm.ainvoke = AsyncMock(return_value="This is not valid JSON")
-            mock_llm_class.return_value = mock_llm
+            mock_llm_class.return_value = create_llm_mock("This is not valid JSON")
 
             result = await route_query(mock_config, "Test question")
 
@@ -120,16 +110,12 @@ class TestRouteQuery:
     @pytest.mark.asyncio
     async def test_route_query_strips_markdown(self, mock_config: MagicMock) -> None:
         """Test that markdown code blocks are stripped from response."""
+        response = (
+            '```json\n{"selected_tools": ["graphrag_vector_search"], '
+            '"reasoning": "Simple search", "tool_params": {}}\n```'
+        )
         with patch("jama_mcp_server_graphrag.agentic.router.ChatOpenAI") as mock_llm_class:
-            mock_llm = MagicMock()
-            mock_llm.__or__ = MagicMock(return_value=mock_llm)
-            mock_llm.ainvoke = AsyncMock(
-                return_value=(
-                    '```json\n{"selected_tools": ["graphrag_vector_search"], '
-                    '"reasoning": "Simple search", "tool_params": {}}\n```'
-                )
-            )
-            mock_llm_class.return_value = mock_llm
+            mock_llm_class.return_value = create_llm_mock(response)
 
             result = await route_query(mock_config, "Find info about requirements")
 
@@ -143,10 +129,7 @@ class TestRouteQuery:
         )
 
         with patch("jama_mcp_server_graphrag.agentic.router.ChatOpenAI") as mock_llm_class:
-            mock_llm = MagicMock()
-            mock_llm.__or__ = MagicMock(return_value=mock_llm)
-            mock_llm.ainvoke = AsyncMock(return_value=raw_response)
-            mock_llm_class.return_value = mock_llm
+            mock_llm_class.return_value = create_llm_mock(raw_response)
 
             result = await route_query(mock_config, "Test")
 
