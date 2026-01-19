@@ -199,7 +199,7 @@ mcp = FastMCP(
 
     **Advanced:**
     - `graphrag_text2cypher` - Convert natural language to Cypher queries
-    - `graphrag_chat` - RAG-powered Q&A with citations
+    - `graphrag_chat` - RAG-powered Q&A with citations and images
     - `graphrag_schema` - Explore the knowledge graph structure
 
     **Resources (read via resource:// URIs):**
@@ -215,6 +215,26 @@ mcp = FastMCP(
     - Industry standards (ISO, FDA, DO-178C, INCOSE, MIL-STD)
     - Industry applications (Automotive, Medical, Aerospace, Defense)
     - Tools (Jama Connect, DOORS, traditional approaches)
+
+    **Response Formatting Guidelines:**
+
+    When tools return images (especially `graphrag_chat`), the consuming LLM should:
+
+    1. **Display images inline** when the platform supports it, rather than
+       providing only markdown links. Users benefit from seeing diagrams and
+       charts directly in the response.
+
+    2. **Use alt_text for accessibility** - Always provide the alt_text when
+       displaying images to support screen readers and accessibility needs.
+
+    3. **Introduce images with context** - Use the `context` field from the
+       image metadata to explain how the image relates to the answer.
+
+    4. **Prioritize by relevance** - When multiple images are returned, display
+       the most relevant ones first (typically 1-3 images maximum).
+
+    5. **Cite the source** - Reference the `source_title` to attribute the
+       image to its original article.
     """,
     lifespan=server_lifespan,
 )
@@ -617,6 +637,26 @@ async def graphrag_chat(
     knowledge graph for retrieval and LLM for generation.
     Responses include source citations and relevant images.
 
+    **Image Handling for Consuming LLMs:**
+
+    When this tool returns images, the consuming LLM should:
+
+    1. **Display images inline** rather than as markdown links when
+       the platform supports it. Download images to local environment
+       and use view/display tools to render them directly.
+
+    2. **Use alt_text** from each image for accessibility. Include
+       alt text descriptions when presenting images.
+
+    3. **Introduce with context** - Use the `context` field to explain
+       how each image relates to the answer being provided.
+
+    4. **Limit display count** - Show 1-3 most relevant images inline.
+       Additional images can be offered as links.
+
+    5. **Attribute sources** - Reference `source_title` to credit the
+       original article the image comes from.
+
     Args:
         message: User's question or message.
         max_sources: Maximum sources to cite (default: 5).
@@ -626,7 +666,11 @@ async def graphrag_chat(
         - answer: Generated response text
         - sources: List of cited sources with title, url, relevance_score
         - entities: Related entities mentioned in the sources
-        - images: List of relevant images with url, alt_text, context, source_title
+        - images: List of relevant images, each containing:
+            - url: Direct URL to the image
+            - alt_text: Accessibility description (use for screen readers)
+            - context: How this image relates to the answer
+            - source_title: Original article title for attribution
 
     Example messages:
         - "What is requirements traceability and why is it important?"
