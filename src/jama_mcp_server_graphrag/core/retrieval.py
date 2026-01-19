@@ -575,7 +575,11 @@ def _enrich_with_media(
             OPTIONAL MATCH (a)-[:HAS_WEBINAR]->(web:Webinar)
             OPTIONAL MATCH (a)-[:HAS_VIDEO]->(vid:Video)
             WITH elementId(c) AS chunk_id,
-                 collect(DISTINCT {url: img.url, alt_text: img.alt_text})[..$max_items] AS images,
+                 collect(DISTINCT {
+                     url: img.url,
+                     alt_text: img.alt_text,
+                     context: img.context
+                 })[..$max_items] AS images,
                  collect(DISTINCT {title: web.title, url: web.url})[..$max_items] AS webinars,
                  collect(DISTINCT {title: vid.title, url: vid.url})[..$max_items] AS videos
             RETURN chunk_id, images, webinars, videos

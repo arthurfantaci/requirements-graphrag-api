@@ -611,18 +611,22 @@ async def graphrag_chat(
     message: str,
     max_sources: int = 5,
 ) -> dict[str, Any]:
-    """Chat with RAG-powered Q&A including citations.
+    """Chat with RAG-powered Q&A including citations and images.
 
     Answers questions about requirements management using the
     knowledge graph for retrieval and LLM for generation.
-    Responses include source citations.
+    Responses include source citations and relevant images.
 
     Args:
         message: User's question or message.
         max_sources: Maximum sources to cite (default: 5).
 
     Returns:
-        Dictionary with answer, sources, and related entities.
+        Dictionary with:
+        - answer: Generated response text
+        - sources: List of cited sources with title, url, relevance_score
+        - entities: Related entities mentioned in the sources
+        - images: List of relevant images with url, alt_text, context, source_title
 
     Example messages:
         - "What is requirements traceability and why is it important?"

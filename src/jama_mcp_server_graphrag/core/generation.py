@@ -51,7 +51,7 @@ RELATED ENTITIES:
 
 
 @traceable(name="generate_answer", run_type="chain")
-async def generate_answer(  # noqa: PLR0913
+async def generate_answer(  # noqa: PLR0913, PLR0912
     config: AppConfig,
     retriever: VectorRetriever,
     driver: Driver,
@@ -91,6 +91,8 @@ async def generate_answer(  # noqa: PLR0913
     context_parts = []
     sources = []
     all_entities: set[str] = set()
+    all_images: list[dict[str, str]] = []
+    seen_image_urls: set[str] = set()
 
     # Add definitions to context first (if any found)
     if definitions:
@@ -137,6 +139,19 @@ async def generate_answer(  # noqa: PLR0913
                 elif isinstance(defn, str) and defn:
                     all_entities.add(defn)
 
+        # Collect images from media enrichment (deduplicated by URL)
+        if result.get("media"):
+            for img in result["media"].get("images", []):
+                img_url = img.get("url")
+                if img_url and img_url not in seen_image_urls:
+                    seen_image_urls.add(img_url)
+                    all_images.append({
+                        "url": img_url,
+                        "alt_text": img.get("alt_text", ""),
+                        "context": img.get("context", ""),
+                        "source_title": result["metadata"].get("title", ""),
+                    })
+
     context = "\n".join(context_parts) if context_parts else "No relevant context found."
     entities_str = ", ".join(sorted(all_entities)[:20]) if all_entities else "None identified"
 
@@ -164,10 +179,16 @@ async def generate_answer(  # noqa: PLR0913
         "answer": answer,
         "sources": sources,
         "entities": list(all_entities)[:20],
+        "images": all_images[:5],  # Limit to 5 images
         "source_count": len(sources),
     }
 
-    logger.info("Generated answer with %d sources and %d entities", len(sources), len(all_entities))
+    logger.info(
+        "Generated answer with %d sources, %d entities, and %d images",
+        len(sources),
+        len(all_entities),
+        len(all_images[:5]),
+    )
     return response
 
 

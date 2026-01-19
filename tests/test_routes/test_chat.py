@@ -59,6 +59,14 @@ def sample_chat_response() -> dict:
             }
         ],
         "entities": ["requirements traceability", "lifecycle"],
+        "images": [
+            {
+                "url": "https://jamasoftware.com/images/traceability-matrix.png",
+                "alt_text": "Traceability matrix example",
+                "context": "A traceability matrix showing relationships",
+                "source_title": "Traceability Guide",
+            }
+        ],
         "source_count": 1,
     }
 
@@ -145,3 +153,68 @@ class TestChatEndpoint:
             assert len(data["entities"]) == 2
             # String entities should be converted to EntityInfo format
             assert data["entities"][0]["name"] == "requirements traceability"
+
+    def test_chat_includes_images(self, client: TestClient, sample_chat_response: dict) -> None:
+        """Test that images are included in the response."""
+        with patch("jama_mcp_server_graphrag.routes.chat.core_chat") as mock_chat:
+            mock_chat.return_value = sample_chat_response
+
+            response = client.post("/api/v1/chat", json={"message": "Test"})
+
+            assert response.status_code == 200
+            data = response.json()
+            assert "images" in data
+            assert len(data["images"]) == 1
+
+    def test_chat_transforms_images(self, client: TestClient, sample_chat_response: dict) -> None:
+        """Test that images are properly transformed to ImageInfo format."""
+        with patch("jama_mcp_server_graphrag.routes.chat.core_chat") as mock_chat:
+            mock_chat.return_value = sample_chat_response
+
+            response = client.post("/api/v1/chat", json={"message": "Test"})
+
+            data = response.json()
+            image = data["images"][0]
+            assert image["url"] == "https://jamasoftware.com/images/traceability-matrix.png"
+            assert image["alt_text"] == "Traceability matrix example"
+            assert image["context"] == "A traceability matrix showing relationships"
+            assert image["source_title"] == "Traceability Guide"
+
+    def test_chat_handles_empty_images(
+        self, client: TestClient, sample_chat_response: dict
+    ) -> None:
+        """Test that empty images list is handled gracefully."""
+        with patch("jama_mcp_server_graphrag.routes.chat.core_chat") as mock_chat:
+            # Remove images from response
+            response_without_images = {**sample_chat_response, "images": []}
+            mock_chat.return_value = response_without_images
+
+            response = client.post("/api/v1/chat", json={"message": "Test"})
+
+            assert response.status_code == 200
+            data = response.json()
+            assert "images" in data
+            assert len(data["images"]) == 0
+
+    def test_chat_filters_images_without_url(
+        self, client: TestClient, sample_chat_response: dict
+    ) -> None:
+        """Test that images without URLs are filtered out."""
+        with patch("jama_mcp_server_graphrag.routes.chat.core_chat") as mock_chat:
+            # Add an image without URL
+            response_with_invalid = {
+                **sample_chat_response,
+                "images": [
+                    {"url": "", "alt_text": "Empty URL"},
+                    {"alt_text": "No URL field"},
+                    sample_chat_response["images"][0],
+                ],
+            }
+            mock_chat.return_value = response_with_invalid
+
+            response = client.post("/api/v1/chat", json={"message": "Test"})
+
+            data = response.json()
+            # Only the valid image should be included
+            assert len(data["images"]) == 1
+            assert data["images"][0]["url"] == "https://jamasoftware.com/images/traceability-matrix.png"

@@ -88,12 +88,34 @@ class ContextWindow(BaseModel):
     next_context: str | None = None
 
 
+class ImageContent(BaseModel):
+    """Image content from source articles."""
+
+    url: str
+    alt_text: str = ""
+    context: str = ""
+
+
+class WebinarContent(BaseModel):
+    """Webinar content from source articles."""
+
+    title: str | None = None
+    url: str | None = None
+
+
+class VideoContent(BaseModel):
+    """Video content from source articles."""
+
+    title: str | None = None
+    url: str | None = None
+
+
 class MediaContent(BaseModel):
     """Media content from source articles."""
 
-    images: list[dict[str, Any]] = []
-    webinars: list[dict[str, Any]] = []
-    videos: list[dict[str, Any]] = []
+    images: list[ImageContent] = []
+    webinars: list[WebinarContent] = []
+    videos: list[VideoContent] = []
 
 
 class SearchResult(BaseModel):

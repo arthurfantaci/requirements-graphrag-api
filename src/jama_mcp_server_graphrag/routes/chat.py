@@ -77,12 +77,22 @@ class EntityInfo(BaseModel):
     type: str | None = None
 
 
+class ImageInfo(BaseModel):
+    """Information about a relevant image from the knowledge base."""
+
+    url: str
+    alt_text: str = ""
+    context: str = ""
+    source_title: str = ""
+
+
 class ChatResponse(BaseModel):
     """Response from chat endpoint."""
 
     answer: str
     sources: list[SourceInfo]
     entities: list[EntityInfo]
+    images: list[ImageInfo] = []
     conversation_id: str | None
 
 
@@ -134,9 +144,22 @@ async def chat_endpoint(
         for e in result.get("entities", [])
     ]
 
+    # Transform images to response format
+    images = [
+        ImageInfo(
+            url=img.get("url", ""),
+            alt_text=img.get("alt_text", ""),
+            context=img.get("context", ""),
+            source_title=img.get("source_title", ""),
+        )
+        for img in result.get("images", [])
+        if img.get("url")  # Only include images with valid URLs
+    ]
+
     return {
         "answer": result["answer"],
         "sources": sources,
         "entities": entities,
+        "images": images,
         "conversation_id": body.conversation_id,
     }
