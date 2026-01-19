@@ -295,17 +295,17 @@ Set up annotation queues for:
 
 | Task | Status | Notes |
 |------|--------|-------|
-| Push prompts to Hub | ⬜ | All 6 prompts |
-| Verify prompts in dashboard | ⬜ | Check descriptions, variables |
-| Create environment tags | ⬜ | dev/staging/prod |
-| Enable tracing in config | ⬜ | LANGSMITH_TRACING=true |
-| Create router eval dataset | ⬜ | 10-20 examples |
-| Create critic eval dataset | ⬜ | 10-20 examples |
-| Create text2cypher eval dataset | ⬜ | 10-20 examples |
-| Run baseline evaluations | ⬜ | Record initial scores |
-| Test Playground workflow | ⬜ | Interactive prompt testing |
-| Set up production project | ⬜ | Separate from dev |
-| Configure monitoring alerts | ⬜ | Latency, errors |
+| Push prompts to Hub | ✅ | All 6 prompts |
+| Verify prompts in dashboard | ✅ | Check descriptions, variables |
+| Create environment tags | ✅ | dev/staging/prod |
+| Enable tracing in config | ✅ | LANGSMITH_TRACING=true |
+| Create router eval dataset | ✅ | 14 examples |
+| Create critic eval dataset | ✅ | 10 examples |
+| Create text2cypher eval dataset | ✅ | 11 examples |
+| Run baseline evaluations | ✅ | Record initial scores |
+| Test Playground workflow | ✅ | Interactive prompt testing |
+| Set up production project | ✅ | Separate from dev |
+| Configure monitoring alerts | ✅ | Latency, errors |
 
 ---
 
