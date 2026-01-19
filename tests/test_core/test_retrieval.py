@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from jama_mcp_server_graphrag.core.retrieval import (
+    GraphEnrichmentOptions,
     explore_entity,
     graph_enriched_search,
     hybrid_search,
@@ -265,8 +266,6 @@ class TestGraphEnrichedSearch:
         self, mock_retriever: MagicMock, mock_driver: MagicMock
     ) -> None:
         """Test that GraphEnrichmentOptions parameter is used."""
-        from jama_mcp_server_graphrag.core.retrieval import GraphEnrichmentOptions
-
         # Create custom options with some features disabled
         options = GraphEnrichmentOptions(
             enable_window_expansion=False,
