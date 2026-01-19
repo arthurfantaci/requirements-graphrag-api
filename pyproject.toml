@@ -45,6 +45,7 @@ dependencies = [
     "tenacity>=8.2.0",
     "tiktoken>=0.7.0",
     "rich>=13.0.0",
+    "langchainhub>=0.1.21",
 ]
 
 [project.optional-dependencies]

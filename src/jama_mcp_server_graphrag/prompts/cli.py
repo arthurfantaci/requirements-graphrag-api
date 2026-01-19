@@ -68,12 +68,21 @@ async def cmd_push(args: argparse.Namespace) -> int:
         return EXIT_CONFIG_ERROR
 
     try:
-        from langchain import hub  # noqa: PLC0415
+        from langsmith import Client  # noqa: PLC0415
     except ImportError:
-        logger.error("langchain package not installed. Run: pip install langchain")
+        logger.error("langsmith package not installed. Run: pip install langsmith")
         return EXIT_ERROR
 
-    org = os.getenv(LANGSMITH_ORG_ENV, "jama-graphrag")
+    client = Client()
+
+    # Determine organization/workspace
+    use_personal = getattr(args, "personal", False)
+    org = None if use_personal else os.getenv(LANGSMITH_ORG_ENV)
+
+    if org:
+        logger.info("Using organization: %s", org)
+    else:
+        logger.info("Using personal workspace (no organization prefix)")
 
     # Determine which prompts to push
     if args.all:
@@ -93,21 +102,28 @@ async def cmd_push(args: argparse.Namespace) -> int:
     success_count = 0
     for name in prompt_names:
         definition = PROMPT_DEFINITIONS[name]
-        hub_path = f"{org}/{name.value}"
+        # Use org/name format if org is set, otherwise just name for personal workspace
+        hub_path = f"{org}/{name.value}" if org else name.value
 
         try:
             logger.info("Pushing %s to %s...", name.value, hub_path)
-            hub.push(
+            url = client.push_prompt(
                 hub_path,
-                definition.template,
-                new_repo_description=definition.metadata.description,
-                new_repo_is_public=False,
-                tags=definition.metadata.tags,
+                object=definition.template,
+                description=definition.metadata.description,
+                is_public=False,
+                tags=list(definition.metadata.tags),
             )
-            logger.info("✓ Pushed %s", name.value)
+            logger.info("✓ Pushed %s -> %s", name.value, url)
             success_count += 1
         except Exception as e:
-            logger.error("✗ Failed to push %s: %s", name.value, e)
+            error_msg = str(e)
+            logger.error("✗ Failed to push %s: %s", name.value, error_msg)
+            if "tenant" in error_msg.lower():
+                logger.info(
+                    "Hint: Use --personal flag to push to your personal workspace, "
+                    "or set LANGSMITH_ORG to your actual workspace handle"
+                )
 
     logger.info(
         "Pushed %d/%d prompts successfully",
@@ -279,6 +295,11 @@ def main() -> int:
     push_group = push_parser.add_mutually_exclusive_group()
     push_group.add_argument("--all", action="store_true", help="Push all prompts")
     push_group.add_argument("--prompt", type=str, help="Specific prompt to push")
+    push_parser.add_argument(
+        "--personal",
+        action="store_true",
+        help="Push to personal workspace (ignore LANGSMITH_ORG)",
+    )
 
     # Pull command
     pull_parser = subparsers.add_parser("pull", help="Pull prompts from LangSmith Hub")
