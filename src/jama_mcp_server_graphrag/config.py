@@ -86,6 +86,11 @@ class AppConfig:
     langsmith_api_key: str = ""
     langsmith_project: str = "jama-graphrag"
     langsmith_tracing_enabled: bool = False
+    # Prompt catalog settings
+    langsmith_org: str = "jama-graphrag"
+    prompt_environment: str = "development"
+    prompt_cache_ttl: int = 300
+    prompt_hub_enabled: bool = True
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
@@ -144,6 +149,9 @@ def get_config() -> AppConfig:
     langsmith_tracing = os.getenv("LANGSMITH_TRACING", os.getenv("LANGCHAIN_TRACING_V2", "false"))
     tracing_enabled = langsmith_tracing.lower() in ("true", "1", "yes")
 
+    # Check for prompt hub enabled
+    prompt_hub_enabled = os.getenv("PROMPT_HUB_ENABLED", "true").lower() in ("true", "1", "yes")
+
     return AppConfig(
         neo4j_uri=os.environ["NEO4J_URI"],
         neo4j_username=os.environ["NEO4J_USERNAME"],
@@ -162,4 +170,8 @@ def get_config() -> AppConfig:
             "LANGSMITH_PROJECT", os.getenv("LANGCHAIN_PROJECT", "jama-graphrag")
         ),
         langsmith_tracing_enabled=tracing_enabled,
+        langsmith_org=os.getenv("LANGSMITH_ORG", "jama-graphrag"),
+        prompt_environment=os.getenv("PROMPT_ENVIRONMENT", "development"),
+        prompt_cache_ttl=int(os.getenv("PROMPT_CACHE_TTL", "300")),
+        prompt_hub_enabled=prompt_hub_enabled,
     )

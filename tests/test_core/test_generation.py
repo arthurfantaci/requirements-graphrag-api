@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from jama_mcp_server_graphrag.core.generation import chat, generate_answer
+from tests.conftest import create_llm_mock
 
 # =============================================================================
 # Fixtures
@@ -100,16 +101,14 @@ class TestGenerateAnswer:
         """Test that generate_answer returns a complete response."""
         with (
             patch("jama_mcp_server_graphrag.core.generation.graph_enriched_search") as mock_search,
+            patch("jama_mcp_server_graphrag.core.generation.search_terms") as mock_terms,
             patch("jama_mcp_server_graphrag.core.generation.ChatOpenAI") as mock_llm_class,
         ):
             mock_search.return_value = mock_search_results
-
-            mock_llm = MagicMock()
-            mock_llm.__or__ = MagicMock(return_value=mock_llm)
-            mock_llm.ainvoke = AsyncMock(
-                return_value="Requirements traceability is the ability to track..."
+            mock_terms.return_value = []
+            mock_llm_class.return_value = create_llm_mock(
+                "Requirements traceability is the ability to track..."
             )
-            mock_llm_class.return_value = mock_llm
 
             result = await generate_answer(
                 mock_config,
@@ -135,14 +134,12 @@ class TestGenerateAnswer:
         """Test that sources are properly formatted."""
         with (
             patch("jama_mcp_server_graphrag.core.generation.graph_enriched_search") as mock_search,
+            patch("jama_mcp_server_graphrag.core.generation.search_terms") as mock_terms,
             patch("jama_mcp_server_graphrag.core.generation.ChatOpenAI") as mock_llm_class,
         ):
             mock_search.return_value = mock_search_results
-
-            mock_llm = MagicMock()
-            mock_llm.__or__ = MagicMock(return_value=mock_llm)
-            mock_llm.ainvoke = AsyncMock(return_value="Answer text")
-            mock_llm_class.return_value = mock_llm
+            mock_terms.return_value = []
+            mock_llm_class.return_value = create_llm_mock("Answer text")
 
             result = await generate_answer(
                 mock_config,
@@ -165,14 +162,12 @@ class TestGenerateAnswer:
         """Test that retrieval_limit parameter is passed to search."""
         with (
             patch("jama_mcp_server_graphrag.core.generation.graph_enriched_search") as mock_search,
+            patch("jama_mcp_server_graphrag.core.generation.search_terms") as mock_terms,
             patch("jama_mcp_server_graphrag.core.generation.ChatOpenAI") as mock_llm_class,
         ):
             mock_search.return_value = []
-
-            mock_llm = MagicMock()
-            mock_llm.__or__ = MagicMock(return_value=mock_llm)
-            mock_llm.ainvoke = AsyncMock(return_value="No context found.")
-            mock_llm_class.return_value = mock_llm
+            mock_terms.return_value = []
+            mock_llm_class.return_value = create_llm_mock("No context found.")
 
             await generate_answer(
                 mock_config,

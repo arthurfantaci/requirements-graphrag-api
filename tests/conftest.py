@@ -2,15 +2,58 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-from unittest.mock import MagicMock, patch
+from typing import TYPE_CHECKING, Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from jama_mcp_server_graphrag.config import AppConfig
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    from collections.abc import Callable, Generator
+
+
+def create_llm_mock(response: str) -> MagicMock:
+    """Create a mock LLM that works with LangChain's RunnableSequence.
+
+    This helper creates a mock that properly handles being invoked in a chain
+    via either `ainvoke`, `invoke`, or direct call.
+
+    Args:
+        response: The string response the mock should return.
+
+    Returns:
+        A configured MagicMock that can be used in place of ChatOpenAI.
+    """
+    mock_llm = MagicMock()
+
+    # Configure ainvoke for async chain invocation
+    mock_llm.ainvoke = AsyncMock(return_value=response)
+
+    # Configure invoke for sync chain invocation
+    mock_llm.invoke = MagicMock(return_value=response)
+
+    # Configure for direct call (used by some LangChain internals)
+    mock_llm.return_value = response
+
+    # Allow the | operator to work with RunnableSequence
+    # Don't override __or__ - let LangChain's default behavior handle it
+    # The mock will be treated as a Runnable in the sequence
+
+    return mock_llm
+
+
+@pytest.fixture
+def llm_mock_factory() -> Callable[[str], MagicMock]:
+    """Factory fixture to create LLM mocks with specific responses.
+
+    Usage:
+        def test_something(llm_mock_factory):
+            mock_llm = llm_mock_factory('{"key": "value"}')
+            with patch("module.ChatOpenAI", return_value=mock_llm):
+                # test code
+    """
+    return create_llm_mock
 
 # Test credentials - not real secrets
 _TEST_PASSWORD = "test-password"  # noqa: S105

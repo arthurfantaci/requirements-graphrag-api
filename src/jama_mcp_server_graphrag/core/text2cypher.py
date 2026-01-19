@@ -3,6 +3,9 @@
 Converts natural language questions into Cypher queries using LLM
 with few-shot examples and schema context.
 
+This module uses the centralized prompt catalog for prompt management,
+enabling version control, A/B testing, and monitoring via LangSmith Hub.
+
 Updated Data Model (2026-01):
 - Chunks linked via FROM_ARTICLE to Articles (reversed from HAS_CHUNK)
 - MENTIONED_IN direction: Entity -> Chunk
@@ -15,11 +18,12 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, Final
 
-from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
 
 from jama_mcp_server_graphrag.observability import traceable
+from jama_mcp_server_graphrag.prompts import PromptName, get_prompt_sync
+from jama_mcp_server_graphrag.prompts.definitions import TEXT2CYPHER_EXAMPLES
 
 if TYPE_CHECKING:
     from neo4j import Driver
@@ -31,144 +35,6 @@ logger = logging.getLogger(__name__)
 # Constants
 LOG_TRUNCATE_LENGTH: Final[int] = 100
 
-# Few-shot examples for Text2Cypher - Updated for new schema
-FEW_SHOT_EXAMPLES: Final[str] = """
-Example 1:
-Question: How many chapters are there?
-Cypher: MATCH (c:Chapter) RETURN count(c) AS chapter_count
-
-Example 2:
-Question: Which chapter has the most articles?
-Cypher: MATCH (c:Chapter)-[:CONTAINS]->(a:Article)
-RETURN c.title AS chapter, count(a) AS article_count
-ORDER BY article_count DESC
-LIMIT 1
-
-Example 3:
-Question: List all tools mentioned in the guide
-Cypher: MATCH (t:Tool)
-RETURN t.name AS tool_name, t.display_name AS display_name, t.vendor AS vendor
-ORDER BY t.name
-
-Example 4:
-Question: What entities are related to requirements traceability?
-Cypher: MATCH (e:Concept)-[r]-(related)
-WHERE toLower(e.name) CONTAINS 'traceability'
-  AND NOT related:Chunk AND NOT related:Article
-RETURN e.display_name AS entity, type(r) AS relationship, related.display_name AS related_entity
-LIMIT 10
-
-Example 5:
-Question: How many definition terms are defined?
-Cypher: MATCH (d:Definition) RETURN count(d) AS term_count
-
-Example 6:
-Question: What standards apply to automotive?
-Cypher: MATCH (s:Standard)-[:APPLIES_TO]->(i:Industry)
-WHERE toLower(i.name) CONTAINS 'automotive'
-   OR toLower(s.display_name) CONTAINS 'automotive'
-RETURN s.name AS standard, s.display_name AS display_name, s.organization AS organization
-
-Example 7:
-Question: Which articles mention ISO 26262?
-Cypher: MATCH (e:Standard)-[:MENTIONED_IN]->(c:Chunk)-[:FROM_ARTICLE]->(a:Article)
-WHERE toLower(e.name) CONTAINS 'iso 26262'
-RETURN DISTINCT a.article_title AS article, a.url AS url
-
-Example 8:
-Question: What are the top 5 most mentioned entities?
-Cypher: MATCH (entity)-[:MENTIONED_IN]->(c:Chunk)
-WITH labels(entity)[0] AS entity_type, entity.display_name AS entity_name, count(c) AS mention_count
-RETURN entity_type, entity_name, mention_count
-ORDER BY mention_count DESC
-LIMIT 5
-
-Example 9:
-Question: What challenges does requirements management address?
-Cypher: MATCH (c:Concept)-[:ADDRESSES]->(ch:Challenge)
-WHERE toLower(c.name) CONTAINS 'requirement'
-RETURN c.display_name AS concept, ch.display_name AS challenge
-LIMIT 10
-
-Example 10:
-Question: What images are in article about traceability?
-Cypher: MATCH (a:Article)-[:HAS_IMAGE]->(img:Image)
-WHERE toLower(a.article_title) CONTAINS 'traceability'
-RETURN a.article_title AS article, img.alt_text AS image_description, img.url AS image_url
-"""
-
-SYSTEM_PROMPT: Final[str] = """You are a Cypher query expert for a Neo4j knowledge graph
-about requirements management from the Jama Software guide.
-
-Your task is to convert natural language questions into valid Cypher queries.
-
-Schema Information:
-{schema}
-
-## Node Labels
-
-### Content Hierarchy
-- Chapter (15) - chapter_number, title, overview_url, article_count
-- Article (103) - article_id, article_title, url, chapter_number, chapter_title
-- Chunk (2159) - text, embedding, index
-
-### Domain Entities
-- Concept (1523) - name, display_name, definition
-- Challenge (839) - name, display_name
-- Artifact (601) - name, display_name, artifact_type
-- Bestpractice (330) - name, display_name
-- Processstage (285) - name, display_name, sequence
-- Role (181) - name, display_name, responsibilities
-- Tool (159) - name, display_name, vendor, category
-- Standard (123) - name, display_name, organization, domain
-- Methodology (30) - name, display_name
-- Industry (18) - name, display_name, regulated
-
-### Reference Data
-- Definition (134) - term, definition, url, term_id
-
-### Media
-- Image (163) - url, alt_text, context, source_article_id
-- Video (1) - title, url, platform, video_id, embed_url
-- Webinar (38) - title, url, description, thumbnail_url
-
-## Key Relationships
-- (Chunk)-[:FROM_ARTICLE]->(Article) - Chunk belongs to article
-- (Chunk)-[:NEXT_CHUNK]->(Chunk) - Sequential chunk ordering
-- (Entity)-[:MENTIONED_IN]->(Chunk) - Entity mentioned in chunk (Entity points TO Chunk)
-- (Article)-[:HAS_IMAGE]->(Image) - Article contains image
-- (Article)-[:HAS_VIDEO]->(Video) - Article contains video
-- (Article)-[:HAS_WEBINAR]->(Webinar) - Article references webinar
-- (Article)-[:REFERENCES]->(Article) - Cross-references between articles
-- (Chapter)-[:CONTAINS]->(Article) - Chapter contains articles
-- (Concept)-[:ADDRESSES]->(Challenge) - Concept addresses challenge
-- (Concept)-[:REQUIRES]->(Concept|Artifact) - Dependencies
-- (Concept)-[:COMPONENT_OF]->(Concept) - Part-of relationships
-- (Concept)-[:RELATED_TO]->(Concept) - General relationships
-- (Concept)-[:ALTERNATIVE_TO]->(Concept) - Alternative approaches
-- (Concept)-[:PREREQUISITE_FOR]->(Concept) - Prerequisites
-- (Standard)-[:DEFINES]->(Concept|Artifact) - Standard defines entities
-- (Standard)-[:APPLIES_TO]->(Industry) - Standard applies to industry
-- (Bestpractice)-[:APPLIES_TO]->(Processstage) - Best practice for stage
-- (Role)-[:PRODUCES]->(Artifact) - Role produces artifacts
-- (Role)-[:USED_BY]->(Artifact|Tool) - Role uses tools/artifacts
-- (Tool)-[:ADDRESSES]->(Challenge) - Tool addresses challenges
-
-Few-shot Examples:
-{examples}
-
-IMPORTANT RULES:
-1. Return ONLY the Cypher query, no explanations
-2. Use parameterized queries when possible (e.g., $name, $limit)
-3. Always limit results (default LIMIT 10) to prevent large result sets
-4. Use toLower() for case-insensitive string matching
-5. Return meaningful aliases (AS column_name)
-6. Never use DELETE, MERGE, CREATE, or SET - only read queries
-7. Remember: MENTIONED_IN direction is Entity -> Chunk, not Chunk -> Entity
-8. Use FROM_ARTICLE to get from Chunk to Article, not HAS_CHUNK
-9. Prefer display_name for human-readable output
-"""
-
 
 @traceable(name="generate_cypher", run_type="llm")
 async def generate_cypher(
@@ -177,6 +43,11 @@ async def generate_cypher(
     question: str,
 ) -> str:
     """Generate a Cypher query from a natural language question.
+
+    The prompt is fetched from the centralized catalog, enabling:
+    - Version control via LangSmith Hub
+    - A/B testing between prompt variants
+    - Performance monitoring and evaluation
 
     Args:
         config: Application configuration.
@@ -212,23 +83,23 @@ async def generate_cypher(
         logger.warning("Failed to get schema: %s", e)
         schema_info = "Schema information unavailable"
 
+    # Get prompt from catalog (uses cache if available)
+    prompt_template = get_prompt_sync(PromptName.TEXT2CYPHER)
+
     llm = ChatOpenAI(
         model=config.chat_model,
         temperature=0,
         api_key=config.openai_api_key,
     )
 
-    system_message = SystemMessage(
-        content=SYSTEM_PROMPT.format(
-            schema=schema_info,
-            examples=FEW_SHOT_EXAMPLES,
-        )
-    )
+    # Use the prompt template from the catalog
+    chain = prompt_template | llm | StrOutputParser()
 
-    human_message = HumanMessage(content=f"Generate a Cypher query for this question: {question}")
-
-    chain = llm | StrOutputParser()
-    cypher = await chain.ainvoke([system_message, human_message])
+    cypher = await chain.ainvoke({
+        "schema": schema_info,
+        "examples": TEXT2CYPHER_EXAMPLES,
+        "question": question,
+    })
 
     # Clean up the response
     cypher = cypher.strip()
@@ -301,3 +172,6 @@ async def text2cypher_query(
                 response["row_count"] = 0
 
     return response
+
+
+__all__ = ["generate_cypher", "text2cypher_query"]

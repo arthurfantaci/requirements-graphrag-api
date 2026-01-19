@@ -3,6 +3,9 @@
 Combines retrieval results with LLM generation to produce
 grounded answers with citations.
 
+This module uses the centralized prompt catalog for prompt management,
+enabling version control, A/B testing, and monitoring via LangSmith Hub.
+
 Updated Data Model (2026-01):
 - Uses VectorRetriever and Driver instead of Neo4jGraph/Neo4jVector
 """
@@ -12,13 +15,13 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, Final
 
-from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
 
 from jama_mcp_server_graphrag.core.definitions import search_terms
 from jama_mcp_server_graphrag.core.retrieval import graph_enriched_search
 from jama_mcp_server_graphrag.observability import traceable
+from jama_mcp_server_graphrag.prompts import PromptName, get_prompt_sync
 
 if TYPE_CHECKING:
     from neo4j import Driver
@@ -29,25 +32,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 DEFINITION_RELEVANCE_THRESHOLD: Final[float] = 0.5
-
-RAG_SYSTEM_PROMPT: Final[str] = """You are a requirements management expert assistant.
-Your knowledge comes from Jama Software's "Essential Guide to Requirements Management
-and Traceability".
-
-INSTRUCTIONS:
-1. Answer questions based ONLY on the provided context
-2. If the context doesn't contain enough information, say so
-3. Cite your sources by mentioning article titles
-4. Be concise but comprehensive
-5. Use bullet points for lists
-6. Highlight key terms and concepts
-
-CONTEXT:
-{context}
-
-RELATED ENTITIES:
-{entities}
-"""
 
 
 @traceable(name="generate_answer", run_type="chain")
@@ -61,6 +45,11 @@ async def generate_answer(  # noqa: PLR0913, PLR0912
     include_entities: bool = True,
 ) -> dict[str, Any]:
     """Generate an answer using RAG (Retrieval-Augmented Generation).
+
+    The prompt is fetched from the centralized catalog, enabling:
+    - Version control via LangSmith Hub
+    - A/B testing between prompt variants
+    - Performance monitoring and evaluation
 
     Args:
         config: Application configuration.
@@ -157,6 +146,9 @@ async def generate_answer(  # noqa: PLR0913, PLR0912
     context = "\n".join(context_parts) if context_parts else "No relevant context found."
     entities_str = ", ".join(sorted(all_entities)[:20]) if all_entities else "None identified"
 
+    # Get prompt from catalog (uses cache if available)
+    prompt_template = get_prompt_sync(PromptName.RAG_GENERATION)
+
     # Generate answer with LLM
     llm = ChatOpenAI(
         model=config.chat_model,
@@ -164,17 +156,14 @@ async def generate_answer(  # noqa: PLR0913, PLR0912
         api_key=config.openai_api_key,
     )
 
-    system_message = SystemMessage(
-        content=RAG_SYSTEM_PROMPT.format(
-            context=context,
-            entities=entities_str,
-        )
-    )
+    # Use the prompt template from the catalog
+    chain = prompt_template | llm | StrOutputParser()
 
-    human_message = HumanMessage(content=question)
-
-    chain = llm | StrOutputParser()
-    answer = await chain.ainvoke([system_message, human_message])
+    answer = await chain.ainvoke({
+        "context": context,
+        "entities": entities_str,
+        "question": question,
+    })
 
     response = {
         "question": question,
@@ -231,3 +220,6 @@ async def chat(  # noqa: PLR0913
         retrieval_limit=max_sources,
         include_entities=True,
     )
+
+
+__all__ = ["chat", "generate_answer"]

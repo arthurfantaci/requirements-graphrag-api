@@ -7,11 +7,12 @@ Updated Data Model (2026-01):
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from jama_mcp_server_graphrag.core.text2cypher import generate_cypher, text2cypher_query
+from tests.conftest import create_llm_mock
 
 # =============================================================================
 # Mock Helpers
@@ -102,11 +103,9 @@ class TestGenerateCypher:
     ) -> None:
         """Test that generate_cypher returns a Cypher query string."""
         with patch("jama_mcp_server_graphrag.core.text2cypher.ChatOpenAI") as mock_llm_class:
-            # Setup mock LLM chain
-            mock_llm = MagicMock()
-            mock_llm.__or__ = MagicMock(return_value=mock_llm)
-            mock_llm.ainvoke = AsyncMock(return_value="MATCH (n:Entity) RETURN count(n) AS count")
-            mock_llm_class.return_value = mock_llm
+            mock_llm_class.return_value = create_llm_mock(
+                "MATCH (n:Entity) RETURN count(n) AS count"
+            )
 
             result = await generate_cypher(mock_config, mock_driver, "How many entities are there?")
 
@@ -119,10 +118,7 @@ class TestGenerateCypher:
     ) -> None:
         """Test that markdown code blocks are stripped from response."""
         with patch("jama_mcp_server_graphrag.core.text2cypher.ChatOpenAI") as mock_llm_class:
-            mock_llm = MagicMock()
-            mock_llm.__or__ = MagicMock(return_value=mock_llm)
-            mock_llm.ainvoke = AsyncMock(return_value="```cypher\nMATCH (n) RETURN n\n```")
-            mock_llm_class.return_value = mock_llm
+            mock_llm_class.return_value = create_llm_mock("```cypher\nMATCH (n) RETURN n\n```")
 
             result = await generate_cypher(mock_config, mock_driver, "Get all nodes")
 
