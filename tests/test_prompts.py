@@ -108,8 +108,7 @@ class TestPromptDefinitions:
             template_vars = set(definition.template.input_variables)
             meta_vars = set(definition.metadata.input_variables)
             assert template_vars == meta_vars, (
-                f"Variable mismatch for {name}: "
-                f"template={template_vars}, metadata={meta_vars}"
+                f"Variable mismatch for {name}: template={template_vars}, metadata={meta_vars}"
             )
 
     def test_text2cypher_examples_not_empty(self) -> None:
@@ -224,10 +223,12 @@ class TestCatalogHubIntegration:
     @pytest.mark.asyncio
     async def test_hub_pull_success(self, catalog_with_hub: PromptCatalog) -> None:
         """Hub pull should update cache on success."""
-        mock_template = ChatPromptTemplate.from_messages([
-            ("system", "Mock hub prompt"),
-            ("human", "{question}"),
-        ])
+        mock_template = ChatPromptTemplate.from_messages(
+            [
+                ("system", "Mock hub prompt"),
+                ("human", "{question}"),
+            ]
+        )
 
         # Mock asyncio.to_thread which wraps the hub.pull call
         with patch("jama_mcp_server_graphrag.prompts.catalog.asyncio.to_thread") as mock_thread:
@@ -240,9 +241,7 @@ class TestCatalogHubIntegration:
         # Note: In this test, due to mocking, source might vary
 
     @pytest.mark.asyncio
-    async def test_hub_pull_fallback_on_error(
-        self, catalog_with_hub: PromptCatalog
-    ) -> None:
+    async def test_hub_pull_fallback_on_error(self, catalog_with_hub: PromptCatalog) -> None:
         """Hub errors should fall back to local definitions."""
         with patch("jama_mcp_server_graphrag.prompts.catalog.asyncio.to_thread") as mock_thread:
             mock_thread.side_effect = Exception("Hub unavailable")

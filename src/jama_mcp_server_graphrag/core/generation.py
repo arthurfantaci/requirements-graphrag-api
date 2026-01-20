@@ -159,11 +159,13 @@ async def generate_answer(  # noqa: PLR0913, PLR0912
     # Use the prompt template from the catalog
     chain = prompt_template | llm | StrOutputParser()
 
-    answer = await chain.ainvoke({
-        "context": context,
-        "entities": entities_str,
-        "question": question,
-    })
+    answer = await chain.ainvoke(
+        {
+            "context": context,
+            "entities": entities_str,
+            "question": question,
+        }
+    )
 
     response = {
         "question": question,

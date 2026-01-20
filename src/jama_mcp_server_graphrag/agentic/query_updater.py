@@ -70,10 +70,12 @@ async def update_query(
     # Use the prompt template from the catalog
     chain = prompt_template | llm | StrOutputParser()
 
-    updated_query = await chain.ainvoke({
-        "previous_answers": answers_text,
-        "question": question,
-    })
+    updated_query = await chain.ainvoke(
+        {
+            "previous_answers": answers_text,
+            "question": question,
+        }
+    )
 
     updated_query = updated_query.strip()
     logger.info("Updated query: '%s'", updated_query[:50])

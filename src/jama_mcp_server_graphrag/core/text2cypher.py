@@ -95,11 +95,13 @@ async def generate_cypher(
     # Use the prompt template from the catalog
     chain = prompt_template | llm | StrOutputParser()
 
-    cypher = await chain.ainvoke({
-        "schema": schema_info,
-        "examples": TEXT2CYPHER_EXAMPLES,
-        "question": question,
-    })
+    cypher = await chain.ainvoke(
+        {
+            "schema": schema_info,
+            "examples": TEXT2CYPHER_EXAMPLES,
+            "question": question,
+        }
+    )
 
     # Clean up the response
     cypher = cypher.strip()

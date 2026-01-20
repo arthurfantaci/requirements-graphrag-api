@@ -55,6 +55,7 @@ def llm_mock_factory() -> Callable[[str], MagicMock]:
     """
     return create_llm_mock
 
+
 # Test credentials - not real secrets
 _TEST_PASSWORD = "test-password"  # noqa: S105
 _TEST_API_KEY = "sk-test-key"

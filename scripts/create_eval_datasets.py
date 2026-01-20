@@ -290,8 +290,7 @@ and non-functional requirements.""",
         "inputs": {
             "context": """Quality assurance is important in software development.""",
             "question": (
-                "What are the specific requirements for medical device "
-                "software under IEC 62304?"
+                "What are the specific requirements for medical device software under IEC 62304?"
             ),
         },
         "outputs": {
@@ -407,8 +406,7 @@ Cypher: MATCH (a:Article) WHERE toLower(a.title) CONTAINS 'traceability' RETURN 
         },
         "outputs": {
             "expected_cypher": (
-                "MATCH (a:Article) "
-                "WHERE toLower(a.title) CONTAINS 'iso 26262' RETURN a"
+                "MATCH (a:Article) WHERE toLower(a.title) CONTAINS 'iso 26262' RETURN a"
             ),
             "expected_patterns": ["MATCH", "Article", "WHERE", "CONTAINS", "iso 26262"],
         },
@@ -435,8 +433,7 @@ WHERE a.title = 'Article Title' RETURN DISTINCT e.name""",
         },
         "outputs": {
             "expected_cypher": (
-                "MATCH (e:Entity)-[:MENTIONED_IN]->(c:Chunk)"
-                "-[:FROM_ARTICLE]->(a:Article)"
+                "MATCH (e:Entity)-[:MENTIONED_IN]->(c:Chunk)-[:FROM_ARTICLE]->(a:Article)"
             ),
             "expected_patterns": [
                 "MATCH",
@@ -456,8 +453,7 @@ WHERE a.title = 'Article Title' RETURN DISTINCT e.name""",
         },
         "outputs": {
             "expected_cypher": (
-                "MATCH (d:Definition)-[:MENTIONED_IN]->(c:Chunk)"
-                "-[:FROM_ARTICLE]->(a:Article)"
+                "MATCH (d:Definition)-[:MENTIONED_IN]->(c:Chunk)-[:FROM_ARTICLE]->(a:Article)"
             ),
             "expected_patterns": ["Definition", "MENTIONED_IN", "FROM_ARTICLE", "Article"],
         },
@@ -496,8 +492,7 @@ RETURN a.title, count(DISTINCT e) AS entity_count ORDER BY entity_count DESC""",
         },
         "outputs": {
             "expected_cypher": (
-                "MATCH (d:Definition) "
-                "WHERE toLower(d.definition) CONTAINS 'requirement'"
+                "MATCH (d:Definition) WHERE toLower(d.definition) CONTAINS 'requirement'"
             ),
             "expected_patterns": ["Definition", "WHERE", "CONTAINS", "requirement"],
         },
@@ -620,9 +615,7 @@ def main(dry_run: bool = False) -> int:
 
             client = LangSmithClient()
         except ImportError:
-            logger.error(
-                "langsmith package not installed. Run: pip install langsmith"
-            )
+            logger.error("langsmith package not installed. Run: pip install langsmith")
             return 1
 
     logger.info("=" * 60)
