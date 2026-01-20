@@ -210,11 +210,11 @@ class TestPromptCatalog:
         _ = catalog.get_prompt_sync(PromptName.ROUTER)
 
         # Cache should be valid initially (testing internal method)
-        assert catalog._is_cache_valid("graphrag-router:development")  # noqa: SLF001
+        assert catalog._is_cache_valid("graphrag-router:development")
 
         # Wait for expiration
         time.sleep(1.1)
-        assert not catalog._is_cache_valid("graphrag-router:development")  # noqa: SLF001
+        assert not catalog._is_cache_valid("graphrag-router:development")
 
 
 class TestCatalogHubIntegration:
