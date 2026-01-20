@@ -1,379 +1,269 @@
-# Claude Code Handoff: Prompt Catalog + LangSmith Integration
+# Claude Code Handoff: Evaluation & Quality Assurance
+
+## Quick Start for Claude Code
+
+```bash
+# Current state
+git branch  # Should show: feature/phase2-domain-metrics
+git log --oneline -3  # Verify Phase 1 merged to main
+```
 
 ## Project Context
-This is the `jama-mcp-server-graphrag` project - a GraphRAG MCP Server for Requirements Management. We're implementing a centralized Prompt Catalog system with **full LangSmith integration** for prompt versioning, evaluation, tracing, and production monitoring.
 
-## Learning Objectives (From Project Instructions)
-- **Prompt Engineering & Optimization**: Fine-tune prompts, iterate on designs, leverage LangSmith Hub for version control
-- **Evaluation & Quality Assurance**: Build evaluation pipelines, benchmark agent behavior with custom metrics
-- **Production Operations**: Implement comprehensive tracing, monitoring, and observability for LLM applications
+**Project:** jama-mcp-server-graphrag  
+**Goal:** Production-ready GraphRAG MCP Server for requirements management  
+**Current Focus:** Evaluation & Quality Assurance competencies (Phases 2-6)
 
-## Current State
+## Completed Work
 
-### ✅ Completed (Files Created)
+### Phase 1: Benchmark Suite ✅ MERGED (PR #3)
+
 ```
-src/jama_mcp_server_graphrag/prompts/
-├── __init__.py          # Package exports
-├── definitions.py       # 6 prompt templates with metadata
-├── catalog.py           # LangSmith Hub integration + caching
-├── cli.py               # CLI for push/pull/list/validate
-└── evaluation.py        # Evaluators + A/B testing
+tests/benchmark/
+├── __init__.py           # Package exports
+├── schemas.py            # BenchmarkExample, QueryCategory, DifficultyLevel, ExpectedRouting
+├── templates.py          # Query patterns + 25 domain concepts
+├── generator.py          # Programmatic dataset generation (250+ examples)
+├── golden_dataset.py     # 30 hand-curated critical examples
+├── conftest.py           # Pytest fixtures, MetricAssertions helper
+├── test_retrieval_accuracy.py   # Precision@K, Recall@K, MRR (20 tests)
+├── test_answer_quality.py       # Faithfulness, relevancy (20 tests)
+├── test_agentic_routing.py      # Tool selection accuracy (15 tests)
+└── test_latency_performance.py  # Latency thresholds (15 tests)
 
-tests/
-└── test_prompts.py      # 35+ test cases
+scripts/
+└── generate_benchmark_dataset.py  # CLI for dataset generation
 ```
 
-### ✅ Already Updated (Dependent Modules)
-These modules already import from the new prompts catalog:
-- `src/jama_mcp_server_graphrag/agentic/router.py`
-- `src/jama_mcp_server_graphrag/agentic/critic.py`
-- `src/jama_mcp_server_graphrag/agentic/stepback.py`
-- `src/jama_mcp_server_graphrag/agentic/query_updater.py`
-- `src/jama_mcp_server_graphrag/core/generation.py`
-- `src/jama_mcp_server_graphrag/core/text2cypher.py`
-
----
-
-## Remaining Tasks
-
-### Phase 1: Verify Local Implementation
-
-#### 1.1 Run and Fix Tests
+**Key Commands:**
 ```bash
-uv run pytest tests/test_prompts.py -v --tb=short
-```
-- Fix any import errors or test failures
-- Ensure all tests pass
-
-#### 1.2 Linting and Formatting
-```bash
-uv run ruff check src/jama_mcp_server_graphrag/prompts/ --fix
-uv run ruff format src/jama_mcp_server_graphrag/prompts/
-```
-
-#### 1.3 Validate CLI
-```bash
-uv run python -m jama_mcp_server_graphrag.prompts.cli list
-uv run python -m jama_mcp_server_graphrag.prompts.cli validate
-```
-
-#### 1.4 Run Full Test Suite
-```bash
-uv run pytest -v --tb=short
+uv run pytest tests/benchmark/ -v              # Run all 409 benchmark tests
+uv run python scripts/generate_benchmark_dataset.py --stats-only  # View dataset stats
 ```
 
 ---
 
-### Phase 2: LangSmith Hub Setup (Prompt Versioning)
+## Phase 2: Custom Domain Metrics (CURRENT)
 
-#### 2.1 Configure LangSmith Environment
-Create or update `.env` with LangSmith credentials:
-```bash
-# LangSmith Configuration
-LANGSMITH_API_KEY=<your-langsmith-api-key>
-LANGSMITH_PROJECT=jama-graphrag
-LANGSMITH_ENDPOINT=https://api.smith.langchain.com
-LANGSMITH_ORG=<your-organization-name>
+### Objective
+Implement 5 domain-specific evaluation metrics for requirements management content.
 
-# Prompt Catalog Settings
-PROMPT_ENVIRONMENT=development
+### Deliverables
+
+```
+src/jama_mcp_server_graphrag/evaluation/
+├── metrics.py           # EXISTS - RAGAS metrics
+└── domain_metrics.py    # NEW - Domain-specific metrics
 ```
 
-#### 2.2 Push All Prompts to LangSmith Hub
-```bash
-# Push all 6 prompts to Hub
-uv run python -m jama_mcp_server_graphrag.prompts.cli push --all
-```
+### Metrics to Implement
 
-This will create the following prompts in your Hub:
-- `{org}/graphrag-router`
-- `{org}/graphrag-critic`
-- `{org}/graphrag-stepback`
-- `{org}/graphrag-query-updater`
-- `{org}/graphrag-rag-generation`
-- `{org}/graphrag-text2cypher`
+| Metric | Description | Formula | Use Case |
+|--------|-------------|---------|----------|
+| **Citation Accuracy** | Standards correctly cited | `correct_citations / total_citations` | Verify ISO 26262, IEC 62304 refs |
+| **Traceability Coverage** | Links mentioned when relevant | `traced_refs / expected_refs` | Ensure traceability concepts included |
+| **Technical Precision** | Domain terms used correctly | `correct_terms / total_terms` | Validate ASIL, FMEA, V-model usage |
+| **Completeness Score** | All aspects of query addressed | `aspects_covered / aspects_asked` | Multi-part question coverage |
+| **Regulatory Alignment** | Standard refs are accurate | `aligned_refs / regulatory_refs` | FDA, ISO compliance accuracy |
 
-#### 2.3 Verify Prompts in LangSmith Dashboard
-1. Navigate to https://smith.langchain.com
-2. Go to Hub → Your Organization
-3. Verify all 6 prompts are visible with:
-   - Correct descriptions
-   - Input variables
-   - Tags (routing, agentic, rag, etc.)
+### Implementation Pattern
 
-#### 2.4 Create Environment Tags
-In LangSmith Hub, tag prompts for different environments:
-- `development` - Active development/testing
-- `staging` - Pre-production validation
-- `production` - Production-ready versions
-
----
-
-### Phase 3: LangSmith Tracing Integration
-
-#### 3.1 Verify Tracing Configuration
-Check `src/jama_mcp_server_graphrag/observability.py` has LangSmith tracing enabled:
+Follow existing `metrics.py` pattern:
 ```python
-from langsmith import traceable
+# src/jama_mcp_server_graphrag/evaluation/domain_metrics.py
+from __future__ import annotations
 
-# Ensure LANGSMITH_TRACING=true in environment
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from jama_mcp_server_graphrag.config import AppConfig
+
+@dataclass(frozen=True)
+class DomainMetrics:
+    """Domain-specific evaluation metrics."""
+    citation_accuracy: float
+    traceability_coverage: float
+    technical_precision: float
+    completeness_score: float
+    regulatory_alignment: float
+
+async def compute_citation_accuracy(
+    config: AppConfig,
+    answer: str,
+    expected_standards: list[str],
+) -> float:
+    """Compute citation accuracy for standards references."""
+    ...
 ```
 
-#### 3.2 Update Config for Tracing
-Add to `src/jama_mcp_server_graphrag/config.py`:
-```python
-# LangSmith Settings
-langsmith_api_key: str | None = None
-langsmith_project: str = "jama-graphrag"
-langsmith_tracing: bool = True
+### Tests to Add
 
-# Prompt Catalog Settings
-langsmith_org: str = "jama-graphrag"
-prompt_environment: str = "development"
-prompt_cache_ttl: int = 300
 ```
-
-#### 3.3 Add Prompt Version to Traces
-Update the catalog to log prompt source/version in traces. In `catalog.py`, ensure traces include:
-- Prompt name
-- Prompt version
-- Source (hub vs local)
-- Environment
+tests/test_evaluation/
+└── test_domain_metrics.py  # NEW - Tests for domain metrics
+```
 
 ---
 
-### Phase 4: Evaluation Datasets
+## Phase 3: CI/CD Evaluation Integration
 
-#### 4.1 Create Evaluation Datasets in LangSmith
-Create datasets for each prompt type with representative examples:
+### Objective
+Add tiered evaluation to CI/CD pipeline.
 
-**Router Evaluation Dataset** (`router-eval-dataset`):
-```json
-{
-  "inputs": {"tools": "...", "question": "What is requirements traceability?"},
-  "outputs": {"expected_tools": ["graphrag_vector_search"]}
+### CI Tiers
+
+| Tier | Trigger | Scope | Time | Cost |
+|------|---------|-------|------|------|
+| 1 | Every PR | Unit tests, prompt validation | ~1 min | $0 |
+| 2 | Merge to main | Smoke eval (10 queries) | ~5 min | ~$0.50 |
+| 3 | Release tag (v*) | Full benchmark (250 queries) | ~20 min | ~$15 |
+| 4 | Nightly | Deep eval + A/B tests | ~45 min | ~$20 |
+
+### Deliverables
+
+```
+.github/workflows/
+├── ci.yml              # MODIFY - Add Tier 1-2
+└── evaluation.yml      # NEW - Tier 3-4
+
+scripts/
+└── ci_evaluation.py    # NEW - CI-friendly evaluation runner
+```
+
+---
+
+## Phase 4: MLflow Comparison
+
+### Objective
+Compare LangSmith vs MLflow across 5 dimensions.
+
+### Deliverables
+
+```
+src/jama_mcp_server_graphrag/
+├── mlflow_tracking.py           # NEW - MLflow integration
+└── observability_comparison.py  # NEW - Side-by-side comparison
+
+docs/
+└── PLATFORM_COMPARISON.md       # NEW - Detailed comparison report
+
+scripts/
+└── compare_platforms.py         # NEW - Run comparison experiments
+```
+
+### Comparison Dimensions
+1. Setup complexity
+2. Evaluation features
+3. Visualization capabilities
+4. Prompt versioning
+5. Self-hosting options
+
+---
+
+## Phase 5: Cost & Token Tracking
+
+### Objective
+Track and budget token usage per query.
+
+### Cost Thresholds (from planning)
+
+```python
+COST_THRESHOLDS = {
+    "query_budget_target": 0.015,      # Target per query
+    "query_budget_warning": 0.025,     # Warning threshold
+    "query_budget_alert": 0.040,       # Alert threshold
+    "query_budget_hard_limit": 0.100,  # Hard limit
+    "smoke_test_budget": 0.50,         # CI Tier 2
+    "benchmark_budget": 5.00,          # CI Tier 3
+    "full_eval_budget": 15.00,         # CI Tier 4
 }
 ```
 
-**Critic Evaluation Dataset** (`critic-eval-dataset`):
-```json
-{
-  "inputs": {"context": "...", "question": "..."},
-  "outputs": {"expected_answerable": true, "expected_completeness": "complete"}
-}
+### Deliverables
+
+```
+src/jama_mcp_server_graphrag/
+├── token_counter.py              # NEW - Token counting utilities
+└── evaluation/
+    └── cost_metrics.py           # NEW - Cost tracking metrics
 ```
 
-**Text2Cypher Evaluation Dataset** (`text2cypher-eval-dataset`):
-```json
-{
-  "inputs": {"schema": "...", "examples": "...", "question": "How many articles?"},
-  "outputs": {"expected_cypher": "MATCH (a:Article) RETURN count(a)"}
-}
+---
+
+## Phase 6: Human Feedback Loop
+
+### Objective
+Enable human annotation workflow for continuous improvement.
+
+### Workflow
+1. Export low-confidence runs to LangSmith annotation queues
+2. Human reviewers annotate (correct/incorrect, improvements)
+3. Import annotations as new evaluation examples
+4. Re-run evaluations to measure improvement
+
+### Deliverables
+
+```
+scripts/
+├── export_for_annotation.py     # NEW - Export to annotation queue
+├── import_feedback.py           # NEW - Import human annotations
+└── update_datasets.py           # NEW - Update golden dataset
+
+docs/
+└── FEEDBACK_WORKFLOW.md         # NEW - Process documentation
 ```
 
-#### 4.2 Script to Create Datasets
-Create `scripts/create_eval_datasets.py`:
-```python
-"""Create evaluation datasets in LangSmith."""
-from langsmith import Client
+---
 
-client = Client()
+## Key Files to Reference
 
-# Router dataset
-router_examples = [
-    {
-        "inputs": {
-            "tools": "- graphrag_vector_search: Basic semantic search...",
-            "question": "What is requirements traceability?"
-        },
-        "outputs": {
-            "expected_tools": ["graphrag_vector_search"],
-            "expected_reasoning": "General concept lookup"
-        }
-    },
-    # Add 10-20 more examples covering different routing scenarios
-]
+| File | Purpose |
+|------|---------|
+| `SPECIFICATION.md` | Full project specification |
+| `CLAUDE.md` | Claude-specific instructions |
+| `EVALUATION_HANDOFF.md` | Phase tracking (update as you go) |
+| `src/jama_mcp_server_graphrag/evaluation/metrics.py` | Existing RAGAS metrics pattern |
+| `tests/benchmark/schemas.py` | BenchmarkExample schema |
+| `tests/benchmark/golden_dataset.py` | 30 curated examples with expected_standards |
 
-dataset = client.create_dataset("router-eval-dataset")
-for example in router_examples:
-    client.create_example(
-        inputs=example["inputs"],
-        outputs=example["outputs"],
-        dataset_id=dataset.id
-    )
-```
+---
 
-#### 4.3 Run Evaluations
+## Coding Standards Reminder
+
+1. **Type Hints**: `from __future__ import annotations` + full typing
+2. **Docstrings**: Google-style with Args, Returns, Raises
+3. **Structured Logging**: Module-level loggers with `structlog`
+4. **Error Handling**: Custom exceptions with chaining
+5. **Testing**: pytest fixtures, mocks, ≥80% coverage target
+6. **Linting**: `uv run ruff check .` before commits
+
+---
+
+## Git Workflow
+
 ```bash
-# Evaluate router prompt against dataset
-uv run python -c "
-import asyncio
-from jama_mcp_server_graphrag.prompts.evaluation import evaluate_prompt
-from jama_mcp_server_graphrag.prompts import PromptName
+# Current branch
+git checkout feature/phase2-domain-metrics
 
-result = asyncio.run(evaluate_prompt(PromptName.ROUTER, 'router-eval-dataset'))
-print(f'Scores: {result.scores}')
-"
+# Conventional commits
+git commit -m "feat(eval): add citation accuracy metric"
+git commit -m "test(eval): add domain metrics unit tests"
+
+# Push and create PR
+git push -u origin feature/phase2-domain-metrics
+gh pr create --title "feat(eval): Add custom domain metrics" --body "..."
+
+# After merge
+git checkout main && git pull && git branch -d feature/phase2-domain-metrics
 ```
 
 ---
 
-### Phase 5: Prompt Iteration Workflow
+## Ready to Start Phase 2
 
-#### 5.1 Test Prompts in LangSmith Playground
-1. Go to LangSmith Hub → Select a prompt
-2. Click "Playground"
-3. Test with different inputs
-4. Compare model outputs (GPT-4, Claude, etc.)
-
-#### 5.2 Create Prompt Variants
-For A/B testing, create variants in Hub:
-- `graphrag-router` (baseline v1.0.0)
-- `graphrag-router-v2` (candidate with improvements)
-
-#### 5.3 Run A/B Comparison
-```python
-from jama_mcp_server_graphrag.prompts.evaluation import compare_prompts
-from jama_mcp_server_graphrag.prompts import PromptName
-
-result = await compare_prompts(
-    baseline=PromptName.ROUTER,
-    candidate="your-org/graphrag-router-v2",  # Hub path
-    dataset_name="router-eval-dataset"
-)
-print(f"Winner: {result.winner}")
-print(f"Improvements: {result.improvements}")
-```
-
-#### 5.4 Promote Winning Prompts
-When a variant wins:
-1. Tag it as `production` in Hub
-2. Update `PROMPT_ENVIRONMENT=production` in prod config
-3. The catalog will automatically pull the production-tagged version
-
----
-
-### Phase 6: Production Monitoring
-
-#### 6.1 Set Up Monitoring Dashboard
-In LangSmith:
-1. Create a project for production traces
-2. Set up alerts for:
-   - High latency (> 5s)
-   - Error rate (> 1%)
-   - Token usage anomalies
-
-#### 6.2 Export Traces for Regression Testing
-```python
-from langsmith import Client
-
-client = Client()
-
-# Export recent production traces as evaluation dataset
-runs = client.list_runs(
-    project_name="jama-graphrag-prod",
-    filter='eq(status, "success")',
-    limit=100
-)
-
-# Convert to dataset for regression testing
-client.create_dataset_from_runs(
-    runs=[r.id for r in runs],
-    dataset_name="prod-regression-dataset"
-)
-```
-
-#### 6.3 Annotation Queues for Human Feedback
-Set up annotation queues for:
-- Low-confidence answers (from critic)
-- Failed routing decisions
-- User-reported issues
-
----
-
-## LangSmith Integration Checklist
-
-| Task | Status | Notes |
-|------|--------|-------|
-| Push prompts to Hub | ✅ | All 6 prompts |
-| Verify prompts in dashboard | ✅ | Check descriptions, variables |
-| Create environment tags | ✅ | dev/staging/prod |
-| Enable tracing in config | ✅ | LANGSMITH_TRACING=true |
-| Create router eval dataset | ✅ | 14 examples |
-| Create critic eval dataset | ✅ | 10 examples |
-| Create text2cypher eval dataset | ✅ | 11 examples |
-| Run baseline evaluations | ✅ | Record initial scores |
-| Test Playground workflow | ✅ | Interactive prompt testing |
-| Set up production project | ✅ | Separate from dev |
-| Configure monitoring alerts | ✅ | Latency, errors |
-
----
-
-## Key Files Reference
-
-### For Prompt Hub Operations
-- `prompts/cli.py` - Push/pull/list commands
-- `prompts/catalog.py` - Hub integration logic
-
-### For Evaluation
-- `prompts/evaluation.py` - Evaluators and A/B testing
-- `prompts/definitions.py` - Evaluation criteria per prompt
-
-### For Tracing
-- `observability.py` - @traceable decorator usage
-- All agentic/*.py files - Already instrumented
-
----
-
-## Success Criteria
-
-### Phase 1 (Local) ✅
-- [x] All `test_prompts.py` tests pass
-- [x] Full test suite passes (242 tests)
-- [x] CLI commands work
-
-### Phase 2 (Hub) ✅
-- [x] All 6 prompts visible in LangSmith Hub
-- [x] Prompts have correct metadata and tags
-- [x] Can pull prompts from Hub in code
-
-### Phase 3 (Tracing) ✅
-- [x] Traces appear in LangSmith dashboard
-- [x] Traces include prompt version/source
-
-### Phase 4 (Evaluation) ✅
-- [x] 3 evaluation datasets created (router, critic, text2cypher)
-- [x] 35 total evaluation examples
-- [x] Baseline evaluation scores recorded
-
-### Phase 5 (Iteration) ✅
-- [x] Successfully ran A/B test between variants
-- [x] Documented prompt improvement workflow (docs/PROMPT_ITERATION_WORKFLOW.md)
-
-### Phase 6 (Production) ✅
-- [x] Production monitoring guide created (docs/PRODUCTION_MONITORING.md)
-- [x] Monitoring alerts configured (Latency via webhook.site)
-- [x] Annotation queues created (low-confidence-review, failed-routing-review, qa-random-sample)
-
----
-
-## Completion Summary
-
-**All 6 phases completed successfully on 2026-01-19**
-
-| Phase | Description | Status |
-|-------|-------------|--------|
-| Phase 1 | Local Implementation | ✅ Complete |
-| Phase 2 | LangSmith Hub Setup | ✅ Complete |
-| Phase 3 | Tracing Integration | ✅ Complete |
-| Phase 4 | Evaluation Datasets | ✅ Complete |
-| Phase 5 | Prompt Iteration Workflow | ✅ Complete |
-| Phase 6 | Production Monitoring | ✅ Complete |
-
-### Key Deliverables
-- 6 prompts in LangSmith Hub (Norfolk AI|BI organization)
-- 3 evaluation datasets with 35 examples
-- A/B testing script (`scripts/run_prompt_comparison.py`)
-- Production monitoring documentation
-- Latency alert configured
-- 3 annotation queues for human review
+Begin with:
+1. Read `src/jama_mcp_server_graphrag/evaluation/metrics.py` for pattern
+2. Create `src/jama_mcp_server_graphrag/evaluation/domain_metrics.py`
+3. Create `tests/test_evaluation/test_domain_metrics.py`
+4. Run tests: `uv run pytest tests/test_evaluation/test_domain_metrics.py -v`
