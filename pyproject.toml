@@ -59,6 +59,9 @@ dev = [
     "pre-commit>=3.5.0",
     "ragas>=0.1.0",
 ]
+mlflow = [
+    "mlflow>=2.10.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/yourusername/jama-mcp-server-graphrag"
@@ -154,6 +157,9 @@ convention = "google"
     "PT018",   # Allow composite assertions in tests
     "SIM102",  # Allow nested if for clarity
     "SIM110",  # Allow for loops instead of all()
+    "SIM117",  # Allow nested with statements in tests
+    "SLF001",  # Allow private member access in tests
+    "TRY301",  # Allow raise in try block for testing exceptions
     "PLC0415", # Allow imports not at top level in tests
 ]
 "scripts/**/*.py" = [
