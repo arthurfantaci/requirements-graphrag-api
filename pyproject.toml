@@ -142,10 +142,23 @@ convention = "google"
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = [
     "S101",    # Allow assert in tests
+    "S105",    # Allow hardcoded passwords in test fixtures
+    "S311",    # Allow standard random for test data generation
     "ANN",     # Don't require annotations in tests
     "D",       # Don't require docstrings in tests
     "PLR2004", # Allow magic values in tests
+    "PLR0911", # Allow many return statements in test helpers
+    "PLR0912", # Allow many branches in test helpers
     "ARG",     # Allow unused arguments in tests (common for mocks)
+    "F841",    # Allow unused variables in tests (for documentation)
+    "PT018",   # Allow composite assertions in tests
+    "SIM102",  # Allow nested if for clarity
+    "SIM110",  # Allow for loops instead of all()
+    "PLC0415", # Allow imports not at top level in tests
+]
+"scripts/**/*.py" = [
+    "S311",    # Allow standard random for reproducible data generation
+    "PERF401", # Allow explicit loops for readability
 ]
 
 [tool.ruff.format]
