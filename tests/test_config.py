@@ -23,7 +23,7 @@ class TestAppConfig:
         """Test that valid configuration with secure URI is accepted."""
         assert mock_config.neo4j_uri == "neo4j+s://test.databases.neo4j.io"
         assert mock_config.neo4j_username == "neo4j"
-        assert mock_config.neo4j_password == "test-password"  # noqa: S105
+        assert mock_config.neo4j_password == "test-password"
         assert mock_config.similarity_k == 6
 
     def test_valid_config_with_local_uri(self, mock_local_config):

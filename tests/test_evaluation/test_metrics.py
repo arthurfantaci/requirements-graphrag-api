@@ -16,7 +16,7 @@ from jama_mcp_server_graphrag.evaluation.metrics import (
     compute_faithfulness,
 )
 
-_TEST_PASSWORD = "test"  # noqa: S105
+_TEST_PASSWORD = "test"
 
 
 @pytest.fixture
