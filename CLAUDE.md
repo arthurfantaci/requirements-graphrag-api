@@ -41,19 +41,47 @@ Both interfaces share the same core GraphRAG logic, Neo4j connection, and retrie
 
 ```
 src/jama_mcp_server_graphrag/
-├── server.py          # FastMCP entry point, lifespan handler
-├── api.py             # FastAPI REST endpoints for React frontend
-├── config.py          # Immutable dataclass configuration
-├── exceptions.py      # Custom exception hierarchy
-├── neo4j_client.py    # Neo4j driver best practices wrapper
-├── core/              # Shared GraphRAG logic
-│   ├── retrieval.py   # Vector, hybrid, graph-enriched search
-│   ├── text2cypher.py # Natural language to Cypher
-│   └── generation.py  # Answer generation with citations
-├── tools/             # MCP tool implementations (wrap core/)
-├── routes/            # FastAPI route handlers (wrap core/)
-├── agentic/           # Router, stepback, critic patterns
-└── workflows/         # LangGraph RAG workflows
+├── server.py              # FastMCP entry point with MCP tools
+├── api.py                 # FastAPI REST endpoints for React frontend
+├── config.py              # Immutable dataclass configuration
+├── exceptions.py          # Custom exception hierarchy
+├── neo4j_client.py        # Neo4j driver best practices wrapper
+├── observability.py       # LangSmith tracing integration
+├── mlflow_tracking.py     # MLflow experiment tracking
+├── observability_comparison.py  # Platform comparison utilities
+├── token_counter.py       # Token counting and cost estimation
+├── core/                  # Shared GraphRAG logic
+│   ├── retrieval.py       # Vector, hybrid, graph-enriched search
+│   ├── text2cypher.py     # Natural language to Cypher
+│   ├── generation.py      # Answer generation with citations
+│   ├── definitions.py     # Definition/glossary term lookups
+│   └── standards.py       # Standards reference queries
+├── evaluation/            # Evaluation framework
+│   ├── metrics.py         # RAGAS metrics integration
+│   ├── domain_metrics.py  # Domain-specific metrics (citation, traceability)
+│   ├── cost_metrics.py    # Cost and budget tracking
+│   ├── datasets.py        # Evaluation dataset utilities
+│   └── runner.py          # Evaluation execution runner
+├── prompts/               # Prompt templates and management
+│   ├── catalog.py         # Prompt catalog with versioning
+│   ├── definitions.py     # Definition-related prompts
+│   └── evaluation.py      # Evaluation prompts
+├── routes/                # FastAPI route handlers
+│   ├── chat.py            # Chat/RAG endpoints
+│   ├── search.py          # Search endpoints
+│   ├── definitions.py     # Definition lookups
+│   ├── standards.py       # Standards queries
+│   ├── schema.py          # Schema introspection
+│   └── health.py          # Health checks
+├── agentic/               # Agentic RAG patterns
+│   ├── router.py          # Query routing logic
+│   ├── stepback.py        # Step-back prompting
+│   ├── critic.py          # Answer validation
+│   └── query_updater.py   # Query refinement
+└── workflows/             # LangGraph workflows
+    ├── rag_workflow.py    # Standard RAG workflow
+    ├── agentic_workflow.py # Agentic workflow with routing
+    └── state.py           # Workflow state definitions
 ```
 
 ## Commands
