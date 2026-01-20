@@ -35,7 +35,7 @@ from pathlib import Path
 src_path = Path(__file__).parent.parent / "src"
 sys.path.insert(0, str(src_path))
 
-from jama_mcp_server_graphrag.prompts import (
+from jama_mcp_server_graphrag.prompts import (  # noqa: E402
     PROMPT_DEFINITIONS,
     PromptCatalog,
     PromptName,
@@ -89,7 +89,7 @@ async def push_prompts(
         environment=environment,
     )
 
-    if not catalog._initialized:
+    if not catalog._initialized:  # noqa: SLF001
         logger.error("❌ Failed to initialize LangSmith client")
         logger.error("   Make sure LANGSMITH_API_KEY is set")
         sys.exit(1)

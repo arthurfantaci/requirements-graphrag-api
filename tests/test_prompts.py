@@ -10,10 +10,8 @@ This test suite covers:
 
 from __future__ import annotations
 
-import asyncio
 import time
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from langchain_core.prompts import ChatPromptTemplate
@@ -38,7 +36,6 @@ from jama_mcp_server_graphrag.prompts.evaluation import (
     create_length_evaluator,
     get_evaluators_for_prompt,
 )
-
 
 # =============================================================================
 # FIXTURES
@@ -213,12 +210,12 @@ class TestPromptCatalog:
         catalog = PromptCatalog(cache_ttl=1, use_hub=False)
         _ = catalog.get_prompt_sync(PromptName.ROUTER)
 
-        # Cache should be valid initially
-        assert catalog._is_cache_valid("graphrag-router:development")
+        # Cache should be valid initially (testing internal method)
+        assert catalog._is_cache_valid("graphrag-router:development")  # noqa: SLF001
 
         # Wait for expiration
         time.sleep(1.1)
-        assert not catalog._is_cache_valid("graphrag-router:development")
+        assert not catalog._is_cache_valid("graphrag-router:development")  # noqa: SLF001
 
 
 class TestCatalogHubIntegration:
@@ -235,7 +232,7 @@ class TestCatalogHubIntegration:
         # Mock asyncio.to_thread which wraps the hub.pull call
         with patch("jama_mcp_server_graphrag.prompts.catalog.asyncio.to_thread") as mock_thread:
             mock_thread.return_value = mock_template
-            template = await catalog_with_hub.get_prompt(PromptName.ROUTER)
+            _ = await catalog_with_hub.get_prompt(PromptName.ROUTER)
 
         # Should have cached the hub version
         status = catalog_with_hub.get_cache_status()

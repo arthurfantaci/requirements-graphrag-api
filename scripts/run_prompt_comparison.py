@@ -29,14 +29,14 @@ import logging
 import os
 import sys
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
+
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
@@ -45,6 +45,9 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+# Threshold for considering a metric improved or degraded
+SIGNIFICANCE_THRESHOLD = 0.01
 
 
 # =============================================================================
@@ -130,9 +133,9 @@ async def evaluate_prompt_on_dataset(
     Returns:
         Dictionary of metric names to scores.
     """
-    from langchain_openai import ChatOpenAI
+    from langchain_openai import ChatOpenAI  # noqa: PLC0415
 
-    from jama_mcp_server_graphrag.prompts.evaluation import (
+    from jama_mcp_server_graphrag.prompts.evaluation import (  # noqa: PLC0415
         create_cypher_validity_evaluator,
         create_json_validity_evaluator,
         create_length_evaluator,
@@ -201,12 +204,10 @@ async def evaluate_prompt_on_dataset(
     logger.info("Successfully evaluated %d/%d examples", successful, len(examples))
 
     # Calculate average scores
-    avg_scores = {
+    return {
         metric: sum(scores) / len(scores) if scores else 0.0
         for metric, scores in all_scores.items()
     }
-
-    return avg_scores
 
 
 async def compare_prompts(
@@ -280,8 +281,8 @@ async def compare_prompts(
     }
 
     # Determine winner
-    improved = sum(1 for v in improvements.values() if v > 0.01)
-    degraded = sum(1 for v in improvements.values() if v < -0.01)
+    improved = sum(1 for v in improvements.values() if v > SIGNIFICANCE_THRESHOLD)
+    degraded = sum(1 for v in improvements.values() if v < -SIGNIFICANCE_THRESHOLD)
 
     if improved > degraded:
         winner = "variant"
@@ -297,7 +298,7 @@ async def compare_prompts(
         baseline_name=baseline_name,
         variant_name=variant_name,
         dataset_name=dataset_name,
-        timestamp=datetime.now().isoformat(),
+        timestamp=datetime.now(tz=UTC).isoformat(),
         iterations=iterations,
         baseline_scores=baseline_final,
         variant_scores=variant_final,
@@ -330,7 +331,8 @@ def print_report(report: ComparisonReport) -> None:
         baseline = report.baseline_scores.get(metric, 0)
         variant = report.variant_scores.get(metric, 0)
         change = report.improvements.get(metric, 0)
-        indicator = "+" if change > 0.01 else ("-" if change < -0.01 else "=")
+        threshold = SIGNIFICANCE_THRESHOLD
+        indicator = "+" if change > threshold else ("-" if change < -threshold else "=")
         print(f"{metric:<25} {baseline:>10.3f} {variant:>10.3f} {indicator}{abs(change):>9.3f}")
 
     print("\n--- RESULT ---")
@@ -390,7 +392,7 @@ async def main(
         return 1
 
     try:
-        from langsmith import Client
+        from langsmith import Client  # noqa: PLC0415
     except ImportError:
         logger.error("langsmith not installed. Run: pip install langsmith")
         return 1

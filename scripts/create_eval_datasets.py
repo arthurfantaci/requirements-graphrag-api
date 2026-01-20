@@ -19,14 +19,20 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from dotenv import load_dotenv
+
+if TYPE_CHECKING:
+    from langsmith import Client
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from dotenv import load_dotenv
-
 load_dotenv(override=True)
+
+# Constants
+PREVIEW_EXAMPLE_COUNT = 3
 
 logging.basicConfig(
     level=logging.INFO,
@@ -178,7 +184,10 @@ ROUTER_EXAMPLES: list[dict[str, Any]] = [
     {
         "inputs": {
             "tools": """[same tools list]""",
-            "question": "I'm implementing requirements management for automotive. What standards should I follow and what tools would you recommend?",
+            "question": (
+                "I'm implementing requirements management for automotive. "
+                "What standards should I follow and what tools would you recommend?"
+            ),
         },
         "outputs": {
             "expected_tools": ["graphrag_chat"],
@@ -188,7 +197,10 @@ ROUTER_EXAMPLES: list[dict[str, Any]] = [
     {
         "inputs": {
             "tools": """[same tools list]""",
-            "question": "Compare the traceability features of different RM tools and explain which is best for regulated industries.",
+            "question": (
+                "Compare the traceability features of different RM tools "
+                "and explain which is best for regulated industries."
+            ),
         },
         "outputs": {
             "expected_tools": ["graphrag_chat", "graphrag_graph_enriched_search"],
@@ -277,7 +289,10 @@ and non-functional requirements.""",
     {
         "inputs": {
             "context": """Quality assurance is important in software development.""",
-            "question": "What are the specific requirements for medical device software under IEC 62304?",
+            "question": (
+                "What are the specific requirements for medical device "
+                "software under IEC 62304?"
+            ),
         },
         "outputs": {
             "expected_answerable": False,
@@ -391,7 +406,10 @@ Cypher: MATCH (a:Article) WHERE toLower(a.title) CONTAINS 'traceability' RETURN 
             "question": "Find all articles about ISO 26262.",
         },
         "outputs": {
-            "expected_cypher": "MATCH (a:Article) WHERE toLower(a.title) CONTAINS 'iso 26262' RETURN a",
+            "expected_cypher": (
+                "MATCH (a:Article) "
+                "WHERE toLower(a.title) CONTAINS 'iso 26262' RETURN a"
+            ),
             "expected_patterns": ["MATCH", "Article", "WHERE", "CONTAINS", "iso 26262"],
         },
     },
@@ -416,7 +434,10 @@ WHERE a.title = 'Article Title' RETURN DISTINCT e.name""",
             "question": "What entities are mentioned in articles about requirements?",
         },
         "outputs": {
-            "expected_cypher": "MATCH (e:Entity)-[:MENTIONED_IN]->(c:Chunk)-[:FROM_ARTICLE]->(a:Article)",
+            "expected_cypher": (
+                "MATCH (e:Entity)-[:MENTIONED_IN]->(c:Chunk)"
+                "-[:FROM_ARTICLE]->(a:Article)"
+            ),
             "expected_patterns": [
                 "MATCH",
                 "Entity",
@@ -434,7 +455,10 @@ WHERE a.title = 'Article Title' RETURN DISTINCT e.name""",
             "question": "Which articles mention the term 'traceability matrix'?",
         },
         "outputs": {
-            "expected_cypher": "MATCH (d:Definition)-[:MENTIONED_IN]->(c:Chunk)-[:FROM_ARTICLE]->(a:Article)",
+            "expected_cypher": (
+                "MATCH (d:Definition)-[:MENTIONED_IN]->(c:Chunk)"
+                "-[:FROM_ARTICLE]->(a:Article)"
+            ),
             "expected_patterns": ["Definition", "MENTIONED_IN", "FROM_ARTICLE", "Article"],
         },
     },
@@ -471,7 +495,10 @@ RETURN a.title, count(DISTINCT e) AS entity_count ORDER BY entity_count DESC""",
             "question": "Find all definitions that contain the word 'requirement'.",
         },
         "outputs": {
-            "expected_cypher": "MATCH (d:Definition) WHERE toLower(d.definition) CONTAINS 'requirement'",
+            "expected_cypher": (
+                "MATCH (d:Definition) "
+                "WHERE toLower(d.definition) CONTAINS 'requirement'"
+            ),
             "expected_patterns": ["Definition", "WHERE", "CONTAINS", "requirement"],
         },
     },
@@ -503,7 +530,7 @@ RETURN a.title, count(DISTINCT e) AS entity_count ORDER BY entity_count DESC""",
 
 
 def create_dataset(
-    client: Any,
+    client: Client | None,
     name: str,
     description: str,
     examples: list[dict[str, Any]],
@@ -526,19 +553,27 @@ def create_dataset(
         logger.info("[DRY RUN] Would create dataset: %s", name)
         logger.info("  Description: %s", description)
         logger.info("  Examples: %d", len(examples))
-        for i, ex in enumerate(examples[:3]):
+        for i, ex in enumerate(examples[:PREVIEW_EXAMPLE_COUNT]):
             logger.info("  Example %d inputs: %s", i + 1, list(ex["inputs"].keys()))
-        if len(examples) > 3:
-            logger.info("  ... and %d more examples", len(examples) - 3)
+        if len(examples) > PREVIEW_EXAMPLE_COUNT:
+            remaining = len(examples) - PREVIEW_EXAMPLE_COUNT
+            logger.info("  ... and %d more examples", remaining)
+        return None
+
+    if client is None:
         return None
 
     # Check if dataset already exists
     try:
         existing = client.read_dataset(dataset_name=name)
-        logger.info("Dataset '%s' already exists (id=%s). Skipping creation.", name, existing.id)
+        logger.info(
+            "Dataset '%s' already exists (id=%s). Skipping creation.",
+            name,
+            existing.id,
+        )
         return str(existing.id)
     except Exception:
-        pass  # Dataset doesn't exist, create it
+        logger.debug("Dataset '%s' not found, will create it.", name)
 
     # Create dataset
     logger.info("Creating dataset: %s", name)
@@ -578,16 +613,17 @@ def main(dry_run: bool = False) -> int:
         logger.error("LANGSMITH_API_KEY not set")
         return 1
 
+    client: Client | None = None
     if not dry_run:
         try:
-            from langsmith import Client
-        except ImportError:
-            logger.error("langsmith package not installed. Run: pip install langsmith")
-            return 1
+            from langsmith import Client as LangSmithClient  # noqa: PLC0415
 
-        client = Client()
-    else:
-        client = None
+            client = LangSmithClient()
+        except ImportError:
+            logger.error(
+                "langsmith package not installed. Run: pip install langsmith"
+            )
+            return 1
 
     logger.info("=" * 60)
     logger.info("Creating Evaluation Datasets for GraphRAG Prompts")
@@ -596,24 +632,33 @@ def main(dry_run: bool = False) -> int:
     datasets = [
         {
             "name": "graphrag-router-eval",
-            "description": "Evaluation dataset for the GraphRAG router prompt. Tests tool selection accuracy based on question characteristics.",
+            "description": (
+                "Evaluation dataset for the GraphRAG router prompt. "
+                "Tests tool selection accuracy based on question characteristics."
+            ),
             "examples": ROUTER_EXAMPLES,
         },
         {
             "name": "graphrag-critic-eval",
-            "description": "Evaluation dataset for the GraphRAG critic prompt. Tests context quality assessment accuracy.",
+            "description": (
+                "Evaluation dataset for the GraphRAG critic prompt. "
+                "Tests context quality assessment accuracy."
+            ),
             "examples": CRITIC_EXAMPLES,
         },
         {
             "name": "graphrag-text2cypher-eval",
-            "description": "Evaluation dataset for the GraphRAG text2cypher prompt. Tests Cypher query generation accuracy.",
+            "description": (
+                "Evaluation dataset for the GraphRAG text2cypher prompt. "
+                "Tests Cypher query generation accuracy."
+            ),
             "examples": TEXT2CYPHER_EXAMPLES,
         },
     ]
 
     created_ids = []
     for ds in datasets:
-        logger.info("\n--- %s ---", ds["name"])
+        logger.info("--- %s ---", ds["name"])
         dataset_id = create_dataset(
             client,
             ds["name"],
@@ -624,12 +669,12 @@ def main(dry_run: bool = False) -> int:
         if dataset_id:
             created_ids.append(dataset_id)
 
-    logger.info("\n" + "=" * 60)
+    logger.info("%s", "=" * 60)
     if dry_run:
         logger.info("[DRY RUN] Would create %d datasets", len(datasets))
     else:
         logger.info("Created/verified %d datasets", len(created_ids))
-        logger.info("\nView datasets at: https://smith.langchain.com/datasets")
+        logger.info("View datasets at: https://smith.langchain.com/datasets")
 
     return 0
 
