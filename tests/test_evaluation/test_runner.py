@@ -18,7 +18,7 @@ from jama_mcp_server_graphrag.evaluation.runner import (
     evaluate_rag_pipeline,
 )
 
-_TEST_PASSWORD = "test"  # noqa: S105
+_TEST_PASSWORD = "test"
 
 
 @pytest.fixture

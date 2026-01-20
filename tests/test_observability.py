@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from collections.abc import Generator
 
 _TEST_API_KEY = "lsv2_test_api_key_12345"
-_TEST_PASSWORD = "test"  # noqa: S105
+_TEST_PASSWORD = "test"
 
 
 @pytest.fixture
