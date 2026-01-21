@@ -1,22 +1,21 @@
 [project]
-name = "jama-mcp-server-graphrag"
-version = "0.2.0"
-description = "GraphRAG MCP Server for Requirements Management Knowledge Graph"
+name = "jama-graphrag-api"
+version = "0.1.0"
+description = "GraphRAG REST API for Requirements Management Knowledge Graph - Deployable to Vercel"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 keywords = [
-    "mcp",
     "graphrag",
     "neo4j",
     "langchain",
-    "langgraph",
     "requirements-management",
     "knowledge-graph",
     "rag",
-    "agentic-ai",
+    "fastapi",
+    "vercel",
 ]
-authors = [{ name = "Your Name", email = "your.email@example.com" }]
+authors = [{ name = "Arthur Fantaci" }]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -27,25 +26,30 @@ classifiers = [
 ]
 
 dependencies = [
-    "mcp>=1.0.0",
-    "fastmcp>=0.4.0",
+    # Web framework
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
-    "langchain>=0.3.0",
-    "langchain-openai>=0.2.0",
-    "langchain-neo4j>=0.2.0",
-    "langgraph>=0.2.0",
+    "sse-starlette>=2.0.0",
+
+    # Neo4j
     "neo4j>=5.15.0",
     "neo4j-graphrag>=1.0.0",
+
+    # LangChain (minimal - core and OpenAI only)
+    "langchain-core>=0.3.0",
+    "langchain-openai>=0.2.0",
+
+    # Data validation
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
-    "httpx>=0.27.0",
+
+    # Utilities
     "python-dotenv>=1.0.0",
-    "structlog>=24.0.0",
-    "tenacity>=8.2.0",
     "tiktoken>=0.7.0",
-    "rich>=13.0.0",
-    "langchainhub>=0.1.21",
+    "httpx>=0.27.0",
+
+    # Observability (LangSmith)
+    "langsmith>=0.1.0",
 ]
 
 [project.optional-dependencies]
@@ -54,30 +58,22 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.1.0",
     "pytest-mock>=3.12.0",
-    "pytest-benchmark>=4.0.0",
     "ruff>=0.6.0",
-    "pre-commit>=3.5.0",
-    "ragas>=0.1.0",
-]
-mlflow = [
-    "mlflow>=2.10.0",
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/jama-mcp-server-graphrag"
-Repository = "https://github.com/yourusername/jama-mcp-server-graphrag"
-Documentation = "https://github.com/yourusername/jama-mcp-server-graphrag#readme"
+Homepage = "https://github.com/arthurfantaci/jama-graphrag-api"
+Repository = "https://github.com/arthurfantaci/jama-graphrag-api"
 
 [project.scripts]
-jama-mcp-server-graphrag = "jama_mcp_server_graphrag.server:main"
-jama-graphrag-api = "jama_mcp_server_graphrag.api:run"
+jama-graphrag-api = "jama_graphrag_api.api:run"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/jama_mcp_server_graphrag"]
+packages = ["src/jama_graphrag_api"]
 
 # =============================================================================
 # Ruff Configuration
@@ -97,33 +93,11 @@ select = [
     "D",      # pydocstyle
     "UP",     # pyupgrade
     "ANN",    # flake8-annotations
-    "ASYNC",  # flake8-async
     "S",      # flake8-bandit (security)
     "B",      # flake8-bugbear
-    "A",      # flake8-builtins
-    "COM",    # flake8-commas
     "C4",     # flake8-comprehensions
-    "DTZ",    # flake8-datetimez
-    "T10",    # flake8-debugger
-    "ISC",    # flake8-implicit-str-concat
-    "ICN",    # flake8-import-conventions
-    "LOG",    # flake8-logging
-    "G",      # flake8-logging-format
-    "PIE",    # flake8-pie
-    "PT",     # flake8-pytest-style
-    "Q",      # flake8-quotes
-    "RSE",    # flake8-raise
-    "RET",    # flake8-return
-    "SLF",    # flake8-self
     "SIM",    # flake8-simplify
-    "TID",    # flake8-tidy-imports
     "TCH",    # flake8-type-checking
-    "ARG",    # flake8-unused-arguments
-    "PTH",    # flake8-use-pathlib
-    "PL",     # Pylint
-    "TRY",    # tryceratops
-    "FLY",    # flynt
-    "PERF",   # Perflint
     "RUF",    # Ruff-specific rules
 ]
 
@@ -133,10 +107,6 @@ ignore = [
     "D107",   # Missing docstring in __init__
     "ANN401", # Dynamically typed expressions (Any)
     "S101",   # Use of assert (needed for tests)
-    "COM812", # Trailing comma missing (conflicts with formatter)
-    "ISC001", # Single line implicit string concatenation (conflicts with formatter)
-    "TRY003", # Avoid specifying long messages outside exception class
-    "TRY400", # Use logging.exception instead of logging.error (we use error intentionally)
 ]
 
 [tool.ruff.lint.pydocstyle]
@@ -145,33 +115,16 @@ convention = "google"
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = [
     "S101",    # Allow assert in tests
-    "S105",    # Allow hardcoded passwords in test fixtures
-    "S311",    # Allow standard random for test data generation
+    "S105",    # Allow hardcoded test passwords
+    "S311",    # Allow pseudo-random for test data generation
+    "SIM117",  # Allow nested with statements in tests
     "ANN",     # Don't require annotations in tests
     "D",       # Don't require docstrings in tests
-    "PLR2004", # Allow magic values in tests
-    "PLR0911", # Allow many return statements in test helpers
-    "PLR0912", # Allow many branches in test helpers
-    "ARG",     # Allow unused arguments in tests (common for mocks)
-    "F841",    # Allow unused variables in tests (for documentation)
-    "PT018",   # Allow composite assertions in tests
-    "SIM102",  # Allow nested if for clarity
-    "SIM110",  # Allow for loops instead of all()
-    "SIM117",  # Allow nested with statements in tests
-    "SLF001",  # Allow private member access in tests
-    "TRY301",  # Allow raise in try block for testing exceptions
-    "PLC0415", # Allow imports not at top level in tests
-]
-"scripts/**/*.py" = [
-    "S311",    # Allow standard random for reproducible data generation
-    "PERF401", # Allow explicit loops for readability
 ]
 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
-skip-magic-trailing-comma = false
-line-ending = "auto"
 
 # =============================================================================
 # Pytest Configuration
@@ -179,21 +132,14 @@ line-ending = "auto"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = [
-    "-ra",
-    "-q",
-    "--strict-markers",
-]
+addopts = ["-ra", "-q", "--strict-markers"]
 markers = [
-    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
-    "benchmark: marks tests as benchmark tests",
-    "slow: marks tests as slow",
+    "integration: marks tests as integration tests",
 ]
 
 [tool.coverage.run]
-source = ["src/jama_mcp_server_graphrag"]
+source = ["src/jama_graphrag_api"]
 branch = true
-omit = ["*/tests/*", "*/__pycache__/*"]
 
 [tool.coverage.report]
 exclude_lines = [
@@ -201,7 +147,5 @@ exclude_lines = [
     "def __repr__",
     "raise NotImplementedError",
     "if TYPE_CHECKING:",
-    "if __name__ == .__main__.:",
 ]
 fail_under = 60
-show_missing = true

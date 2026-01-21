@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from jama_mcp_server_graphrag.core.definitions import (
+from jama_graphrag_api.core.definitions import (
     list_all_terms,
     lookup_term,
     search_terms,

@@ -12,7 +12,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from jama_mcp_server_graphrag.routes.search import router
+from jama_graphrag_api.routes.search import router
 
 
 @pytest.fixture
@@ -67,7 +67,7 @@ class TestVectorSearchEndpoint:
         self, client: TestClient, sample_search_results: list[dict]
     ) -> None:
         """Test successful vector search."""
-        with patch("jama_mcp_server_graphrag.routes.search.vector_search") as mock_search:
+        with patch("jama_graphrag_api.routes.search.vector_search") as mock_search:
             mock_search.return_value = sample_search_results
 
             response = client.post(
@@ -100,7 +100,7 @@ class TestHybridSearchEndpoint:
         self, client: TestClient, sample_search_results: list[dict]
     ) -> None:
         """Test successful hybrid search."""
-        with patch("jama_mcp_server_graphrag.routes.search.hybrid_search") as mock_search:
+        with patch("jama_graphrag_api.routes.search.hybrid_search") as mock_search:
             mock_search.return_value = sample_search_results
 
             response = client.post(
@@ -116,7 +116,7 @@ class TestHybridSearchEndpoint:
         self, client: TestClient, sample_search_results: list[dict]
     ) -> None:
         """Test that default keyword_weight is used."""
-        with patch("jama_mcp_server_graphrag.routes.search.hybrid_search") as mock_search:
+        with patch("jama_graphrag_api.routes.search.hybrid_search") as mock_search:
             mock_search.return_value = sample_search_results
 
             response = client.post("/api/v1/search/hybrid", json={"query": "test", "limit": 5})
@@ -149,7 +149,7 @@ class TestGraphSearchEndpoint:
             for r in sample_search_results
         ]
 
-        with patch("jama_mcp_server_graphrag.routes.search.graph_enriched_search") as mock_search:
+        with patch("jama_graphrag_api.routes.search.graph_enriched_search") as mock_search:
             mock_search.return_value = enriched_results
 
             response = client.post(
@@ -185,7 +185,7 @@ class TestGraphSearchEndpoint:
             for r in sample_search_results
         ]
 
-        with patch("jama_mcp_server_graphrag.routes.search.graph_enriched_search") as mock_search:
+        with patch("jama_graphrag_api.routes.search.graph_enriched_search") as mock_search:
             mock_search.return_value = enriched_results
 
             response = client.post(

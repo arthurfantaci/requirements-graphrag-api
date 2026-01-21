@@ -118,7 +118,7 @@ def get_langsmith_client() -> Client:
         ValueError: If API key is not configured.
     """
     try:
-        from langsmith import Client as LangSmithClient  # noqa: PLC0415
+        from langsmith import Client as LangSmithClient
     except ImportError as e:
         msg = "langsmith package is required. Install with: pip install langsmith"
         raise ImportError(msg) from e
@@ -162,7 +162,7 @@ def query_evaluation_runs(
             )
         )
         logger.info("Found %d total runs", len(runs))
-        return runs  # noqa: TRY300
+        return runs
     except Exception as e:
         logger.error("Failed to query runs: %s", e)
         return []
@@ -432,7 +432,7 @@ def export_to_langsmith_queue(
     return queued
 
 
-def main() -> int:  # noqa: PLR0911
+def main() -> int:
     """Main entry point for annotation export.
 
     Returns:
@@ -549,7 +549,7 @@ def main() -> int:  # noqa: PLR0911
             export_to_langsmith_queue(client, candidates)
 
         print(f"\nExported {len(candidates)} candidates to {args.output}")
-        return 0  # noqa: TRY300
+        return 0
 
     except ImportError as e:
         logger.error("Missing dependency: %s", e)

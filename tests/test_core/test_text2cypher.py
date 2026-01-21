@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from jama_mcp_server_graphrag.core.text2cypher import generate_cypher, text2cypher_query
+from jama_graphrag_api.core.text2cypher import generate_cypher, text2cypher_query
 from tests.conftest import create_llm_mock
 
 # =============================================================================
@@ -102,7 +102,7 @@ class TestGenerateCypher:
         self, mock_config: MagicMock, mock_driver: MagicMock
     ) -> None:
         """Test that generate_cypher returns a Cypher query string."""
-        with patch("jama_mcp_server_graphrag.core.text2cypher.ChatOpenAI") as mock_llm_class:
+        with patch("jama_graphrag_api.core.text2cypher.ChatOpenAI") as mock_llm_class:
             mock_llm_class.return_value = create_llm_mock(
                 "MATCH (n:Entity) RETURN count(n) AS count"
             )
@@ -117,7 +117,7 @@ class TestGenerateCypher:
         self, mock_config: MagicMock, mock_driver: MagicMock
     ) -> None:
         """Test that markdown code blocks are stripped from response."""
-        with patch("jama_mcp_server_graphrag.core.text2cypher.ChatOpenAI") as mock_llm_class:
+        with patch("jama_graphrag_api.core.text2cypher.ChatOpenAI") as mock_llm_class:
             mock_llm_class.return_value = create_llm_mock("```cypher\nMATCH (n) RETURN n\n```")
 
             result = await generate_cypher(mock_config, mock_driver, "Get all nodes")
@@ -144,7 +144,7 @@ class TestText2CypherQuery:
             ]
         )
 
-        with patch("jama_mcp_server_graphrag.core.text2cypher.generate_cypher") as mock_gen:
+        with patch("jama_graphrag_api.core.text2cypher.generate_cypher") as mock_gen:
             mock_gen.return_value = "MATCH (n:Entity) RETURN count(n) AS count"
 
             result = await text2cypher_query(
@@ -161,7 +161,7 @@ class TestText2CypherQuery:
         self, mock_config: MagicMock, mock_driver: MagicMock
     ) -> None:
         """Test query generation without execution."""
-        with patch("jama_mcp_server_graphrag.core.text2cypher.generate_cypher") as mock_gen:
+        with patch("jama_graphrag_api.core.text2cypher.generate_cypher") as mock_gen:
             mock_gen.return_value = "MATCH (n) RETURN n LIMIT 10"
 
             result = await text2cypher_query(mock_config, mock_driver, "Get nodes", execute=False)
@@ -184,7 +184,7 @@ class TestText2CypherQuery:
         ]
 
         for forbidden in forbidden_queries:
-            with patch("jama_mcp_server_graphrag.core.text2cypher.generate_cypher") as mock_gen:
+            with patch("jama_graphrag_api.core.text2cypher.generate_cypher") as mock_gen:
                 mock_gen.return_value = f"MATCH (n) {forbidden}"
 
                 result = await text2cypher_query(mock_config, mock_driver, "test", execute=True)
@@ -203,7 +203,7 @@ class TestText2CypherQuery:
         mock_session.__exit__ = MagicMock(return_value=False)
         mock_driver.session.return_value = mock_session
 
-        with patch("jama_mcp_server_graphrag.core.text2cypher.generate_cypher") as mock_gen:
+        with patch("jama_graphrag_api.core.text2cypher.generate_cypher") as mock_gen:
             mock_gen.return_value = "MATCH (n) RETURN n"
 
             result = await text2cypher_query(mock_config, mock_driver, "test", execute=True)

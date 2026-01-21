@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from jama_mcp_server_graphrag.core.retrieval import (
+from jama_graphrag_api.core.retrieval import (
     GraphEnrichmentOptions,
     explore_entity,
     graph_enriched_search,

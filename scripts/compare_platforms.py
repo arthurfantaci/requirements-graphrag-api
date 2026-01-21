@@ -17,7 +17,6 @@ Usage:
     # Full comparison (all of the above)
     uv run python scripts/compare_platforms.py --full
 """
-# ruff: noqa: PLC0415
 
 from __future__ import annotations
 
@@ -87,7 +86,7 @@ def print_feature_comparison() -> None:
         print(f"  • {feat}")
 
 
-def print_recommendation(  # noqa: PLR0913
+def print_recommendation(
     needs_self_hosting: bool = False,
     needs_trace_viz: bool = True,
     needs_prompt_hub: bool = False,

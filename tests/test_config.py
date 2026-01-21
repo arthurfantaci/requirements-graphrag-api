@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from jama_mcp_server_graphrag.config import (
+from jama_graphrag_api.config import (
     SECURE_NEO4J_SCHEMES,
     VALID_NEO4J_SCHEMES,
     AppConfig,

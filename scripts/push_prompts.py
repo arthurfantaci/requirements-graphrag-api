@@ -89,7 +89,7 @@ async def push_prompts(
         environment=environment,
     )
 
-    if not catalog._initialized:  # noqa: SLF001
+    if not catalog._initialized:
         logger.error("❌ Failed to initialize LangSmith client")
         logger.error("   Make sure LANGSMITH_API_KEY is set")
         sys.exit(1)

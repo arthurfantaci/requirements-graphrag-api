@@ -272,12 +272,12 @@ def load_annotations_from_langsmith(
         List of AnnotationFeedback instances.
     """
     try:
-        from langsmith import Client  # noqa: PLC0415
+        from langsmith import Client
     except ImportError as e:
         msg = "langsmith package is required for LangSmith import"
         raise ImportError(msg) from e
 
-    import os  # noqa: PLC0415
+    import os
 
     if not os.getenv("LANGSMITH_API_KEY"):
         msg = "LANGSMITH_API_KEY environment variable is not set"
@@ -290,7 +290,7 @@ def load_annotations_from_langsmith(
 
     try:
         # Query runs with feedback
-        from datetime import timedelta  # noqa: PLC0415
+        from datetime import timedelta
 
         start_time = datetime.now(tz=UTC) - timedelta(days=days_back)
 
@@ -492,7 +492,7 @@ def save_stats(
     logger.info("Saved statistics to %s", output_path)
 
 
-def main() -> int:  # noqa: PLR0911, PLR0915
+def main() -> int:
     """Main entry point for feedback import.
 
     Returns:
@@ -620,7 +620,7 @@ def main() -> int:  # noqa: PLR0911, PLR0915
         save_stats(stats, args.stats_output)
         print(f"Saved statistics to {args.stats_output}")
 
-        return 0  # noqa: TRY300
+        return 0
 
     except ImportError as e:
         logger.error("Missing dependency: %s", e)

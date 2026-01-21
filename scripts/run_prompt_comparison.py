@@ -133,13 +133,12 @@ async def evaluate_prompt_on_dataset(
     Returns:
         Dictionary of metric names to scores.
     """
-    from langchain_openai import ChatOpenAI  # noqa: PLC0415
-
-    from jama_mcp_server_graphrag.prompts.evaluation import (  # noqa: PLC0415
+    from jama_mcp_server_graphrag.prompts.evaluation import (
         create_cypher_validity_evaluator,
         create_json_validity_evaluator,
         create_length_evaluator,
     )
+    from langchain_openai import ChatOpenAI
 
     logger.info(
         "Evaluating %s on dataset %s...",
@@ -392,7 +391,7 @@ async def main(
         return 1
 
     try:
-        from langsmith import Client  # noqa: PLC0415
+        from langsmith import Client
     except ImportError:
         logger.error("langsmith not installed. Run: pip install langsmith")
         return 1

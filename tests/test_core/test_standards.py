@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from jama_mcp_server_graphrag.core.standards import (
+from jama_graphrag_api.core.standards import (
     get_standards_by_industry,
     list_all_standards,
     lookup_standard,

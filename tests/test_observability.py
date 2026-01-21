@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from jama_mcp_server_graphrag.config import AppConfig
-from jama_mcp_server_graphrag.observability import (
+from jama_graphrag_api.config import AppConfig
+from jama_graphrag_api.observability import (
     configure_tracing,
     disable_tracing,
     get_tracing_status,
