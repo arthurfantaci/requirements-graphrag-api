@@ -29,9 +29,9 @@ from neo4j import GraphDatabase
 
 from jama_mcp_server_graphrag.config import get_config
 from jama_mcp_server_graphrag.core import (
-    chat,
     create_vector_retriever,
     explore_entity,
+    generate_answer,
     get_standards_by_industry,
     graph_enriched_search,
     hybrid_search,
@@ -682,12 +682,12 @@ async def graphrag_chat(
         raise RuntimeError(msg)
 
     logger.info("MCP tool: graphrag_chat message='%s'", message[:50])
-    return await chat(
+    return await generate_answer(
         _resources.config,
         _resources.retriever,
         _resources.driver,
         message,
-        max_sources=max_sources,
+        retrieval_limit=max_sources,
     )
 
 
