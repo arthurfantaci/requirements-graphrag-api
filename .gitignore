@@ -69,3 +69,6 @@ logs/
 # Generated output
 evaluation_results.json
 comparison_results.json
+
+# Runtime data
+data/
