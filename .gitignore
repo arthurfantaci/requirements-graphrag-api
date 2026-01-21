@@ -72,3 +72,7 @@ comparison_results.json
 
 # Runtime data
 data/
+
+# Vercel
+.vercel/
+.env.vercel
