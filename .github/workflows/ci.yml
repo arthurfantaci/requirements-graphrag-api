@@ -60,6 +60,8 @@ jobs:
           NEO4J_USERNAME: neo4j
           NEO4J_PASSWORD: test
           OPENAI_API_KEY: sk-test
+          # Disable LangSmith tracing for unit tests (mocked LLMs produce 0-token noise)
+          LANGSMITH_TRACING: "false"
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -138,6 +140,8 @@ jobs:
           NEO4J_URI: neo4j://localhost:7687
           NEO4J_USERNAME: neo4j
           NEO4J_PASSWORD: test
+          # Disable LangSmith tracing for prompt validation (no real LLM calls)
+          LANGSMITH_TRACING: "false"
 
       - name: Upload Tier 1 results
         uses: actions/upload-artifact@v4
