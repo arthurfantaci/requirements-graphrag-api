@@ -611,7 +611,7 @@ def main(dry_run: bool = False) -> int:
     client: Client | None = None
     if not dry_run:
         try:
-            from langsmith import Client as LangSmithClient  # noqa: PLC0415
+            from langsmith import Client as LangSmithClient
 
             client = LangSmithClient()
         except ImportError:

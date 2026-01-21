@@ -1,4 +1,4 @@
-"""Pytest fixtures for Jama MCP Server GraphRAG tests."""
+"""Pytest fixtures for Jama GraphRAG API tests."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from jama_mcp_server_graphrag.config import AppConfig
+from jama_graphrag_api.config import AppConfig
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
@@ -99,15 +99,6 @@ def mock_local_config() -> AppConfig:
         neo4j_username="neo4j",
         neo4j_password=_TEST_PASSWORD,
     )
-
-
-@pytest.fixture
-def mock_neo4j_driver() -> Generator[MagicMock, None, None]:
-    """Create a mock Neo4j driver for testing."""
-    with patch("jama_mcp_server_graphrag.neo4j_client.GraphDatabase") as mock_gdb:
-        mock_driver = MagicMock()
-        mock_gdb.driver.return_value = mock_driver
-        yield mock_driver
 
 
 @pytest.fixture

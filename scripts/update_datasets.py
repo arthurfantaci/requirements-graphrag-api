@@ -155,8 +155,8 @@ def load_golden_dataset() -> list[DatasetExample]:
         List of existing examples.
     """
     try:
-        from benchmark.golden_dataset import GOLDEN_DATASET  # noqa: PLC0415
-        from benchmark.schemas import BenchmarkExample  # noqa: PLC0415
+        from benchmark.golden_dataset import GOLDEN_DATASET
+        from benchmark.schemas import BenchmarkExample
 
         examples = []
         for ex in GOLDEN_DATASET:
@@ -177,7 +177,7 @@ def load_golden_dataset() -> list[DatasetExample]:
                 )
 
         logger.info("Loaded %d examples from golden dataset", len(examples))
-        return examples  # noqa: TRY300
+        return examples
 
     except ImportError as e:
         logger.warning("Could not import golden dataset: %s", e)
@@ -259,7 +259,7 @@ def find_duplicates(
     return duplicates
 
 
-def infer_category(question: str) -> str:  # noqa: PLR0911
+def infer_category(question: str) -> str:
     """Infer query category from question text.
 
     Args:
@@ -319,7 +319,7 @@ def extract_standards(text: str) -> list[str]:
     Returns:
         List of found standards.
     """
-    import re  # noqa: PLC0415
+    import re
 
     standards = []
 
@@ -729,7 +729,7 @@ def main() -> int:
             save_python_dataset(merged, args.python_output)
             print(f"Saved Python dataset to {args.python_output}")
 
-        return 0  # noqa: TRY300
+        return 0
 
     except FileNotFoundError as e:
         logger.error("File not found: %s", e)

@@ -25,7 +25,6 @@ Exit codes:
     1 - Evaluation failed (metrics below threshold)
     2 - Configuration or runtime error
 """
-# ruff: noqa: PLC0415
 
 from __future__ import annotations
 

@@ -12,7 +12,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from jama_mcp_server_graphrag.routes.health import router
+from jama_graphrag_api.routes.health import router
 
 
 @pytest.fixture
