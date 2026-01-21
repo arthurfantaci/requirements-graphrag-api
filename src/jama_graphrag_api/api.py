@@ -1,0 +1,178 @@
+"""FastAPI REST API for GraphRAG.
+
+This module provides the FastAPI application for the GraphRAG REST API,
+deployable to Vercel serverless functions.
+
+Features:
+- Health check endpoint
+- Vector, hybrid, and graph-enriched search
+- RAG-powered chat with SSE streaming
+- Definition/glossary term lookups
+- Industry standards queries
+- Knowledge graph schema exploration
+
+Updated Data Model (2026-01):
+- Uses neo4j-graphrag VectorRetriever
+- Uses neo4j Driver directly instead of LangChain Neo4jGraph
+- Optimized connection pool for serverless (5-10 connections)
+"""
+
+from __future__ import annotations
+
+import logging
+from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from jama_graphrag_api.config import get_config
+from jama_graphrag_api.core.retrieval import create_vector_retriever
+from jama_graphrag_api.observability import configure_tracing
+from jama_graphrag_api.routes import (
+    chat_router,
+    definitions_router,
+    health_router,
+    schema_router,
+    search_router,
+    standards_router,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Manage application lifespan for resource initialization and cleanup.
+
+    This context manager handles:
+    - Neo4j driver creation and verification
+    - VectorRetriever initialization
+    - LangSmith tracing configuration
+    - Resource cleanup on shutdown
+
+    Neo4j Best Practices:
+    - Create driver once, reuse across requests
+    - Verify connectivity at startup
+    - Small connection pool for serverless (5-10 connections)
+    """
+    # Import neo4j here to allow the module to load without it during discovery
+    from neo4j import GraphDatabase  # noqa: PLC0415
+
+    # Load configuration
+    config = get_config()
+
+    # Configure logging
+    logging.basicConfig(
+        level=getattr(logging, config.log_level.upper()),
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+
+    # Configure LangSmith tracing
+    configure_tracing(config)
+
+    # Create Neo4j driver with serverless-optimized settings
+    logger.info(
+        "Connecting to Neo4j: %s (pool_size=%d)",
+        config.neo4j_uri.split("@")[-1] if "@" in config.neo4j_uri else config.neo4j_uri,
+        config.neo4j_max_connection_pool_size,
+    )
+
+    driver = GraphDatabase.driver(
+        config.neo4j_uri,
+        auth=(config.neo4j_username, config.neo4j_password),
+        max_connection_pool_size=config.neo4j_max_connection_pool_size,
+        connection_acquisition_timeout=config.neo4j_connection_acquisition_timeout,
+    )
+
+    # Verify connectivity (fail fast)
+    try:
+        driver.verify_connectivity()
+        logger.info("Neo4j connection verified successfully")
+    except Exception as e:
+        logger.error("Failed to connect to Neo4j: %s", e)
+        driver.close()
+        raise
+
+    # Create VectorRetriever
+    retriever = create_vector_retriever(driver, config)
+    logger.info("VectorRetriever initialized with index: %s", config.vector_index_name)
+
+    # Store in app state for route handlers
+    app.state.config = config
+    app.state.driver = driver
+    app.state.retriever = retriever
+
+    logger.info("API startup complete")
+
+    yield
+
+    # Cleanup
+    logger.info("Shutting down API...")
+    driver.close()
+    logger.info("Neo4j driver closed")
+
+
+# Create FastAPI app
+app = FastAPI(
+    title="Jama GraphRAG API",
+    description=(
+        "GraphRAG REST API for Requirements Management Knowledge Graph. "
+        "Provides RAG-powered Q&A, semantic search, and knowledge graph exploration."
+    ),
+    version="1.0.0",
+    lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
+
+# Configure CORS for frontend access
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",  # Local development
+        "http://localhost:5173",  # Vite dev server
+        "https://*.vercel.app",   # Vercel preview deployments
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Mount routers
+app.include_router(health_router, tags=["Health"])
+app.include_router(chat_router, tags=["Chat"])
+app.include_router(search_router, tags=["Search"])
+app.include_router(definitions_router, tags=["Definitions"])
+app.include_router(standards_router, tags=["Standards"])
+app.include_router(schema_router, tags=["Schema"])
+
+
+@app.get("/")
+async def root() -> dict[str, str]:
+    """Root endpoint with API information."""
+    return {
+        "name": "Jama GraphRAG API",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "health": "/health",
+    }
+
+
+def run() -> None:
+    """Run the API server (for local development)."""
+    import uvicorn  # noqa: PLC0415
+
+    uvicorn.run(
+        "jama_graphrag_api.api:app",
+        host="0.0.0.0",  # noqa: S104 - development server
+        port=8000,
+        reload=True,
+    )
+
+
+if __name__ == "__main__":
+    run()
