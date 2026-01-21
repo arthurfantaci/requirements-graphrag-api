@@ -1,6 +1,6 @@
 [project]
 name = "jama-mcp-server-graphrag"
-version = "0.1.0"
+version = "0.2.0"
 description = "GraphRAG MCP Server for Requirements Management Knowledge Graph"
 readme = "README.md"
 requires-python = ">=3.12"

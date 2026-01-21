@@ -13,14 +13,15 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Generator
 
 
-def create_llm_mock(response: str) -> MagicMock:
+def create_llm_mock(response: str, *, streaming: bool = False) -> MagicMock:
     """Create a mock LLM that works with LangChain's RunnableSequence.
 
     This helper creates a mock that properly handles being invoked in a chain
-    via either `ainvoke`, `invoke`, or direct call.
+    via either `ainvoke`, `invoke`, `astream`, or direct call.
 
     Args:
         response: The string response the mock should return.
+        streaming: If True, configures astream to yield tokens word by word.
 
     Returns:
         A configured MagicMock that can be used in place of ChatOpenAI.
@@ -35,6 +36,16 @@ def create_llm_mock(response: str) -> MagicMock:
 
     # Configure for direct call (used by some LangChain internals)
     mock_llm.return_value = response
+
+    # Configure astream for async streaming
+    async def mock_astream(*_args, **_kwargs):
+        """Simulate streaming by yielding words as tokens."""
+        words = response.split()
+        for i, word in enumerate(words):
+            # Add space before word except for first token
+            yield word if i == 0 else f" {word}"
+
+    mock_llm.astream = mock_astream
 
     # Allow the | operator to work with RunnableSequence
     # Don't override __or__ - let LangChain's default behavior handle it

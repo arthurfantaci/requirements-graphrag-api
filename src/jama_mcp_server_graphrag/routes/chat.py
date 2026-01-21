@@ -1,20 +1,28 @@
-"""Chat endpoint for RAG-powered Q&A.
+"""Chat endpoint with SSE streaming for RAG-powered Q&A.
 
 Updated Data Model (2026-01):
 - Uses neo4j Driver directly instead of LangChain Neo4jGraph
 - Uses VectorRetriever instead of Neo4jVector
+
+Streaming Support (2026-01):
+- Endpoint now returns Server-Sent Events (SSE) for real-time token streaming
+- Enables LangSmith TTFT (Time to First Token) metrics
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+import json
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from jama_mcp_server_graphrag.core import chat as core_chat
+from jama_mcp_server_graphrag.core import stream_chat
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from neo4j import Driver
     from neo4j_graphrag.retrievers import VectorRetriever
 
@@ -42,6 +50,21 @@ class ChatOptions(BaseModel):
     )
 
 
+class ChatMessage(BaseModel):
+    """A message in conversation history."""
+
+    role: str = Field(
+        ...,
+        pattern="^(user|assistant)$",
+        description="Role of the message sender (user or assistant)",
+    )
+    content: str = Field(
+        ...,
+        min_length=1,
+        description="Content of the message",
+    )
+
+
 class ChatRequest(BaseModel):
     """Request body for chat endpoint."""
 
@@ -51,9 +74,13 @@ class ChatRequest(BaseModel):
         max_length=2000,
         description="User message to respond to",
     )
+    conversation_history: list[ChatMessage] | None = Field(
+        default=None,
+        description="Previous messages for multi-turn conversation context",
+    )
     conversation_id: str | None = Field(
         default=None,
-        description="Optional conversation ID for history tracking",
+        description="Optional conversation ID for tracking",
     )
     options: ChatOptions = Field(
         default_factory=ChatOptions,
@@ -61,105 +88,92 @@ class ChatRequest(BaseModel):
     )
 
 
-class SourceInfo(BaseModel):
-    """Information about a source citation."""
+async def _generate_sse_events(
+    config: AppConfig,
+    retriever: VectorRetriever,
+    driver: Driver,
+    request: ChatRequest,
+) -> AsyncIterator[str]:
+    """Generate SSE events from streaming chat response.
 
-    title: str
-    url: str | None
-    chunk_id: str | None
-    relevance_score: float
+    Args:
+        config: Application configuration.
+        retriever: VectorRetriever for semantic search.
+        driver: Neo4j driver for graph queries.
+        request: Chat request with message and options.
+
+    Yields:
+        Formatted SSE event strings.
+    """
+    # Convert ChatMessage models to dicts for stream_chat
+    history: list[dict[str, str]] | None = None
+    if request.conversation_history:
+        history = [
+            {"role": msg.role, "content": msg.content} for msg in request.conversation_history
+        ]
+
+    async for event in stream_chat(
+        config,
+        retriever,
+        driver,
+        request.message,
+        conversation_history=history,
+        max_sources=request.options.max_sources,
+    ):
+        # Format as SSE: event type and JSON data
+        yield f"event: {event.event_type.value}\n"
+        yield f"data: {json.dumps(event.data)}\n\n"
 
 
-class EntityInfo(BaseModel):
-    """Information about a related entity."""
-
-    name: str
-    type: str | None = None
-
-
-class ImageInfo(BaseModel):
-    """Information about a relevant image from the knowledge base."""
-
-    url: str
-    alt_text: str = ""
-    context: str = ""
-    source_title: str = ""
-
-
-class ChatResponse(BaseModel):
-    """Response from chat endpoint."""
-
-    answer: str
-    sources: list[SourceInfo]
-    entities: list[EntityInfo]
-    images: list[ImageInfo] = []
-    conversation_id: str | None
-
-
-@router.post("/chat", response_model=ChatResponse)
+@router.post("/chat")
 async def chat_endpoint(
     request: Request,
     body: ChatRequest,
-) -> dict[str, Any]:
-    """Chat with the requirements management knowledge base.
+) -> StreamingResponse:
+    """Stream chat response via Server-Sent Events.
 
-    This endpoint provides RAG-powered Q&A with source citations.
-    It retrieves relevant content from the knowledge graph and
-    generates answers grounded in the source material.
+    This endpoint provides RAG-powered Q&A with real-time token streaming.
+    It retrieves relevant content from the knowledge graph and streams
+    the generated answer token by token.
+
+    **SSE Event Sequence:**
+    1. `sources` - Retrieved context, entities, and images
+    2. `token` - Individual tokens as they're generated (multiple events)
+    3. `done` - Complete answer with source count
+    4. `error` - If an error occurs (replaces done)
+
+    **Example Response Stream:**
+    ```
+    event: sources
+    data: {"sources": [...], "entities": [...], "images": [...]}
+
+    event: token
+    data: {"token": "Requirements"}
+
+    event: token
+    data: {"token": " traceability"}
+
+    event: done
+    data: {"full_answer": "Requirements traceability is...", "source_count": 3}
+    ```
 
     Args:
         request: FastAPI request object.
         body: Chat request body.
 
     Returns:
-        Answer with sources and related entities.
+        StreamingResponse with SSE media type.
     """
     config: AppConfig = request.app.state.config
     retriever: VectorRetriever = request.app.state.retriever
     driver: Driver = request.app.state.driver
 
-    # Call core chat function
-    result = await core_chat(
-        config,
-        retriever,
-        driver,
-        body.message,
-        max_sources=body.options.max_sources,
+    return StreamingResponse(
+        _generate_sse_events(config, retriever, driver, body),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        },
     )
-
-    # Transform sources to response format
-    sources = [
-        SourceInfo(
-            title=s.get("title", "Unknown"),
-            url=s.get("url"),
-            chunk_id=s.get("chunk_id"),
-            relevance_score=s.get("relevance_score", 0.0),
-        )
-        for s in result.get("sources", [])
-    ]
-
-    # Transform entities to response format
-    entities = [
-        EntityInfo(name=e) if isinstance(e, str) else EntityInfo(**e)
-        for e in result.get("entities", [])
-    ]
-
-    # Transform images to response format
-    images = [
-        ImageInfo(
-            url=img.get("url", ""),
-            alt_text=img.get("alt_text", ""),
-            context=img.get("context", ""),
-            source_title=img.get("source_title", ""),
-        )
-        for img in result.get("images", [])
-        if img.get("url")  # Only include images with valid URLs
-    ]
-
-    return {
-        "answer": result["answer"],
-        "sources": sources,
-        "entities": entities,
-        "images": images,
-        "conversation_id": body.conversation_id,
-    }

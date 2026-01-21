@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Final
 
-from jama_mcp_server_graphrag.core import chat
+from jama_mcp_server_graphrag.core import generate_answer
 from jama_mcp_server_graphrag.evaluation.datasets import (
     EvaluationSample,
     get_sample_evaluation_data,
@@ -169,12 +169,12 @@ class RAGEvaluator:
         start_time = time.perf_counter()
 
         # Run through RAG pipeline with new interface
-        result = await chat(
+        result = await generate_answer(
             self.config,
             self.retriever,
             self.driver,
             sample.question,
-            max_sources=5,
+            retrieval_limit=5,
         )
 
         end_time = time.perf_counter()

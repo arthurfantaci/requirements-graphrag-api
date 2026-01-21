@@ -194,7 +194,7 @@ def extract_metrics_from_run(run: Any) -> dict[str, float]:
     # Check feedback for metrics
     if hasattr(run, "feedback_stats") and run.feedback_stats:
         for key, value in run.feedback_stats.items():
-            if isinstance(value, dict) and "avg" in value:
+            if isinstance(value, dict) and "avg" in value and value["avg"] is not None:
                 metrics[key] = float(value["avg"])
             elif isinstance(value, (int, float)):
                 metrics[key] = float(value)

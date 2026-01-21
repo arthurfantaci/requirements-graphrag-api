@@ -234,15 +234,15 @@ class TestRAGEvaluator:
 
         with (
             patch(
-                "jama_mcp_server_graphrag.evaluation.runner.chat",
+                "jama_mcp_server_graphrag.evaluation.runner.generate_answer",
                 new_callable=AsyncMock,
-            ) as mock_chat,
+            ) as mock_generate_answer,
             patch(
                 "jama_mcp_server_graphrag.evaluation.runner.compute_all_metrics",
                 new_callable=AsyncMock,
             ) as mock_metrics,
         ):
-            mock_chat.return_value = {
+            mock_generate_answer.return_value = {
                 "answer": "Generated answer",
                 "sources": [{"title": "Source 1", "content": "Content 1"}],
             }
@@ -273,15 +273,15 @@ class TestRAGEvaluator:
 
         with (
             patch(
-                "jama_mcp_server_graphrag.evaluation.runner.chat",
+                "jama_mcp_server_graphrag.evaluation.runner.generate_answer",
                 new_callable=AsyncMock,
-            ) as mock_chat,
+            ) as mock_generate_answer,
             patch(
                 "jama_mcp_server_graphrag.evaluation.runner.compute_all_metrics",
                 new_callable=AsyncMock,
             ) as mock_metrics,
         ):
-            mock_chat.return_value = {
+            mock_generate_answer.return_value = {
                 "answer": "Answer",
                 "sources": [],
             }
@@ -315,15 +315,15 @@ class TestEvaluateRagPipeline:
         """Test the convenience function."""
         with (
             patch(
-                "jama_mcp_server_graphrag.evaluation.runner.chat",
+                "jama_mcp_server_graphrag.evaluation.runner.generate_answer",
                 new_callable=AsyncMock,
-            ) as mock_chat,
+            ) as mock_generate_answer,
             patch(
                 "jama_mcp_server_graphrag.evaluation.runner.compute_all_metrics",
                 new_callable=AsyncMock,
             ) as mock_metrics,
         ):
-            mock_chat.return_value = {
+            mock_generate_answer.return_value = {
                 "answer": "Answer",
                 "sources": [],
             }

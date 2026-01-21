@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Final
 
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 
 class PromptName(StrEnum):
@@ -297,13 +297,18 @@ Format citations as [Source N] where N is the source number from the context."""
 RAG_GENERATION_TEMPLATE = ChatPromptTemplate.from_messages(
     [
         ("system", RAG_GENERATION_SYSTEM),
+        MessagesPlaceholder(variable_name="history", optional=True),
         ("human", "{question}"),
     ]
 )
 
 RAG_GENERATION_METADATA = PromptMetadata(
-    version="1.0.0",
-    description="Generates grounded answers with citations from retrieved context",
+    version="1.1.0",
+    description=(
+        "Generates grounded answers with citations from retrieved context, "
+        "supports multi-turn conversation"
+    ),
+    # Note: 'history' is optional (via MessagesPlaceholder), so not listed in required variables
     input_variables=["context", "entities", "question"],
     output_format="text",
     evaluation_criteria=[
@@ -312,7 +317,7 @@ RAG_GENERATION_METADATA = PromptMetadata(
         "context_utilization",
         "citation_accuracy",
     ],
-    tags=["generation", "rag", "citation"],
+    tags=["generation", "rag", "citation", "multi-turn"],
 )
 
 

@@ -13,7 +13,12 @@ from jama_mcp_server_graphrag.core.definitions import (
     lookup_term,
     search_terms,
 )
-from jama_mcp_server_graphrag.core.generation import chat, generate_answer
+from jama_mcp_server_graphrag.core.generation import (
+    StreamEvent,
+    StreamEventType,
+    generate_answer,
+    stream_chat,
+)
 from jama_mcp_server_graphrag.core.retrieval import (
     DEFAULT_ENRICHMENT_OPTIONS,
     GraphEnrichmentOptions,
@@ -37,7 +42,8 @@ from jama_mcp_server_graphrag.core.text2cypher import generate_cypher, text2cyph
 __all__ = [
     "DEFAULT_ENRICHMENT_OPTIONS",
     "GraphEnrichmentOptions",
-    "chat",
+    "StreamEvent",
+    "StreamEventType",
     "create_vector_retriever",
     "explore_entity",
     "generate_answer",
@@ -54,6 +60,7 @@ __all__ = [
     "search_entities_by_name",
     "search_standards",
     "search_terms",
+    "stream_chat",
     "text2cypher_query",
     "vector_search",
 ]
