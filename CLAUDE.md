@@ -143,6 +143,50 @@ curl http://localhost:8000/docs      # OpenAPI docs for REST API
 4. Run `uv run ruff check && uv run pytest` before commits
 5. Use conventional commits (feat:, fix:, docs:, etc.)
 
+## LangSmith Debugging (Claude Code Integration)
+
+This project has LangSmith integration for debugging and observability.
+
+### CLI Tool: langsmith-fetch
+
+```bash
+# Fetch recent traces (after running app with LANGSMITH_TRACING=true)
+uv run langsmith-fetch traces --limit 5 --format json
+
+# Fetch specific trace by ID
+uv run langsmith-fetch trace <trace-id> --format pretty
+
+# Export traces for analysis
+uv run langsmith-fetch traces ./debug-traces --limit 10 --include-metadata
+
+# Analyze with jq
+uv run langsmith-fetch traces --limit 1 --format raw | jq '.runs[] | {name, status, latency}'
+```
+
+### MCP Server: langsmith-mcp-server
+
+Configured in `.mcp.json` - provides Claude Code with:
+- `list_prompts` / `get_prompt_by_name` - Access LangSmith Hub prompts
+- `fetch_runs` / `list_projects` - Retrieve traces and project info
+- `list_datasets` / `list_examples` - Access evaluation datasets
+- `run_experiment` - Documentation for running evaluations
+
+### Debugging Workflow
+
+1. Enable tracing: `export LANGSMITH_TRACING=true`
+2. Run the API or MCP server
+3. Make a test query
+4. Fetch traces: `uv run langsmith-fetch traces --limit 1`
+5. Analyze: look for failed runs, high latency, or unexpected behavior
+
+### Environment Variables Required
+
+```bash
+export LANGSMITH_API_KEY=lsv2_...
+export LANGSMITH_PROJECT=jama-graphrag
+export LANGSMITH_WORKSPACE_ID=...  # For org-scoped keys
+```
+
 ## Do Not
 
 - Edit .env files directly (use .env.example as template)

@@ -30,26 +30,22 @@ dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "sse-starlette>=2.0.0",
-
     # Neo4j
     "neo4j>=5.15.0",
     "neo4j-graphrag>=1.0.0",
-
     # LangChain (minimal - core and OpenAI only)
     "langchain-core>=0.3.0",
     "langchain-openai>=0.2.0",
-
     # Data validation
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
-
     # Utilities
     "python-dotenv>=1.0.0",
     "tiktoken>=0.7.0",
     "httpx>=0.27.0",
-
     # Observability (LangSmith)
     "langsmith>=0.1.0",
+    "langsmith-fetch>=0.3.1",
 ]
 
 [project.optional-dependencies]
