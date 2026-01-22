@@ -20,6 +20,7 @@ Updated Data Model (2026-01):
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
@@ -130,13 +131,17 @@ app = FastAPI(
 )
 
 # Configure CORS for frontend access
+# Use CORS_ORIGINS env var (comma-separated) or defaults for local development
+_cors_origins_env = os.getenv("CORS_ORIGINS", "")
+_cors_origins = (
+    [origin.strip() for origin in _cors_origins_env.split(",") if origin.strip()]
+    if _cors_origins_env
+    else ["http://localhost:3000", "http://localhost:5173"]
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",  # Local development
-        "http://localhost:5173",  # Vite dev server
-        "https://*.vercel.app",  # Vercel preview deployments
-    ],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
