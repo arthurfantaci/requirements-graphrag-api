@@ -16,22 +16,64 @@ function App() {
     setInput('')
     setIsLoading(true)
 
+    // Add placeholder for streaming response
+    setMessages(prev => [...prev, { role: 'assistant', content: '' }])
+
     try {
       const response = await fetch(`${API_URL}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: input }),
+        body: JSON.stringify({ message: input }),
       })
 
       if (!response.ok) throw new Error('Failed to get response')
 
-      const data = await response.json()
-      setMessages(prev => [...prev, { role: 'assistant', content: data.answer }])
+      // Handle SSE streaming response
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              if (data.token !== undefined) {
+                // Append token to the last message
+                setMessages(prev => {
+                  const updated = [...prev]
+                  const lastIdx = updated.length - 1
+                  updated[lastIdx] = {
+                    ...updated[lastIdx],
+                    content: updated[lastIdx].content + data.token
+                  }
+                  return updated
+                })
+              }
+            } catch {
+              // Skip malformed JSON
+            }
+          }
+        }
+      }
     } catch (error) {
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: 'Sorry, there was an error processing your request.'
-      }])
+      // Replace the placeholder with error message
+      setMessages(prev => {
+        const updated = [...prev]
+        const lastIdx = updated.length - 1
+        updated[lastIdx] = {
+          role: 'assistant',
+          content: 'Sorry, there was an error processing your request.'
+        }
+        return updated
+      })
     } finally {
       setIsLoading(false)
     }
