@@ -35,6 +35,9 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tier == '3')
     timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend
     steps:
       - uses: actions/checkout@v4
 
@@ -58,7 +61,7 @@ jobs:
           NEO4J_DATABASE: ${{ secrets.NEO4J_DATABASE }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
-          LANGSMITH_PROJECT: jama-graphrag-release
+          LANGSMITH_PROJECT: requirements-graphrag-release
           LANGSMITH_TRACING: "true"
 
       - name: Upload Tier 3 results
@@ -101,6 +104,9 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tier == '4')
     timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: backend
     steps:
       - uses: actions/checkout@v4
 
@@ -124,7 +130,7 @@ jobs:
           NEO4J_DATABASE: ${{ secrets.NEO4J_DATABASE }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
-          LANGSMITH_PROJECT: jama-graphrag-nightly
+          LANGSMITH_PROJECT: requirements-graphrag-nightly
           LANGSMITH_TRACING: "true"
 
       - name: Upload Tier 4 results

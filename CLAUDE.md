@@ -1,123 +1,80 @@
-# Jama MCP Server GraphRAG
+# Requirements GraphRAG API
 
 ## Project Overview
 
-Production-ready GraphRAG backend for the **Jama Software "Essential Guide to Requirements Management and Traceability"** knowledge base. This project serves two purposes:
-
-1. **MCP Server**: Exposes GraphRAG tools to Claude Desktop via Model Context Protocol
-2. **REST API Backend**: Powers a React frontend chatbot for querying requirements management content
-
-Both interfaces share the same core GraphRAG logic, Neo4j connection, and retrieval workflows.
+Monorepo containing a GraphRAG backend and React frontend for the **Jama Software "Essential Guide to Requirements Management and Traceability"** knowledge base.
 
 ## Architecture
 
 ```
-┌─────────────────┐     ┌─────────────────────────────────────┐     ┌───────────────┐
-│  Claude Desktop │────▶│                                     │     │               │
-│  (MCP Client)   │     │   jama-mcp-server-graphrag          │     │  Neo4j AuraDB │
-└─────────────────┘     │                                     │────▶│  (jama-guide  │
-                        │  ┌───────────┐  ┌────────────────┐  │     │   -to-rm)     │
-┌─────────────────┐     │  │ MCP Tools │  │ Core GraphRAG  │  │     │               │
-│  React Frontend │────▶│  ├───────────┤  │  - Retrieval   │  │     └───────────────┘
-│  (Chatbot UI)   │     │  │ REST API  │──│  - Text2Cypher │  │
-└─────────────────┘     │  └───────────┘  │  - Workflows   │  │
-                        │                 └────────────────┘  │
-                        └─────────────────────────────────────┘
+requirements-graphrag-api/
+├── backend/                    # Python FastAPI + GraphRAG
+│   ├── src/requirements_graphrag_api/
+│   │   ├── api.py             # FastAPI application
+│   │   ├── config.py          # Configuration management
+│   │   ├── core/              # GraphRAG logic
+│   │   ├── routes/            # API endpoints
+│   │   └── observability.py   # LangSmith tracing
+│   ├── tests/                 # Backend tests
+│   ├── Dockerfile
+│   └── pyproject.toml
+├── frontend/                   # React + Vite + Tailwind
+│   ├── src/
+│   ├── Dockerfile
+│   └── package.json
+├── docker-compose.yml          # Local development
+└── railway.toml                # Railway deployment config
 ```
 
 ## Tech Stack
 
+**Backend:**
 - Python 3.12+ with uv package manager
-- FastMCP for MCP server implementation
-- FastAPI for REST API endpoints
+- FastAPI for REST API
 - LangChain + langchain-neo4j for GraphRAG
-- LangGraph for agentic workflows
-- Neo4j AuraDB (neo4j+s:// connection)
+- Neo4j AuraDB
 - OpenAI embeddings (text-embedding-3-small)
-- Docker for containerization
-- Vercel for serverless deployment
+- LangSmith for observability
 
-## Project Structure
+**Frontend:**
+- React 18
+- Vite
+- Tailwind CSS v4
 
-```
-src/jama_mcp_server_graphrag/
-├── server.py              # FastMCP entry point with MCP tools
-├── api.py                 # FastAPI REST endpoints for React frontend
-├── config.py              # Immutable dataclass configuration
-├── exceptions.py          # Custom exception hierarchy
-├── neo4j_client.py        # Neo4j driver best practices wrapper
-├── observability.py       # LangSmith tracing integration
-├── mlflow_tracking.py     # MLflow experiment tracking
-├── observability_comparison.py  # Platform comparison utilities
-├── token_counter.py       # Token counting and cost estimation
-├── core/                  # Shared GraphRAG logic
-│   ├── retrieval.py       # Vector, hybrid, graph-enriched search
-│   ├── text2cypher.py     # Natural language to Cypher
-│   ├── generation.py      # Answer generation with citations
-│   ├── definitions.py     # Definition/glossary term lookups
-│   └── standards.py       # Standards reference queries
-├── evaluation/            # Evaluation framework
-│   ├── metrics.py         # RAGAS metrics integration
-│   ├── domain_metrics.py  # Domain-specific metrics (citation, traceability)
-│   ├── cost_metrics.py    # Cost and budget tracking
-│   ├── datasets.py        # Evaluation dataset utilities
-│   └── runner.py          # Evaluation execution runner
-├── prompts/               # Prompt templates and management
-│   ├── catalog.py         # Prompt catalog with versioning
-│   ├── definitions.py     # Definition-related prompts
-│   └── evaluation.py      # Evaluation prompts
-├── routes/                # FastAPI route handlers
-│   ├── chat.py            # Chat/RAG endpoints
-│   ├── search.py          # Search endpoints
-│   ├── definitions.py     # Definition lookups
-│   ├── standards.py       # Standards queries
-│   ├── schema.py          # Schema introspection
-│   └── health.py          # Health checks
-├── agentic/               # Agentic RAG patterns
-│   ├── router.py          # Query routing logic
-│   ├── stepback.py        # Step-back prompting
-│   ├── critic.py          # Answer validation
-│   └── query_updater.py   # Query refinement
-└── workflows/             # LangGraph workflows
-    ├── rag_workflow.py    # Standard RAG workflow
-    ├── agentic_workflow.py # Agentic workflow with routing
-    └── state.py           # Workflow state definitions
-```
+**Deployment:**
+- Backend: Railway (Docker)
+- Frontend: Vercel
 
 ## Commands
 
 ```bash
-# Development
-uv sync                           # Install dependencies
-uv run pytest                     # Run tests
-uv run pytest --cov --cov-report=html  # Coverage report
-uv run ruff check src/            # Lint
-uv run ruff format src/           # Format
+# Backend development
+cd backend
+uv sync --extra dev
+uv run pytest
+uv run ruff check src/
+uv run uvicorn requirements_graphrag_api.api:app --reload
 
-# Run MCP Server (for Claude Desktop)
-uv run jama-mcp-server-graphrag
+# Frontend development
+cd frontend
+npm install
+npm run dev
+npm run build
 
-# Run REST API (for React frontend)
-uv run uvicorn jama_mcp_server_graphrag.api:app --reload
+# Docker (both services)
+docker-compose up
 
-# Docker
-docker build -t jama-mcp-graphrag:latest .
-docker compose up -d
-
-# Testing
-npx @modelcontextprotocol/inspector  # Test MCP server
-curl http://localhost:8000/docs      # OpenAPI docs for REST API
+# LangSmith debugging (dev only)
+uv run langsmith-fetch traces --limit 5 --format json
 ```
 
 ## Code Style
 
-- Use `from __future__ import annotations` in all modules
+- Use `from __future__ import annotations` in all Python modules
 - Prefer `dataclass(frozen=True, slots=True)` for immutable configs
 - Use explicit type hints everywhere
-- Follow Neo4j driver best practices (see neo4j_client.py)
+- Follow Neo4j driver best practices
 - Use query parameters, never string concatenation for Cypher
-- Process Neo4j results within transaction scope
-- Keep core logic in `core/`, thin wrappers in `tools/` and `routes/`
 
 ## Neo4j Best Practices (CRITICAL)
 
@@ -125,15 +82,6 @@ curl http://localhost:8000/docs      # OpenAPI docs for REST API
 - Create driver once in lifespan, reuse across requests
 - Verify connectivity at startup with `driver.verify_connectivity()`
 - Use `execute_read()` and `execute_write()` for proper cluster routing
-- Keep connection pool small (5-10) for serverless
-
-## Testing
-
-- Unit tests in tests/test_*.py
-- Integration tests marked with @pytest.mark.integration
-- API tests in tests/test_api.py
-- Benchmark tests in tests/benchmark/
-- Target 80% coverage minimum
 
 ## Workflow
 
@@ -143,50 +91,6 @@ curl http://localhost:8000/docs      # OpenAPI docs for REST API
 4. Run `uv run ruff check && uv run pytest` before commits
 5. Use conventional commits (feat:, fix:, docs:, etc.)
 
-## LangSmith Debugging (Claude Code Integration)
-
-This project has LangSmith integration for debugging and observability.
-
-### CLI Tool: langsmith-fetch
-
-```bash
-# Fetch recent traces (after running app with LANGSMITH_TRACING=true)
-uv run langsmith-fetch traces --limit 5 --format json
-
-# Fetch specific trace by ID
-uv run langsmith-fetch trace <trace-id> --format pretty
-
-# Export traces for analysis
-uv run langsmith-fetch traces ./debug-traces --limit 10 --include-metadata
-
-# Analyze with jq
-uv run langsmith-fetch traces --limit 1 --format raw | jq '.runs[] | {name, status, latency}'
-```
-
-### MCP Server: langsmith-mcp-server
-
-Configured in `.mcp.json` - provides Claude Code with:
-- `list_prompts` / `get_prompt_by_name` - Access LangSmith Hub prompts
-- `fetch_runs` / `list_projects` - Retrieve traces and project info
-- `list_datasets` / `list_examples` - Access evaluation datasets
-- `run_experiment` - Documentation for running evaluations
-
-### Debugging Workflow
-
-1. Enable tracing: `export LANGSMITH_TRACING=true`
-2. Run the API or MCP server
-3. Make a test query
-4. Fetch traces: `uv run langsmith-fetch traces --limit 1`
-5. Analyze: look for failed runs, high latency, or unexpected behavior
-
-### Environment Variables Required
-
-```bash
-export LANGSMITH_API_KEY=lsv2_...
-export LANGSMITH_PROJECT=jama-graphrag
-export LANGSMITH_WORKSPACE_ID=...  # For org-scoped keys
-```
-
 ## Do Not
 
 - Edit .env files directly (use .env.example as template)
@@ -194,14 +98,3 @@ export LANGSMITH_WORKSPACE_ID=...  # For org-scoped keys
 - Create new driver instances per request
 - Use string concatenation in Cypher queries
 - Commit sensitive credentials
-- Duplicate logic between MCP tools and REST routes (use core/)
-
-## Project Specification
-
-See SPECIFICATION.md for complete implementation details including:
-- Knowledge graph data model
-- MCP tool definitions
-- REST API endpoint definitions
-- Neo4j driver patterns
-- Docker and CI/CD configuration
-- Quality checklist

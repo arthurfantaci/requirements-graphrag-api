@@ -24,7 +24,7 @@ async def lifespan(server: FastMCP):
         driver.close()
 
 mcp = FastMCP(
-    "jama-graphrag-mcp",
+    "requirements-graphrag-mcp",
     lifespan=lifespan,
 )
 ```
@@ -78,7 +78,7 @@ async def database_schema() -> str:
 ## Error Handling Pattern
 
 ```python
-from jama_mcp_server_graphrag.exceptions import (
+from requirements_graphrag_api.exceptions import (
     Neo4jConnectionError,
     QueryExecutionError,
 )
@@ -121,8 +121,8 @@ class AppConfig:
 ## Entry Point
 
 ```python
-# src/jama_mcp_server_graphrag/__main__.py
-from jama_mcp_server_graphrag.server import mcp
+# src/requirements_graphrag_api/__main__.py
+from requirements_graphrag_api.server import mcp
 
 def main():
     mcp.run()
@@ -135,5 +135,5 @@ if __name__ == "__main__":
 
 ```toml
 [project.scripts]
-jama-mcp-server-graphrag = "jama_mcp_server_graphrag.__main__:main"
+requirements-graphrag-api = "requirements_graphrag_api.__main__:main"
 ```

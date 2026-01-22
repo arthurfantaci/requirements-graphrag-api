@@ -76,3 +76,12 @@ data/
 # Vercel
 .vercel/
 .env.vercel
+
+# Node.js / Frontend
+node_modules/
+frontend/dist/
+frontend/.cache/
+*.local
+
+# Benchmarks
+.benchmarks/

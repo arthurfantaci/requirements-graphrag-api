@@ -2,31 +2,20 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "MCP Server (stdio)",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "jama_mcp_server_graphrag.server",
-      "console": "integratedTerminal",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/src"
-      },
-      "envFile": "${workspaceFolder}/.env",
-      "justMyCode": true
-    },
-    {
       "name": "REST API (uvicorn)",
       "type": "debugpy",
       "request": "launch",
       "module": "uvicorn",
       "args": [
-        "jama_mcp_server_graphrag.api:app",
+        "requirements_graphrag_api.api:app",
         "--reload",
         "--host", "0.0.0.0",
         "--port", "8000"
       ],
       "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}/backend",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/src"
+        "PYTHONPATH": "${workspaceFolder}/backend/src"
       },
       "envFile": "${workspaceFolder}/.env",
       "justMyCode": true
@@ -42,14 +31,15 @@
         "-s"
       ],
       "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}/backend",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/src"
+        "PYTHONPATH": "${workspaceFolder}/backend/src"
       },
       "envFile": "${workspaceFolder}/.env",
       "justMyCode": true
     },
     {
-      "name": "Test: All Tests",
+      "name": "Test: All Backend Tests",
       "type": "debugpy",
       "request": "launch",
       "module": "pytest",
@@ -58,29 +48,12 @@
         "-v"
       ],
       "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}/backend",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/src"
+        "PYTHONPATH": "${workspaceFolder}/backend/src"
       },
       "envFile": "${workspaceFolder}/.env",
       "justMyCode": true
-    },
-    {
-      "name": "Neo4j Connectivity Test",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "jama_mcp_server_graphrag.test_connectivity",
-      "console": "integratedTerminal",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/src"
-      },
-      "envFile": "${workspaceFolder}/.env",
-      "justMyCode": true
-    }
-  ],
-  "compounds": [
-    {
-      "name": "Full Stack (MCP + API)",
-      "configurations": ["MCP Server (stdio)", "REST API (uvicorn)"]
     }
   ]
 }
