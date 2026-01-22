@@ -1,0 +1,14 @@
+# Railway deployment configuration for Requirements GraphRAG API
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "backend/Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+# Runtime settings
+numReplicas = 1

@@ -52,7 +52,7 @@ Once you've refined a prompt in the Playground, save it as a variant.
 # Modify the prompt in definitions.py, then push with a new name
 uv run python -c "
 from langsmith import Client
-from jama_mcp_server_graphrag.prompts.definitions import PROMPT_DEFINITIONS, PromptName
+from requirements_graphrag_api.prompts.definitions import PROMPT_DEFINITIONS, PromptName
 
 client = Client()
 definition = PROMPT_DEFINITIONS[PromptName.ROUTER]
@@ -236,8 +236,8 @@ If both baseline and variant have low scores:
 | List available prompts | `uv run python scripts/run_prompt_comparison.py --list` |
 | Compare prompts | `uv run python scripts/run_prompt_comparison.py router --variant v2` |
 | Create datasets | `uv run python scripts/create_eval_datasets.py` |
-| Push prompts | `uv run python -m jama_mcp_server_graphrag.prompts.cli push --all --personal` |
-| List prompts | `uv run python -m jama_mcp_server_graphrag.prompts.cli list` |
+| Push prompts | `uv run python -m requirements_graphrag_api.prompts.cli push --all --personal` |
+| List prompts | `uv run python -m requirements_graphrag_api.prompts.cli list` |
 
 ## Links
 

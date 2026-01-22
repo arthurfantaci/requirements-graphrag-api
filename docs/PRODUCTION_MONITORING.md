@@ -19,16 +19,16 @@ Create distinct projects for each environment:
 
 | Project | Purpose | Environment Variable |
 |---------|---------|---------------------|
-| `jama-graphrag-dev` | Development testing | `LANGSMITH_PROJECT=jama-graphrag-dev` |
-| `jama-graphrag-staging` | Pre-production | `LANGSMITH_PROJECT=jama-graphrag-staging` |
-| `jama-graphrag-prod` | Production | `LANGSMITH_PROJECT=jama-graphrag-prod` |
+| `requirements-graphrag-dev` | Development testing | `LANGSMITH_PROJECT=requirements-graphrag-dev` |
+| `requirements-graphrag-staging` | Pre-production | `LANGSMITH_PROJECT=requirements-graphrag-staging` |
+| `requirements-graphrag-prod` | Production | `LANGSMITH_PROJECT=requirements-graphrag-prod` |
 
 ### Environment Configuration
 
 ```bash
 # Production .env
 LANGSMITH_TRACING=true
-LANGSMITH_PROJECT=jama-graphrag-prod
+LANGSMITH_PROJECT=requirements-graphrag-prod
 LANGSMITH_API_KEY=<org-scoped-key>
 LANGSMITH_WORKSPACE_ID=33c08fbf-3b88-4b49-ae32-9677043ebed2
 PROMPT_ENVIRONMENT=production
@@ -53,7 +53,7 @@ PROMPT_ENVIRONMENT=production
 ### Creating an Alert (UI)
 
 1. Click **"Create Alert"**
-2. Select project: `jama-graphrag-prod`
+2. Select project: `requirements-graphrag-prod`
 3. Configure condition:
    - Metric: `latency_p95`
    - Operator: `greater_than`
@@ -107,7 +107,7 @@ Annotation queues enable human review of LLM outputs.
 2. Click **"Create Queue"**
 3. Configure:
    - Name: `low-confidence-review`
-   - Project: `jama-graphrag-prod`
+   - Project: `requirements-graphrag-prod`
    - Filter: `metadata.confidence < 0.5`
 4. Assign reviewers
 5. Save
@@ -137,7 +137,7 @@ client = Client()
 
 # Get successful production runs
 runs = client.list_runs(
-    project_name="jama-graphrag-prod",
+    project_name="requirements-graphrag-prod",
     filter='eq(status, "success")',
     limit=100,
 )
@@ -178,7 +178,7 @@ uv run python scripts/run_prompt_comparison.py router \
 # Required for production
 LANGSMITH_TRACING=true
 LANGSMITH_API_KEY=<your-org-api-key>
-LANGSMITH_PROJECT=jama-graphrag-prod
+LANGSMITH_PROJECT=requirements-graphrag-prod
 LANGSMITH_WORKSPACE_ID=33c08fbf-3b88-4b49-ae32-9677043ebed2
 PROMPT_ENVIRONMENT=production
 ```
@@ -187,13 +187,13 @@ PROMPT_ENVIRONMENT=production
 
 ```bash
 # View tracing status
-uv run python -c "from jama_mcp_server_graphrag.observability import get_tracing_status; print(get_tracing_status())"
+uv run python -c "from requirements_graphrag_api.observability import get_tracing_status; print(get_tracing_status())"
 
 # List prompts
-uv run python -m jama_mcp_server_graphrag.prompts.cli list
+uv run python -m requirements_graphrag_api.prompts.cli list
 
 # Validate prompts
-uv run python -m jama_mcp_server_graphrag.prompts.cli validate
+uv run python -m requirements_graphrag_api.prompts.cli validate
 ```
 
 ## 7. Troubleshooting
