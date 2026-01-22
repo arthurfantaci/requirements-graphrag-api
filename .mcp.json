@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "langsmith": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["langsmith-mcp-server"],
+      "env": {
+        "LANGSMITH_API_KEY": "${LANGSMITH_API_KEY}",
+        "LANGSMITH_WORKSPACE_ID": "${LANGSMITH_WORKSPACE_ID}"
+      }
+    }
+  }
+}
