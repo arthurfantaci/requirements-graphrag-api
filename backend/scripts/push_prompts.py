@@ -7,7 +7,7 @@ environment variables and pushes all prompt definitions to LangSmith Hub.
 Usage:
     # Set environment variables
     export LANGSMITH_API_KEY=your_api_key
-    export LANGSMITH_ORG=jama-graphrag
+    export LANGSMITH_ORG=requirements-graphrag
 
     # Push all prompts
     uv run python scripts/push_prompts.py
@@ -35,7 +35,7 @@ from pathlib import Path
 src_path = Path(__file__).parent.parent / "src"
 sys.path.insert(0, str(src_path))
 
-from jama_mcp_server_graphrag.prompts import (  # noqa: E402
+from requirements_graphrag_api.prompts import (  # noqa: E402
     PROMPT_DEFINITIONS,
     PromptCatalog,
     PromptName,
@@ -145,8 +145,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--org",
-        default=os.getenv("LANGSMITH_ORG", "jama-graphrag"),
-        help="LangSmith organization name (default: jama-graphrag)",
+        default=os.getenv("LANGSMITH_ORG", "requirements-graphrag"),
+        help="LangSmith organization name (default: requirements-graphrag)",
     )
     parser.add_argument(
         "--env",

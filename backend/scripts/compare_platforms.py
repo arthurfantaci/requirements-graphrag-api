@@ -52,7 +52,7 @@ def print_header(title: str) -> None:
 
 def print_feature_comparison() -> None:
     """Print feature comparison between platforms."""
-    from jama_mcp_server_graphrag.observability_comparison import (
+    from requirements_graphrag_api.observability_comparison import (
         compare_platform_features,
     )
 
@@ -95,7 +95,7 @@ def print_recommendation(
     langchain_native: bool = True,
 ) -> None:
     """Print platform recommendation based on requirements."""
-    from jama_mcp_server_graphrag.observability_comparison import recommend_platform
+    from requirements_graphrag_api.observability_comparison import recommend_platform
 
     print_header("PLATFORM RECOMMENDATION")
 
@@ -131,7 +131,7 @@ def print_recommendation(
 
 async def run_tracking_experiment() -> dict:
     """Run a side-by-side tracking experiment."""
-    from jama_mcp_server_graphrag.observability_comparison import (
+    from requirements_graphrag_api.observability_comparison import (
         Platform,
         UnifiedTracker,
     )
@@ -267,7 +267,7 @@ def print_cost_comparison() -> None:
 
 def generate_report(output_path: Path) -> None:
     """Generate a comprehensive comparison report."""
-    from jama_mcp_server_graphrag.observability_comparison import (
+    from requirements_graphrag_api.observability_comparison import (
         compare_platform_features,
         recommend_platform,
     )

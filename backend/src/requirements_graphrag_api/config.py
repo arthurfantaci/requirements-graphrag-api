@@ -84,7 +84,7 @@ class AppConfig:
     neo4j_connection_acquisition_timeout: float = 30.0
     # LangSmith observability settings
     langsmith_api_key: str = ""
-    langsmith_project: str = "jama-graphrag"
+    langsmith_project: str = "requirements-graphrag"
     langsmith_tracing_enabled: bool = False
     langsmith_workspace_id: str = ""  # Required for org-scoped API keys
     # Prompt catalog settings
@@ -168,7 +168,7 @@ def get_config() -> AppConfig:
         neo4j_connection_acquisition_timeout=float(os.getenv("NEO4J_CONNECTION_TIMEOUT", "30.0")),
         langsmith_api_key=os.getenv("LANGSMITH_API_KEY", os.getenv("LANGCHAIN_API_KEY", "")),
         langsmith_project=os.getenv(
-            "LANGSMITH_PROJECT", os.getenv("LANGCHAIN_PROJECT", "jama-graphrag")
+            "LANGSMITH_PROJECT", os.getenv("LANGCHAIN_PROJECT", "requirements-graphrag")
         ),
         langsmith_tracing_enabled=tracing_enabled,
         langsmith_workspace_id=os.getenv("LANGSMITH_WORKSPACE_ID", ""),

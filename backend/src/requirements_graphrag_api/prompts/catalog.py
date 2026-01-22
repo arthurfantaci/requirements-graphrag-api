@@ -34,7 +34,7 @@ LANGSMITH_API_KEY_ENV: Final[str] = "LANGSMITH_API_KEY"
 PROMPT_ENVIRONMENT_ENV: Final[str] = "PROMPT_ENVIRONMENT"
 
 # Default configuration
-DEFAULT_ORG: Final[str] = "jama-graphrag"
+DEFAULT_ORG: Final[str] = "requirements-graphrag"
 DEFAULT_CACHE_TTL: Final[int] = 300  # 5 minutes
 
 

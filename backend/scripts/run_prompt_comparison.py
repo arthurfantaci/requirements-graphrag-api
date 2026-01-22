@@ -133,12 +133,12 @@ async def evaluate_prompt_on_dataset(
     Returns:
         Dictionary of metric names to scores.
     """
-    from jama_mcp_server_graphrag.prompts.evaluation import (
+    from langchain_openai import ChatOpenAI
+    from requirements_graphrag_api.prompts.evaluation import (
         create_cypher_validity_evaluator,
         create_json_validity_evaluator,
         create_length_evaluator,
     )
-    from langchain_openai import ChatOpenAI
 
     logger.info(
         "Evaluating %s on dataset %s...",

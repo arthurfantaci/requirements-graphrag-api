@@ -48,7 +48,7 @@ from dotenv import load_dotenv  # noqa: E402
 load_dotenv(override=True)
 
 if TYPE_CHECKING:
-    from jama_mcp_server_graphrag.config import AppConfig
+    from requirements_graphrag_api.config import AppConfig
 
 logging.basicConfig(
     level=logging.INFO,
@@ -172,7 +172,7 @@ def validate_prompts() -> tuple[bool, list[str]]:
 
     try:
         # Import evaluation prompts
-        from jama_mcp_server_graphrag.evaluation.metrics import (
+        from requirements_graphrag_api.evaluation.metrics import (
             ANSWER_RELEVANCY_PROMPT,
             CONTEXT_PRECISION_PROMPT,
             CONTEXT_RECALL_PROMPT,
@@ -196,7 +196,7 @@ def validate_prompts() -> tuple[bool, list[str]]:
                     errors.append(f"{name} missing placeholder: {{{var}}}")
 
         # Import domain metric prompts
-        from jama_mcp_server_graphrag.evaluation.domain_metrics import (
+        from requirements_graphrag_api.evaluation.domain_metrics import (
             CITATION_ACCURACY_PROMPT,
             COMPLETENESS_SCORE_PROMPT,
             DOMAIN_TERMS,
@@ -380,10 +380,11 @@ async def _run_evaluation_tier(
     logger.info("=" * 60)
 
     try:
-        from jama_mcp_server_graphrag.core.retrieval import create_vector_retriever
-        from jama_mcp_server_graphrag.evaluation import evaluate_rag_pipeline
-        from jama_mcp_server_graphrag.neo4j_client import create_driver
-        from jama_mcp_server_graphrag.observability import configure_tracing
+        from requirements_graphrag_api.evaluation import evaluate_rag_pipeline
+        from requirements_graphrag_api.neo4j_client import create_driver
+
+        from requirements_graphrag_api.core.retrieval import create_vector_retriever
+        from requirements_graphrag_api.observability import configure_tracing
 
         configure_tracing(config)
 
@@ -482,7 +483,7 @@ async def run_evaluation(tier: int) -> EvaluationResult:
         return await run_tier1()
 
     # Tiers 2-4 need full config
-    from jama_mcp_server_graphrag.config import get_config
+    from requirements_graphrag_api.config import get_config
 
     config = get_config()
 

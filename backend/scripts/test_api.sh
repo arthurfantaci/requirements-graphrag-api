@@ -6,14 +6,14 @@
 #   1. Configure .env file with valid credentials:
 #      - NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD
 #      - OPENAI_API_KEY
-#   2. Start the server: uv run uvicorn jama_mcp_server_graphrag.api:app --reload
+#   2. Start the server: uv run uvicorn requirements_graphrag_api.api:app --reload
 #
 # Usage: ./scripts/test_api.sh
 # =============================================================================
 
 BASE_URL="${API_URL:-http://localhost:8000}"
 
-echo "Testing Jama GraphRAG API at $BASE_URL"
+echo "Testing Requirements GraphRAG API at $BASE_URL"
 echo "========================================="
 
 # Test root endpoint
