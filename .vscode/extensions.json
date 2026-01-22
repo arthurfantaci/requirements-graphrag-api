@@ -26,7 +26,6 @@
     // Productivity
     "usernamehw.errorlens",
     "christian-kohler.path-intellisense",
-    "streetsidesoftware.code-spell-checker",
 
     // Docker (optional)
     "ms-azuretools.vscode-docker"

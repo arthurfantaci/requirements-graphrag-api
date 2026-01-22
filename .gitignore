@@ -85,3 +85,4 @@ frontend/.cache/
 
 # Benchmarks
 .benchmarks/
+.vercel
