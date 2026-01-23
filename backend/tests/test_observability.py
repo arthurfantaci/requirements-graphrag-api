@@ -12,6 +12,7 @@ from requirements_graphrag_api.config import AppConfig
 from requirements_graphrag_api.observability import (
     REDACTED,
     configure_tracing,
+    create_thread_metadata,
     disable_tracing,
     get_tracing_status,
     sanitize_inputs,
@@ -391,3 +392,28 @@ class TestTraceableSafe:
 
         result = asyncio.run(func_with_config(config, "test"))
         assert result == "Query: test"
+
+
+class TestCreateThreadMetadata:
+    """Tests for create_thread_metadata function."""
+
+    def test_create_thread_metadata_with_id(self) -> None:
+        """Test that metadata is created with conversation_id."""
+        result = create_thread_metadata("conversation-123")
+
+        assert result is not None
+        assert "metadata" in result
+        assert result["metadata"]["conversation_id"] == "conversation-123"
+
+    def test_create_thread_metadata_without_id(self) -> None:
+        """Test that None is returned without conversation_id."""
+        assert create_thread_metadata(None) is None
+        assert create_thread_metadata("") is None
+
+    def test_create_thread_metadata_preserves_uuid_format(self) -> None:
+        """Test that UUID-style conversation IDs are preserved."""
+        uuid_id = "550e8400-e29b-41d4-a716-446655440000"
+        result = create_thread_metadata(uuid_id)
+
+        assert result is not None
+        assert result["metadata"]["conversation_id"] == uuid_id

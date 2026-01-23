@@ -170,6 +170,35 @@ def traceable_safe(
     return decorator
 
 
+def create_thread_metadata(conversation_id: str | None) -> dict[str, Any] | None:
+    """Create LangSmith metadata for conversation threading.
+
+    This helper creates the metadata dict needed to group traces into
+    LangSmith Threads. Use this with the `langsmith_extra` parameter
+    when calling @traceable decorated functions.
+
+    Args:
+        conversation_id: Unique ID for the conversation thread.
+
+    Returns:
+        Metadata dict with conversation_id, or None if no ID provided.
+
+    Example:
+        @traceable_safe(name="stream_chat", run_type="chain")
+        async def stream_chat(..., langsmith_extra=None):
+            ...
+
+        # At call time:
+        await stream_chat(
+            ...,
+            langsmith_extra=create_thread_metadata("conversation-123")
+        )
+    """
+    if not conversation_id:
+        return None
+    return {"metadata": {"conversation_id": conversation_id}}
+
+
 def configure_tracing(config: AppConfig) -> bool:
     """Configure LangSmith tracing from application config.
 
@@ -245,6 +274,7 @@ __all__ = [
     "REDACTED",
     "SENSITIVE_FIELD_PATTERNS",
     "configure_tracing",
+    "create_thread_metadata",
     "disable_tracing",
     "get_tracing_status",
     "sanitize_inputs",
