@@ -23,7 +23,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from requirements_graphrag_api.observability import traceable
+from requirements_graphrag_api.observability import traceable_safe
 
 if TYPE_CHECKING:
     from neo4j import Driver
@@ -229,7 +229,7 @@ async def _evaluate_single(
     )
 
 
-@traceable(name="evaluate_rag_pipeline", run_type="chain")
+@traceable_safe(name="evaluate_rag_pipeline", run_type="chain")
 async def evaluate_rag_pipeline(
     config: AppConfig,
     retriever: VectorRetriever,

@@ -28,7 +28,7 @@ import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from requirements_graphrag_api.observability import traceable
+from requirements_graphrag_api.observability import traceable_safe
 
 if TYPE_CHECKING:
     from neo4j import Driver
@@ -103,7 +103,7 @@ def create_vector_retriever(
     )
 
 
-@traceable(name="vector_search", run_type="retriever")
+@traceable_safe(name="vector_search", run_type="retriever")
 async def vector_search(
     retriever: VectorRetriever,
     driver: Driver,
@@ -207,7 +207,7 @@ async def vector_search(
     return formatted
 
 
-@traceable(name="hybrid_search", run_type="retriever")
+@traceable_safe(name="hybrid_search", run_type="retriever")
 async def hybrid_search(
     retriever: VectorRetriever,
     driver: Driver,
@@ -744,7 +744,7 @@ def _assemble_enriched_result(
 # =============================================================================
 
 
-@traceable(name="graph_enriched_search", run_type="retriever")
+@traceable_safe(name="graph_enriched_search", run_type="retriever")
 async def graph_enriched_search(
     retriever: VectorRetriever,
     driver: Driver,
@@ -1002,7 +1002,7 @@ def get_related_entities(
         return [dict(record) for record in result]
 
 
-@traceable(name="explore_entity", run_type="retriever")
+@traceable_safe(name="explore_entity", run_type="retriever")
 async def explore_entity(
     driver: Driver,
     entity_name: str,

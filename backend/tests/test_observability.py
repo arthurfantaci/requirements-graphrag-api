@@ -10,10 +10,13 @@ import pytest
 
 from requirements_graphrag_api.config import AppConfig
 from requirements_graphrag_api.observability import (
+    REDACTED,
     configure_tracing,
     disable_tracing,
     get_tracing_status,
+    sanitize_inputs,
     traceable,
+    traceable_safe,
 )
 
 if TYPE_CHECKING:
@@ -212,3 +215,179 @@ class TestTraceableReexport:
         # Function should still work when decorated
         result = asyncio.run(async_sample_function(5))
         assert result == 10
+
+
+class TestSanitizeInputs:
+    """Tests for sanitize_inputs function."""
+
+    def test_sanitize_password_field(self) -> None:
+        """Test that password fields are redacted."""
+        inputs = {"username": "user", "password": "secret123"}
+        result = sanitize_inputs(inputs)
+
+        assert result["username"] == "user"
+        assert result["password"] == REDACTED
+
+    def test_sanitize_api_key_field(self) -> None:
+        """Test that api_key fields are redacted."""
+        inputs = {"model": "gpt-4", "openai_api_key": "sk-12345"}
+        result = sanitize_inputs(inputs)
+
+        assert result["model"] == "gpt-4"
+        assert result["openai_api_key"] == REDACTED
+
+    def test_sanitize_nested_dict(self) -> None:
+        """Test that nested dictionaries are sanitized."""
+        inputs = {
+            "config": {
+                "neo4j_password": "db-secret",
+                "neo4j_username": "neo4j",
+            },
+            "query": "test query",
+        }
+        result = sanitize_inputs(inputs)
+
+        assert result["query"] == "test query"
+        assert result["config"]["neo4j_username"] == "neo4j"
+        assert result["config"]["neo4j_password"] == REDACTED
+
+    def test_sanitize_dataclass(self) -> None:
+        """Test that dataclasses are converted and sanitized."""
+        config = AppConfig(
+            neo4j_uri="neo4j://localhost:7687",
+            neo4j_username="neo4j",
+            neo4j_password="secret-password",  # noqa: S106
+            openai_api_key="sk-openai-key",
+            langsmith_api_key="lsv2_key",
+        )
+        inputs = {"config": config, "message": "hello"}
+        result = sanitize_inputs(inputs)
+
+        assert result["message"] == "hello"
+        # Config should be converted to dict and sanitized
+        assert isinstance(result["config"], dict)
+        assert result["config"]["neo4j_username"] == "neo4j"
+        assert result["config"]["neo4j_password"] == REDACTED
+        assert result["config"]["openai_api_key"] == REDACTED
+        assert result["config"]["langsmith_api_key"] == REDACTED
+
+    def test_sanitize_list_of_dicts(self) -> None:
+        """Test that lists containing dicts are sanitized."""
+        inputs = {
+            "credentials": [
+                {"service": "db", "password": "pass1"},
+                {"service": "api", "api_key": "key2"},
+            ]
+        }
+        result = sanitize_inputs(inputs)
+
+        assert result["credentials"][0]["service"] == "db"
+        assert result["credentials"][0]["password"] == REDACTED
+        assert result["credentials"][1]["service"] == "api"
+        assert result["credentials"][1]["api_key"] == REDACTED
+
+    def test_sanitize_preserves_non_sensitive_data(self) -> None:
+        """Test that non-sensitive data is preserved."""
+        inputs = {
+            "message": "What is a requirement?",
+            "max_sources": 5,
+            "include_entities": True,
+            "metadata": {"topic": "requirements"},
+        }
+        result = sanitize_inputs(inputs)
+
+        assert result == inputs  # Should be identical
+
+    def test_sanitize_various_sensitive_patterns(self) -> None:
+        """Test various sensitive field name patterns."""
+        inputs = {
+            "password": "pass1",
+            "neo4j_password": "pass2",
+            "api_key": "key1",
+            "openai_api_key": "key2",
+            "langsmith_api_key": "key3",
+            "secret": "sec1",
+            "client_secret": "sec2",
+            "auth_token": "tok1",
+            "bearer_token": "tok2",
+            "credentials": "cred1",
+        }
+        result = sanitize_inputs(inputs)
+
+        # All should be redacted
+        for key in inputs:
+            assert result[key] == REDACTED, f"Expected {key} to be redacted"
+
+    def test_sanitize_case_insensitive(self) -> None:
+        """Test that field matching is case-insensitive."""
+        inputs = {
+            "PASSWORD": "pass1",
+            "Api_Key": "key1",
+            "SecReT": "sec1",
+        }
+        result = sanitize_inputs(inputs)
+
+        assert result["PASSWORD"] == REDACTED
+        assert result["Api_Key"] == REDACTED
+        assert result["SecReT"] == REDACTED
+
+    def test_sanitize_empty_inputs(self) -> None:
+        """Test sanitization of empty inputs."""
+        assert sanitize_inputs({}) == {}
+
+    def test_sanitize_non_dict_returns_unchanged(self) -> None:
+        """Test that non-dict inputs are returned unchanged."""
+        assert sanitize_inputs("string") == "string"  # type: ignore[arg-type]
+        assert sanitize_inputs(123) == 123  # type: ignore[arg-type]
+        assert sanitize_inputs(None) is None  # type: ignore[arg-type]
+
+
+class TestTraceableSafe:
+    """Tests for traceable_safe decorator."""
+
+    def test_traceable_safe_sync_function(self) -> None:
+        """Test that traceable_safe works with sync functions."""
+
+        @traceable_safe(name="test_sync", run_type="chain")
+        def sync_func(x: int) -> int:
+            return x * 2
+
+        result = sync_func(5)
+        assert result == 10
+
+    def test_traceable_safe_async_function(self) -> None:
+        """Test that traceable_safe works with async functions."""
+
+        @traceable_safe(name="test_async", run_type="chain")
+        async def async_func(x: int) -> int:
+            return x * 2
+
+        result = asyncio.run(async_func(5))
+        assert result == 10
+
+    def test_traceable_safe_preserves_function_name(self) -> None:
+        """Test that traceable_safe preserves function metadata."""
+
+        @traceable_safe(name="my_func", run_type="chain")
+        async def my_function(x: int) -> int:
+            """My docstring."""
+            return x
+
+        assert my_function.__name__ == "my_function"
+        assert my_function.__doc__ == "My docstring."
+
+    def test_traceable_safe_with_config_param(self) -> None:
+        """Test that traceable_safe works with AppConfig parameter."""
+        config = AppConfig(
+            neo4j_uri="neo4j://localhost:7687",
+            neo4j_username="neo4j",
+            neo4j_password="secret",  # noqa: S106
+            openai_api_key="sk-key",
+        )
+
+        @traceable_safe(name="test_with_config", run_type="chain")
+        async def func_with_config(config: AppConfig, query: str) -> str:
+            return f"Query: {query}"
+
+        result = asyncio.run(func_with_config(config, "test"))
+        assert result == "Query: test"

@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any, Final
 from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
 
-from requirements_graphrag_api.observability import traceable
+from requirements_graphrag_api.observability import traceable_safe
 from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
 from requirements_graphrag_api.prompts.definitions import TEXT2CYPHER_EXAMPLES
 
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 LOG_TRUNCATE_LENGTH: Final[int] = 100
 
 
-@traceable(name="generate_cypher", run_type="llm")
+@traceable_safe(name="generate_cypher", run_type="llm")
 async def generate_cypher(
     config: AppConfig,
     driver: Driver,
@@ -118,7 +118,7 @@ async def generate_cypher(
     return cypher
 
 
-@traceable(name="text2cypher_query", run_type="chain")
+@traceable_safe(name="text2cypher_query", run_type="chain")
 async def text2cypher_query(
     config: AppConfig,
     driver: Driver,

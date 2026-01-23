@@ -1,6 +1,6 @@
 {
-  // Python Configuration
-  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  // Python Configuration (backend monorepo)
+  "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/bin/python",
   "python.terminal.activateEnvironment": true,
 
   // Ruff - Use as primary linter and formatter (replaces Black, isort, Flake8)
@@ -14,14 +14,14 @@
   },
 
   // Ruff extension settings
-  "ruff.path": ["${workspaceFolder}/.venv/bin/ruff"],
+  "ruff.path": ["${workspaceFolder}/backend/.venv/bin/ruff"],
   "ruff.importStrategy": "fromEnvironment",
   "ruff.lint.enable": true,
 
   // Testing with pytest
   "python.testing.pytestEnabled": true,
   "python.testing.unittestEnabled": false,
-  "python.testing.pytestArgs": ["tests", "-v"],
+  "python.testing.pytestArgs": ["backend/tests", "-v"],
 
   // Editor settings for Python
   "editor.rulers": [100],
@@ -57,10 +57,10 @@
 
   // Terminal settings
   "terminal.integrated.env.osx": {
-    "PYTHONPATH": "${workspaceFolder}/src"
+    "PYTHONPATH": "${workspaceFolder}/backend/src"
   },
   "terminal.integrated.env.linux": {
-    "PYTHONPATH": "${workspaceFolder}/src"
+    "PYTHONPATH": "${workspaceFolder}/backend/src"
   },
 
   // Type checking (Pylance)
@@ -80,5 +80,6 @@
   // Markdown
   "[markdown]": {
     "editor.wordWrap": "on"
-  }
+  },
+  "python-envs.pythonProjects": []
 }

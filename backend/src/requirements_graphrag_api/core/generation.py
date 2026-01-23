@@ -27,7 +27,7 @@ from langchain_openai import ChatOpenAI
 
 from requirements_graphrag_api.core.definitions import search_terms
 from requirements_graphrag_api.core.retrieval import graph_enriched_search
-from requirements_graphrag_api.observability import traceable
+from requirements_graphrag_api.observability import traceable_safe
 from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
 
 if TYPE_CHECKING:
@@ -65,7 +65,7 @@ class StreamEvent:
     data: dict[str, Any]
 
 
-@traceable(name="generate_answer", run_type="chain")
+@traceable_safe(name="generate_answer", run_type="chain")
 async def generate_answer(
     config: AppConfig,
     retriever: VectorRetriever,
@@ -312,7 +312,7 @@ def _build_context_from_results(
     return sources, entities_list, all_images[:5], context, entities_str
 
 
-@traceable(name="stream_chat", run_type="chain")
+@traceable_safe(name="stream_chat", run_type="chain")
 async def stream_chat(
     config: AppConfig,
     retriever: VectorRetriever,

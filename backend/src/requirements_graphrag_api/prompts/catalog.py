@@ -18,8 +18,8 @@ from functools import lru_cache
 from typing import Final
 
 from langchain_core.prompts import ChatPromptTemplate
-from langsmith import traceable
 
+from requirements_graphrag_api.observability import traceable_safe
 from requirements_graphrag_api.prompts.definitions import (
     PROMPT_DEFINITIONS,
     PromptDefinition,
@@ -169,7 +169,7 @@ class PromptCatalog:
             raise KeyError(f"Unknown prompt name: {name}")
         return PROMPT_DEFINITIONS[name].template
 
-    @traceable(name="prompt_catalog.get_prompt", run_type="retriever")
+    @traceable_safe(name="prompt_catalog.get_prompt", run_type="retriever")
     async def get_prompt(self, name: PromptName) -> ChatPromptTemplate:
         """Get a prompt template, checking cache and hub first.
 
