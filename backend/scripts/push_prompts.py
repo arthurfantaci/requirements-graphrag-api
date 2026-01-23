@@ -70,29 +70,25 @@ async def push_prompts(
     logger.info("  Organization: %s", organization)
     logger.info("  Environment: %s", environment)
 
+    # Initialize catalog
+    catalog = PromptCatalog(
+        organization=organization,
+        environment=environment,
+        use_hub=True,
+    )
+
     if dry_run:
         logger.info("\n🔍 DRY RUN - Listing prompts without pushing\n")
         results = {}
         for name, definition in PROMPT_DEFINITIONS.items():
-            hub_name = f"{organization}/{name.value}"
-            logger.info("  📝 %s", hub_name)
+            hub_path = catalog._get_hub_path(name)
+            logger.info("  📝 %s", hub_path)
             logger.info("     Version: %s", definition.metadata.version)
             logger.info("     Description: %s", definition.metadata.description)
             logger.info("     Variables: %s", ", ".join(definition.metadata.input_variables))
             logger.info("     Tags: %s", ", ".join(definition.metadata.tags))
-            results[name.value] = f"[DRY RUN] Would push to {hub_name}"
+            results[name.value] = f"[DRY RUN] Would push to {hub_path}"
         return results
-
-    # Initialize catalog with LangSmith client
-    catalog = PromptCatalog(
-        organization=organization,
-        environment=environment,
-    )
-
-    if not catalog._initialized:
-        logger.error("❌ Failed to initialize LangSmith client")
-        logger.error("   Make sure LANGSMITH_API_KEY is set")
-        sys.exit(1)
 
     results = {}
 
@@ -145,8 +141,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--org",
-        default=os.getenv("LANGSMITH_ORG", "requirements-graphrag"),
-        help="LangSmith organization name (default: requirements-graphrag)",
+        default=os.getenv("LANGSMITH_ORG", ""),
+        help="LangSmith organization name (default: empty for workspace-scoped prompts)",
     )
     parser.add_argument(
         "--env",
