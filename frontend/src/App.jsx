@@ -1,11 +1,23 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+// Generate a unique conversation ID (UUID v4)
+function generateConversationId() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0
+    const v = c === 'x' ? r : (r & 0x3 | 0x8)
+    return v.toString(16)
+  })
+}
 
 function App() {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+
+  // Generate a stable conversation ID for this session
+  const conversationId = useMemo(() => generateConversationId(), [])
 
   const sendMessage = async (e) => {
     e.preventDefault()
@@ -20,10 +32,19 @@ function App() {
     setMessages(prev => [...prev, { role: 'assistant', content: '' }])
 
     try {
+      // Build conversation history from completed messages (exclude empty placeholders)
+      const conversationHistory = messages
+        .filter(m => m.content && m.content.trim())
+        .map(m => ({ role: m.role, content: m.content }))
+
       const response = await fetch(`${API_URL}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: input }),
+        body: JSON.stringify({
+          message: input,
+          conversation_id: conversationId,
+          conversation_history: conversationHistory.length > 0 ? conversationHistory : null,
+        }),
       })
 
       if (!response.ok) throw new Error('Failed to get response')

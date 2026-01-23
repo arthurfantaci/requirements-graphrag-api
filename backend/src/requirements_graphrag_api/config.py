@@ -82,6 +82,8 @@ class AppConfig:
     # Neo4j driver settings optimized for serverless (Vercel/Lambda)
     neo4j_max_connection_pool_size: int = 5
     neo4j_connection_acquisition_timeout: float = 30.0
+    neo4j_liveness_check_timeout: float = 30.0  # Timeout for connection liveness checks
+    neo4j_max_connection_lifetime: int = 300  # Max seconds a connection can live (5 min)
     # LangSmith observability settings
     langsmith_api_key: str = ""
     langsmith_project: str = "requirements-graphrag"
@@ -166,6 +168,8 @@ def get_config() -> AppConfig:
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         neo4j_max_connection_pool_size=int(os.getenv("NEO4J_MAX_POOL_SIZE", "5")),
         neo4j_connection_acquisition_timeout=float(os.getenv("NEO4J_CONNECTION_TIMEOUT", "30.0")),
+        neo4j_liveness_check_timeout=float(os.getenv("NEO4J_LIVENESS_CHECK_TIMEOUT", "30.0")),
+        neo4j_max_connection_lifetime=int(os.getenv("NEO4J_MAX_CONNECTION_LIFETIME", "300")),
         langsmith_api_key=os.getenv("LANGSMITH_API_KEY", os.getenv("LANGCHAIN_API_KEY", "")),
         langsmith_project=os.getenv(
             "LANGSMITH_PROJECT", os.getenv("LANGCHAIN_PROJECT", "requirements-graphrag")
