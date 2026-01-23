@@ -46,10 +46,16 @@ DEFINITION_RELEVANCE_THRESHOLD: Final[float] = 0.5
 class StreamEventType(StrEnum):
     """Types of events emitted during streaming chat."""
 
+    # Explanatory (RAG) events
     SOURCES = "sources"
     TOKEN = "token"  # noqa: S105 - not a password
     DONE = "done"
     ERROR = "error"
+
+    # Structured (Cypher) events
+    ROUTING = "routing"  # Intent classification result
+    CYPHER = "cypher"  # Generated Cypher query
+    RESULTS = "results"  # Query results
 
 
 @dataclass(frozen=True, slots=True)

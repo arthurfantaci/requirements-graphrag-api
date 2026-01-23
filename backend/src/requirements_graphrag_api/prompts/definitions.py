@@ -23,7 +23,8 @@ class PromptName(StrEnum):
     For local development, the simple name is used as the key.
     """
 
-    ROUTER = "graphrag-router"
+    INTENT_CLASSIFIER = "graphrag-intent-classifier"
+    ROUTER = "graphrag-router"  # Deprecated: use INTENT_CLASSIFIER
     CRITIC = "graphrag-critic"
     STEPBACK = "graphrag-stepback"
     QUERY_UPDATER = "graphrag-query-updater"
@@ -68,7 +69,74 @@ class PromptDefinition:
 
 
 # =============================================================================
-# ROUTER PROMPT
+# INTENT CLASSIFIER PROMPT
+# Classifies queries as explanatory (RAG) or structured (Cypher)
+# =============================================================================
+
+INTENT_CLASSIFIER_SYSTEM: Final[
+    str
+] = """You classify user queries for a Requirements Management knowledge base.
+
+Your task is to determine the user's intent to route their query appropriately.
+
+## Intent Types
+
+**EXPLANATORY** - User wants understanding, explanation, or synthesis
+- Questions about concepts: "What is requirements traceability?"
+- How-to questions: "How do I implement change management?"
+- Best practices: "What are best practices for verification?"
+- Why questions: "Why is traceability important?"
+- Comparisons: "What's the difference between verification and validation?"
+
+**STRUCTURED** - User wants enumeration, lists, counts, or specific data
+- List requests: "List all webinars", "Show me all videos"
+- Counts: "How many articles mention ISO 26262?"
+- Enumeration: "What standards are in the knowledge base?"
+- Table requests: "Provide a table of all tools"
+- Specific lookups: "Which articles discuss MBSE?"
+
+## Classification Rules
+
+1. Keywords suggesting STRUCTURED intent:
+   - "list all", "show all", "show me all"
+   - "how many", "count", "total number"
+   - "table of", "enumerate"
+   - "which [noun]s" (plural entity request)
+
+2. Keywords suggesting EXPLANATORY intent:
+   - "what is", "what are" (when asking for definition/explanation)
+   - "how do I", "how to", "how can I"
+   - "explain", "describe", "help me understand"
+   - "why", "best practices", "recommendations"
+
+3. When ambiguous, prefer EXPLANATORY (provides richer context)
+
+Respond with ONLY a JSON object:
+{{"intent": "explanatory"}} or {{"intent": "structured"}}"""
+
+INTENT_CLASSIFIER_TEMPLATE = ChatPromptTemplate.from_messages(
+    [
+        ("system", INTENT_CLASSIFIER_SYSTEM),
+        ("human", "Query: {question}"),
+    ]
+)
+
+INTENT_CLASSIFIER_METADATA = PromptMetadata(
+    version="1.0.0",
+    description="Classifies queries as explanatory (RAG) or structured (Cypher) for routing",
+    input_variables=["question"],
+    output_format="json",
+    evaluation_criteria=[
+        "correct_classification",
+        "handling_of_ambiguous_queries",
+        "valid_json_output",
+    ],
+    tags=["routing", "classification", "intent"],
+)
+
+
+# =============================================================================
+# ROUTER PROMPT (Deprecated - use INTENT_CLASSIFIER)
 # Routes queries to the most appropriate retrieval tool(s)
 # =============================================================================
 
@@ -334,19 +402,23 @@ Database Schema:
 {schema}
 
 Key Node Types:
-- Article: title, url, article_title
-- Chunk: content, chunk_id, chunk_index
-- Entity: name, display_name (subtypes: Tool, Concept, Standard, Industry)
-- Definition: term, definition, url
+- Article: article_title, url, chapter_title
+- Chunk: text, index (linked to Article via FROM_ARTICLE)
+- Entity: name, display_name (subtypes: Tool, Concept, Standard, Industry, Methodology)
+- Definition: term, definition, url, acronym
 - Standard: name, display_name, organization
-- Image: url, alt_text
+- Webinar: title, url
+- Video: title, url
+- Image: url, alt_text, context
 
 Key Relationships:
 - (Chunk)-[:FROM_ARTICLE]->(Article)
 - (Entity)-[:MENTIONED_IN]->(Chunk)
 - (Standard)-[:APPLIES_TO]->(Industry)
-- (Definition)-[:MENTIONED_IN]->(Chunk)
-- (Image)-[:BELONGS_TO]->(Article)
+- (Article)-[:HAS_WEBINAR]->(Webinar)
+- (Article)-[:HAS_VIDEO]->(Video)
+- (Article)-[:HAS_IMAGE]->(Image)
+- (Chunk)-[:NEXT_CHUNK]->(Chunk)
 
 Few-Shot Examples:
 {examples}
@@ -357,6 +429,7 @@ Guidelines:
 3. Use CONTAINS for partial text matching
 4. Return meaningful property values, not just node counts
 5. Limit results to 25 unless aggregating
+6. For media queries (webinars, videos, images), traverse from Article
 
 Generate only the Cypher query, no explanation."""
 
@@ -432,6 +505,33 @@ WITH labels(entity)[0] AS entity_type, entity.display_name AS entity_name, count
 RETURN entity_type, entity_name, mention_count
 ORDER BY mention_count DESC
 LIMIT 5
+
+Example 8:
+Question: List all webinars
+Cypher: MATCH (a:Article)-[:HAS_WEBINAR]->(w:Webinar)
+RETURN w.title AS webinar_title, w.url AS webinar_url, a.article_title AS source_article
+ORDER BY w.title
+
+Example 9:
+Question: Show me all videos in the knowledge base
+Cypher: MATCH (a:Article)-[:HAS_VIDEO]->(v:Video)
+RETURN v.title AS video_title, v.url AS video_url, a.article_title AS source_article
+ORDER BY v.title
+
+Example 10:
+Question: What images are available about traceability?
+Cypher: MATCH (e)-[:MENTIONED_IN]->(c:Chunk)-[:FROM_ARTICLE]->(a:Article)-[:HAS_IMAGE]->(img:Image)
+WHERE toLower(e.name) CONTAINS 'traceability'
+   OR toLower(img.alt_text) CONTAINS 'traceability'
+RETURN DISTINCT img.alt_text AS description, img.url AS image_url, a.article_title AS source
+LIMIT 10
+
+Example 11:
+Question: How many webinars and videos are there?
+Cypher: MATCH (w:Webinar)
+WITH count(w) AS webinar_count
+MATCH (v:Video)
+RETURN webinar_count, count(v) AS video_count
 """
 
 
@@ -440,6 +540,11 @@ LIMIT 5
 # =============================================================================
 
 PROMPT_DEFINITIONS: Final[dict[PromptName, PromptDefinition]] = {
+    PromptName.INTENT_CLASSIFIER: PromptDefinition(
+        name=PromptName.INTENT_CLASSIFIER,
+        template=INTENT_CLASSIFIER_TEMPLATE,
+        metadata=INTENT_CLASSIFIER_METADATA,
+    ),
     PromptName.ROUTER: PromptDefinition(
         name=PromptName.ROUTER,
         template=ROUTER_TEMPLATE,

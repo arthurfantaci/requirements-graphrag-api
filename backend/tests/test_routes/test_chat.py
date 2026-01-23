@@ -181,8 +181,8 @@ class TestChatEndpointStreaming:
             assert response.headers["cache-control"] == "no-cache"
             assert response.headers["x-accel-buffering"] == "no"
 
-    def test_chat_emits_sources_event_first(self, client: TestClient) -> None:
-        """Test that the first SSE event is the sources event."""
+    def test_chat_emits_routing_event_first(self, client: TestClient) -> None:
+        """Test that the first SSE event is the routing event."""
         events = create_mock_stream_events()
 
         with patch("requirements_graphrag_api.routes.chat.stream_chat") as mock_stream:
@@ -190,16 +190,23 @@ class TestChatEndpointStreaming:
 
             response = client.post(
                 "/api/v1/chat",
-                json={"message": "What is traceability?"},
+                json={
+                    "message": "What is traceability?",
+                    "options": {"force_intent": "explanatory"},
+                },
             )
 
             parsed_events = parse_sse_response(response.text)
 
             assert len(parsed_events) > 0
-            assert parsed_events[0]["event"] == "sources"
-            assert "sources" in parsed_events[0]["data"]
-            assert "entities" in parsed_events[0]["data"]
-            assert "images" in parsed_events[0]["data"]
+            # First event is routing
+            assert parsed_events[0]["event"] == "routing"
+            assert parsed_events[0]["data"]["intent"] == "explanatory"
+            # Second event is sources
+            assert parsed_events[1]["event"] == "sources"
+            assert "sources" in parsed_events[1]["data"]
+            assert "entities" in parsed_events[1]["data"]
+            assert "images" in parsed_events[1]["data"]
 
     def test_chat_emits_token_events(self, client: TestClient) -> None:
         """Test that token events are emitted during streaming."""
@@ -210,7 +217,10 @@ class TestChatEndpointStreaming:
 
             response = client.post(
                 "/api/v1/chat",
-                json={"message": "Test"},
+                json={
+                    "message": "Test",
+                    "options": {"force_intent": "explanatory"},
+                },
             )
 
             parsed_events = parse_sse_response(response.text)
@@ -229,7 +239,10 @@ class TestChatEndpointStreaming:
 
             response = client.post(
                 "/api/v1/chat",
-                json={"message": "Test"},
+                json={
+                    "message": "Test",
+                    "options": {"force_intent": "explanatory"},
+                },
             )
 
             parsed_events = parse_sse_response(response.text)
@@ -248,17 +261,21 @@ class TestChatEndpointStreaming:
 
             response = client.post(
                 "/api/v1/chat",
-                json={"message": "Test"},
+                json={
+                    "message": "Test",
+                    "options": {"force_intent": "explanatory"},
+                },
             )
 
             parsed_events = parse_sse_response(response.text)
             event_types = [e["event"] for e in parsed_events]
 
-            # First should be sources, last should be done
-            assert event_types[0] == "sources"
+            # First should be routing, second sources, last should be done
+            assert event_types[0] == "routing"
+            assert event_types[1] == "sources"
             assert event_types[-1] == "done"
-            # All middle events should be tokens
-            for event_type in event_types[1:-1]:
+            # All middle events (after routing and sources, before done) should be tokens
+            for event_type in event_types[2:-1]:
                 assert event_type == "token"
 
     def test_chat_with_conversation_history(self, client: TestClient) -> None:
@@ -276,6 +293,7 @@ class TestChatEndpointStreaming:
                         {"role": "user", "content": "What is traceability?"},
                         {"role": "assistant", "content": "Traceability is..."},
                     ],
+                    "options": {"force_intent": "explanatory"},
                 },
             )
 
@@ -334,6 +352,7 @@ class TestChatEndpointStreaming:
                         "retrieval_strategy": "graph",
                         "include_sources": True,
                         "max_sources": 3,
+                        "force_intent": "explanatory",
                     },
                 },
             )
@@ -353,13 +372,18 @@ class TestChatEndpointStreaming:
 
             response = client.post(
                 "/api/v1/chat",
-                json={"message": "Test"},
+                json={
+                    "message": "Test",
+                    "options": {"force_intent": "explanatory"},
+                },
             )
 
             assert response.status_code == 200
             parsed_events = parse_sse_response(response.text)
 
-            sources_event = parsed_events[0]
+            # First event is routing, second is sources
+            assert parsed_events[0]["event"] == "routing"
+            sources_event = parsed_events[1]
             assert sources_event["event"] == "sources"
             assert sources_event["data"]["sources"] == []
             assert sources_event["data"]["entities"] == []
@@ -379,15 +403,20 @@ class TestChatEndpointStreaming:
 
             response = client.post(
                 "/api/v1/chat",
-                json={"message": "Test"},
+                json={
+                    "message": "Test",
+                    "options": {"force_intent": "explanatory"},
+                },
             )
 
             assert response.status_code == 200
             parsed_events = parse_sse_response(response.text)
 
-            assert len(parsed_events) == 1
-            assert parsed_events[0]["event"] == "error"
-            assert "error" in parsed_events[0]["data"]
+            # First is routing, then error from stream_chat
+            assert len(parsed_events) == 2
+            assert parsed_events[0]["event"] == "routing"
+            assert parsed_events[1]["event"] == "error"
+            assert "error" in parsed_events[1]["data"]
 
 
 class TestChatMessageModel:
