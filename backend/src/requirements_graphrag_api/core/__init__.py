@@ -31,6 +31,11 @@ from requirements_graphrag_api.core.retrieval import (
     search_entities_by_name,
     vector_search,
 )
+from requirements_graphrag_api.core.routing import (
+    QueryIntent,
+    classify_intent,
+    get_routing_guide,
+)
 from requirements_graphrag_api.core.standards import (
     get_standards_by_industry,
     list_all_standards,
@@ -42,14 +47,17 @@ from requirements_graphrag_api.core.text2cypher import generate_cypher, text2cyp
 __all__ = [
     "DEFAULT_ENRICHMENT_OPTIONS",
     "GraphEnrichmentOptions",
+    "QueryIntent",
     "StreamEvent",
     "StreamEventType",
+    "classify_intent",
     "create_vector_retriever",
     "explore_entity",
     "generate_answer",
     "generate_cypher",
     "get_entities_from_chunks",
     "get_related_entities",
+    "get_routing_guide",
     "get_standards_by_industry",
     "graph_enriched_search",
     "hybrid_search",
