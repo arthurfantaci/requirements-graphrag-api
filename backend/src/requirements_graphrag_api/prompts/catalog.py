@@ -15,9 +15,12 @@ import os
 import time
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from langchain_core.prompts import ChatPromptTemplate
+
+if TYPE_CHECKING:
+    from langsmith import Client
 
 from requirements_graphrag_api.observability import traceable_safe
 from requirements_graphrag_api.prompts.definitions import (
@@ -31,12 +34,28 @@ logger = logging.getLogger(__name__)
 # Environment variables for LangSmith Hub configuration
 LANGSMITH_ORG_ENV: Final[str] = "LANGSMITH_ORG"
 LANGSMITH_API_KEY_ENV: Final[str] = "LANGSMITH_API_KEY"
+LANGSMITH_TENANT_ID_ENV: Final[str] = "LANGSMITH_TENANT_ID"
 PROMPT_ENVIRONMENT_ENV: Final[str] = "PROMPT_ENVIRONMENT"
 
 # Default configuration
 # Empty string means workspace-scoped prompts (no org prefix)
 DEFAULT_ORG: Final[str] = ""
 DEFAULT_CACHE_TTL: Final[int] = 300  # 5 minutes
+
+
+def _create_langsmith_client() -> Client:
+    """Create LangSmith Client with proper tenant_id for org-scoped API keys.
+
+    Returns:
+        Configured LangSmith Client instance.
+    """
+    from langsmith import Client
+
+    tenant_id = os.getenv(LANGSMITH_TENANT_ID_ENV)
+    if tenant_id:
+        logger.debug("Creating LangSmith client with tenant_id")
+        return Client(api_key=os.getenv(LANGSMITH_API_KEY_ENV), workspace=tenant_id)
+    return Client()
 
 
 @dataclass
@@ -132,15 +151,12 @@ class PromptCatalog:
         hub_path = self._get_hub_path(name)
 
         try:
-            # Import langsmith at runtime (optional dependency)
-            from langsmith import Client
-
             # Pull with environment tag if not development
             if self.environment != "development":
                 hub_path = f"{hub_path}:{self.environment}"
 
             logger.debug("Pulling prompt from hub: %s", hub_path)
-            client = Client()
+            client = _create_langsmith_client()
             prompt = await asyncio.to_thread(client.pull_prompt, hub_path)
 
             if isinstance(prompt, ChatPromptTemplate):
@@ -367,9 +383,7 @@ class PromptCatalog:
         hub_path = self._get_hub_path(name)
 
         try:
-            from langsmith import Client
-
-            client = Client()
+            client = _create_langsmith_client()
             url = await asyncio.to_thread(
                 client.push_prompt,
                 hub_path,
