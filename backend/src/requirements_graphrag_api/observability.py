@@ -100,8 +100,7 @@ def sanitize_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
         elif isinstance(value, list):
             # Handle lists (may contain dicts or dataclasses)
             sanitized[key] = [
-                sanitize_inputs(item) if isinstance(item, dict) else item
-                for item in value
+                sanitize_inputs(item) if isinstance(item, dict) else item for item in value
             ]
         elif hasattr(value, "__class__") and value.__class__.__name__ in (
             "Neo4jDriver",
