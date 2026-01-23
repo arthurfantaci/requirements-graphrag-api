@@ -39,6 +39,8 @@ jobs:
           LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
           # LangSmith Hub requires an owner (user or org) for prompts
           LANGSMITH_ORG: ${{ secrets.LANGSMITH_ORG }}
+          # Required for org-scoped API keys (workspace UUID from LangSmith settings)
+          LANGCHAIN_WORKSPACE: ${{ secrets.LANGSMITH_WORKSPACE }}
 
       - name: Summary
         run: |
