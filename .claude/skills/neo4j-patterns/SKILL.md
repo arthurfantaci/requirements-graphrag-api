@@ -57,7 +57,7 @@ def get_articles(driver: Driver, topic: str) -> list[dict]:
             topic=topic
         )
         return [record.data() for record in result]  # Process IN transaction
-    
+
     with driver.session(database="neo4j") as session:
         return session.execute_read(_query, topic)
 ```

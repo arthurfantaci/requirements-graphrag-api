@@ -351,7 +351,7 @@ def _calculate_avg_score(aggregate_metrics: dict[str, float]) -> float:
     """Calculate average score from aggregate metrics."""
     avg_score = aggregate_metrics.get("avg_score", 0.0)
     if avg_score == 0.0 and aggregate_metrics:
-        scores = [v for k, v in aggregate_metrics.items() if isinstance(v, (int, float))]
+        scores = [v for k, v in aggregate_metrics.items() if isinstance(v, int | float)]
         avg_score = sum(scores) / len(scores) if scores else 0.0
     return avg_score
 

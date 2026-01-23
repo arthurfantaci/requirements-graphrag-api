@@ -7,7 +7,7 @@ echo "=== Session Context ==="
 if command -v git &> /dev/null && git rev-parse --git-dir &> /dev/null; then
     BRANCH=$(git branch --show-current 2>/dev/null)
     echo "Git branch: $BRANCH"
-    
+
     CHANGES=$(git status --porcelain 2>/dev/null | wc -l)
     echo "Uncommitted changes: $CHANGES files"
 fi

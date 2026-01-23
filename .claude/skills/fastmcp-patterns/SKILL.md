@@ -17,7 +17,7 @@ async def lifespan(server: FastMCP):
     """Initialize resources on startup, cleanup on shutdown."""
     driver = create_neo4j_driver(config)
     driver.verify_connectivity()
-    
+
     try:
         yield {"driver": driver, "config": config}
     finally:
