@@ -259,8 +259,7 @@ def _build_context_from_results(
                 if defn.get("acronym"):
                     term_display = f"{defn['term']} ({defn['acronym']})"
                 context_parts.append(
-                    f"[Definition: {term_display}]\n{defn['definition']}\n"
-                    f"URL: {defn_url}\n"
+                    f"[Definition: {term_display}]\n{defn['definition']}\nURL: {defn_url}\n"
                 )
                 sources.append(
                     {
@@ -327,7 +326,7 @@ def _build_context_from_results(
                         source_title=title,
                     )
                 )
-                source_resources.append(f"- 🖼️ Image: \"{alt_text}\" - {img_url}")
+                source_resources.append(f'- 🖼️ Image: "{alt_text}" - {img_url}')
 
             # Extract webinars (limit per source)
             source_webinar_count = 0
@@ -347,7 +346,7 @@ def _build_context_from_results(
                         source_title=title,
                     )
                 )
-                source_resources.append(f"- 📹 Webinar: \"{webinar_title}\" - {webinar_url}")
+                source_resources.append(f'- 📹 Webinar: "{webinar_title}" - {webinar_url}')
 
             # Extract videos (limit per source)
             source_video_count = 0
@@ -367,7 +366,7 @@ def _build_context_from_results(
                         source_title=title,
                     )
                 )
-                source_resources.append(f"- 🎬 Video: \"{video_title}\" - {video_url}")
+                source_resources.append(f'- 🎬 Video: "{video_title}" - {video_url}')
 
         # Add resources section to source context if any resources found
         if source_resources:

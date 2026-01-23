@@ -690,9 +690,7 @@ class TestContextBuildResultDataclass:
 class TestBuildContextFromResults:
     """Tests for _build_context_from_results function."""
 
-    def test_extracts_webinars_from_media(
-        self, mock_search_results_with_media: list[dict]
-    ) -> None:
+    def test_extracts_webinars_from_media(self, mock_search_results_with_media: list[dict]) -> None:
         """Verify webinars are extracted from search_results[].media.webinars."""
         result = _build_context_from_results(
             definitions=[],
@@ -706,9 +704,7 @@ class TestBuildContextFromResults:
         assert "Traceability Best Practices" in titles
         assert "Modern Requirements Management" in titles
 
-    def test_extracts_videos_from_media(
-        self, mock_search_results_with_media: list[dict]
-    ) -> None:
+    def test_extracts_videos_from_media(self, mock_search_results_with_media: list[dict]) -> None:
         """Verify videos are extracted from search_results[].media.videos."""
         result = _build_context_from_results(
             definitions=[],
@@ -747,9 +743,7 @@ class TestBuildContextFromResults:
 
         webinars = result.resources["webinars"]
         # First webinar should be from "Traceability Article"
-        traceability_webinar = next(
-            w for w in webinars if w.title == "Traceability Best Practices"
-        )
+        traceability_webinar = next(w for w in webinars if w.title == "Traceability Best Practices")
         assert traceability_webinar.source_title == "Traceability Article"
 
     def test_context_string_groups_resources_by_source(
@@ -937,15 +931,9 @@ class TestStreamChatResourceEvents:
     ) -> None:
         """Verify SOURCES event has resources.images/webinars/videos."""
         with (
-            patch(
-                "requirements_graphrag_api.core.generation.graph_enriched_search"
-            ) as mock_search,
-            patch(
-                "requirements_graphrag_api.core.generation.search_terms"
-            ) as mock_terms,
-            patch(
-                "requirements_graphrag_api.core.generation.ChatOpenAI"
-            ) as mock_llm_class,
+            patch("requirements_graphrag_api.core.generation.graph_enriched_search") as mock_search,
+            patch("requirements_graphrag_api.core.generation.search_terms") as mock_terms,
+            patch("requirements_graphrag_api.core.generation.ChatOpenAI") as mock_llm_class,
         ):
             mock_search.return_value = mock_search_results_with_media
             mock_terms.return_value = []
@@ -978,15 +966,9 @@ class TestStreamChatResourceEvents:
     ) -> None:
         """Verify resource objects have title, url, alt_text, source_title."""
         with (
-            patch(
-                "requirements_graphrag_api.core.generation.graph_enriched_search"
-            ) as mock_search,
-            patch(
-                "requirements_graphrag_api.core.generation.search_terms"
-            ) as mock_terms,
-            patch(
-                "requirements_graphrag_api.core.generation.ChatOpenAI"
-            ) as mock_llm_class,
+            patch("requirements_graphrag_api.core.generation.graph_enriched_search") as mock_search,
+            patch("requirements_graphrag_api.core.generation.search_terms") as mock_terms,
+            patch("requirements_graphrag_api.core.generation.ChatOpenAI") as mock_llm_class,
         ):
             mock_search.return_value = mock_search_results_with_media
             mock_terms.return_value = []
