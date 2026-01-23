@@ -44,19 +44,18 @@ DEFAULT_CACHE_TTL: Final[int] = 300  # 5 minutes
 
 
 def _create_langsmith_client() -> Client:
-    """Create LangSmith Client with proper tenant_id for org-scoped API keys.
+    """Create LangSmith Client.
+
+    The SDK reads configuration from environment variables:
+    - LANGSMITH_API_KEY: API key
+    - LANGCHAIN_TENANT_ID: Workspace ID for org-scoped keys
 
     Returns:
         Configured LangSmith Client instance.
     """
     from langsmith import Client
 
-    tenant_id = os.getenv(LANGSMITH_TENANT_ID_ENV)
-    if tenant_id:
-        logger.debug("Creating LangSmith client with workspace_id: %s", tenant_id[:8] + "...")
-        # Don't pass api_key explicitly - let SDK read from LANGSMITH_API_KEY env var
-        # This ensures proper association between API key and workspace
-        return Client(workspace_id=tenant_id)
+    # Let SDK read all configuration from environment variables
     return Client()
 
 
