@@ -3,6 +3,11 @@
 # - Tier 4: Deep evaluation nightly
 name: Evaluation
 
+# Grant permissions for creating issues on failure
+permissions:
+  contents: read
+  issues: write
+
 on:
   # Tier 3: Release tags
   push:

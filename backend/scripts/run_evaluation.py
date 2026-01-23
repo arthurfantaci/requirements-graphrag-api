@@ -23,11 +23,10 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)  # Override any cached env vars
 
-from requirements_graphrag_api.evaluation import evaluate_rag_pipeline  # noqa: E402
-from requirements_graphrag_api.neo4j_client import create_driver  # noqa: E402
-
 from requirements_graphrag_api.config import get_config  # noqa: E402
 from requirements_graphrag_api.core.retrieval import create_vector_retriever  # noqa: E402
+from requirements_graphrag_api.evaluation import evaluate_rag_pipeline  # noqa: E402
+from requirements_graphrag_api.neo4j_client import create_driver  # noqa: E402
 from requirements_graphrag_api.observability import configure_tracing  # noqa: E402
 
 logging.basicConfig(

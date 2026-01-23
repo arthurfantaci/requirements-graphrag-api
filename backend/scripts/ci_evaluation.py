@@ -380,10 +380,9 @@ async def _run_evaluation_tier(
     logger.info("=" * 60)
 
     try:
+        from requirements_graphrag_api.core.retrieval import create_vector_retriever
         from requirements_graphrag_api.evaluation import evaluate_rag_pipeline
         from requirements_graphrag_api.neo4j_client import create_driver
-
-        from requirements_graphrag_api.core.retrieval import create_vector_retriever
         from requirements_graphrag_api.observability import configure_tracing
 
         configure_tracing(config)

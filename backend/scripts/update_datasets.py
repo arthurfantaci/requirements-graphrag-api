@@ -155,8 +155,9 @@ def load_golden_dataset() -> list[DatasetExample]:
         List of existing examples.
     """
     try:
-        from benchmark.golden_dataset import GOLDEN_DATASET
         from benchmark.schemas import BenchmarkExample
+
+        from benchmark.golden_dataset import GOLDEN_DATASET
 
         examples = []
         for ex in GOLDEN_DATASET:
