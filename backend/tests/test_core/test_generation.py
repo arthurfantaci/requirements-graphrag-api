@@ -454,3 +454,89 @@ class TestStreamEvent:
         assert StreamEventType.TOKEN == "token"
         assert StreamEventType.DONE == "done"
         assert StreamEventType.ERROR == "error"
+
+
+# =============================================================================
+# Definition with Acronym Tests
+# =============================================================================
+
+
+class TestDefinitionWithAcronymInContext:
+    """Tests for definitions with acronyms in context and sources."""
+
+    @pytest.mark.asyncio
+    async def test_definition_with_acronym_in_sources(
+        self,
+        mock_config: MagicMock,
+        mock_graph: MagicMock,
+        mock_vector_store: MagicMock,
+    ) -> None:
+        """Test that definitions with acronyms include acronym in source title."""
+        with (
+            patch("requirements_graphrag_api.core.generation.graph_enriched_search") as mock_search,
+            patch("requirements_graphrag_api.core.generation.search_terms") as mock_terms,
+            patch("requirements_graphrag_api.core.generation.ChatOpenAI") as mock_llm_class,
+        ):
+            mock_search.return_value = []
+            # Return a definition with an acronym
+            mock_terms.return_value = [
+                {
+                    "term": "Analysis of Alternatives",
+                    "definition": "A systematic evaluation of alternatives.",
+                    "acronym": "AoA",
+                    "url": "https://example.com/glossary#aoa",
+                    "score": 1.0,
+                }
+            ]
+            mock_llm_class.return_value = create_llm_mock("Definition answer")
+
+            result = await generate_answer(
+                mock_config,
+                mock_graph,
+                mock_vector_store,
+                "What is AoA?",
+            )
+
+            # Check that the source title includes the acronym
+            assert len(result["sources"]) >= 1
+            definition_source = result["sources"][0]
+            assert "AoA" in definition_source["title"]
+            assert "Analysis of Alternatives" in definition_source["title"]
+
+    @pytest.mark.asyncio
+    async def test_definition_without_acronym_in_sources(
+        self,
+        mock_config: MagicMock,
+        mock_graph: MagicMock,
+        mock_vector_store: MagicMock,
+    ) -> None:
+        """Test that definitions without acronyms don't have parentheses in title."""
+        with (
+            patch("requirements_graphrag_api.core.generation.graph_enriched_search") as mock_search,
+            patch("requirements_graphrag_api.core.generation.search_terms") as mock_terms,
+            patch("requirements_graphrag_api.core.generation.ChatOpenAI") as mock_llm_class,
+        ):
+            mock_search.return_value = []
+            # Return a definition without an acronym
+            mock_terms.return_value = [
+                {
+                    "term": "Requirements Traceability",
+                    "definition": "The ability to trace requirements.",
+                    "acronym": None,
+                    "url": "https://example.com/glossary#trace",
+                    "score": 0.9,
+                }
+            ]
+            mock_llm_class.return_value = create_llm_mock("Definition answer")
+
+            result = await generate_answer(
+                mock_config,
+                mock_graph,
+                mock_vector_store,
+                "What is requirements traceability?",
+            )
+
+            # Check that the source title does NOT have parentheses (no acronym)
+            definition_source = result["sources"][0]
+            assert definition_source["title"] == "Definition: Requirements Traceability"
+            assert "(" not in definition_source["title"]

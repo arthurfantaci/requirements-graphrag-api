@@ -118,11 +118,15 @@ async def generate_answer(
     if definitions:
         for defn in definitions:
             if defn.get("score", 0) >= DEFINITION_RELEVANCE_THRESHOLD:
-                context_parts.append(f"[Definition: {defn['term']}]\n{defn['definition']}\n")
+                # Include acronym in context if available
+                term_display = defn["term"]
+                if defn.get("acronym"):
+                    term_display = f"{defn['term']} ({defn['acronym']})"
+                context_parts.append(f"[Definition: {term_display}]\n{defn['definition']}\n")
                 # Add definition as a source
                 sources.append(
                     {
-                        "title": f"Definition: {defn['term']}",
+                        "title": f"Definition: {term_display}",
                         "url": defn.get("url", ""),
                         "chunk_id": None,
                         "relevance_score": defn.get("score", 0.5),
