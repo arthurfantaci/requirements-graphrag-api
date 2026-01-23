@@ -134,7 +134,6 @@ async def evaluate_prompt_on_dataset(
         Dictionary of metric names to scores.
     """
     from langchain_openai import ChatOpenAI
-
     from requirements_graphrag_api.prompts.evaluation import (
         create_cypher_validity_evaluator,
         create_json_validity_evaluator,

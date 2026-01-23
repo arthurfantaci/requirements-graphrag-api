@@ -4,18 +4,23 @@
 # See https://pre-commit.com for more information
 
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.3
+  # Use local hooks to ensure consistency with CI (same ruff version via uv)
+  - repo: local
     hooks:
-      # Run the linter
-      - id: ruff
-        args: [--fix]
-        types_or: [python, pyi]
+      - id: ruff-check
+        name: ruff check
+        entry: bash -c 'cd backend && uv run ruff check --fix "$@"' --
+        language: system
+        types: [python]
         files: ^backend/
-      # Run the formatter
+        pass_filenames: false
       - id: ruff-format
-        types_or: [python, pyi]
+        name: ruff format
+        entry: bash -c 'cd backend && uv run ruff format' --
+        language: system
+        types: [python]
         files: ^backend/
+        pass_filenames: false
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
