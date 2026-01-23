@@ -34,7 +34,8 @@ LANGSMITH_API_KEY_ENV: Final[str] = "LANGSMITH_API_KEY"
 PROMPT_ENVIRONMENT_ENV: Final[str] = "PROMPT_ENVIRONMENT"
 
 # Default configuration
-DEFAULT_ORG: Final[str] = "requirements-graphrag"
+# Empty string means workspace-scoped prompts (no org prefix)
+DEFAULT_ORG: Final[str] = ""
 DEFAULT_CACHE_TTL: Final[int] = 300  # 5 minutes
 
 
@@ -95,9 +96,12 @@ class PromptCatalog:
             name: Prompt name identifier.
 
         Returns:
-            Full hub path in format: organization/prompt-name
+            Full hub path. If organization is set, returns organization/prompt-name.
+            If organization is empty, returns just prompt-name (workspace-scoped).
         """
-        return f"{self.organization}/{name.value}"
+        if self.organization:
+            return f"{self.organization}/{name.value}"
+        return name.value
 
     def _is_cache_valid(self, key: str) -> bool:
         """Check if a cache entry is still valid.
