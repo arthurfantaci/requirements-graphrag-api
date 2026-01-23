@@ -53,8 +53,10 @@ def _create_langsmith_client() -> Client:
 
     tenant_id = os.getenv(LANGSMITH_TENANT_ID_ENV)
     if tenant_id:
-        logger.debug("Creating LangSmith client with tenant_id")
-        return Client(api_key=os.getenv(LANGSMITH_API_KEY_ENV), workspace_id=tenant_id)
+        logger.debug("Creating LangSmith client with workspace_id: %s", tenant_id[:8] + "...")
+        # Don't pass api_key explicitly - let SDK read from LANGSMITH_API_KEY env var
+        # This ensures proper association between API key and workspace
+        return Client(workspace_id=tenant_id)
     return Client()
 
 
