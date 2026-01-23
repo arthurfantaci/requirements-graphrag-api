@@ -37,22 +37,32 @@ async def lookup_term(
     """
     logger.info("Looking up definition term: '%s' (fuzzy=%s)", term, fuzzy)
 
+    # Normalize for acronym matching
+    normalized_term = _normalize_for_acronym_match(term)
+
     with driver.session() as session:
         if fuzzy:
-            # Use CONTAINS for fuzzy matching (fulltext index may not exist for Definition)
+            # Use CONTAINS for fuzzy matching, including acronym search
             result = session.run(
                 """
                 MATCH (d:Definition)
                 WHERE toLower(d.term) CONTAINS toLower($term)
                    OR toLower(d.definition) CONTAINS toLower($term)
+                   OR (d.acronym IS NOT NULL
+                       AND replace(replace(toLower(d.acronym), '.', ''), ' ', '')
+                         = $normalized_term)
                 WITH d, CASE
                     WHEN toLower(d.term) = toLower($term) THEN 1.0
+                    WHEN d.acronym IS NOT NULL
+                         AND replace(replace(toLower(d.acronym), '.', ''), ' ', '')
+                           = $normalized_term THEN 1.0
                     WHEN toLower(d.term) STARTS WITH toLower($term) THEN 0.9
                     WHEN toLower(d.term) CONTAINS toLower($term) THEN 0.7
                     ELSE 0.5
                 END AS score
                 RETURN d.term AS term,
                        d.definition AS definition,
+                       d.acronym AS acronym,
                        d.url AS url,
                        d.term_id AS term_id,
                        score
@@ -60,21 +70,27 @@ async def lookup_term(
                 LIMIT 1
                 """,
                 term=term,
+                normalized_term=normalized_term,
             )
         else:
-            # Exact match (case-insensitive)
+            # Exact match (case-insensitive) on term or acronym
             result = session.run(
                 """
                 MATCH (d:Definition)
                 WHERE toLower(d.term) = toLower($term)
+                   OR (d.acronym IS NOT NULL
+                       AND replace(replace(toLower(d.acronym), '.', ''), ' ', '')
+                         = $normalized_term)
                 RETURN d.term AS term,
                        d.definition AS definition,
+                       d.acronym AS acronym,
                        d.url AS url,
                        d.term_id AS term_id,
                        1.0 AS score
                 LIMIT 1
                 """,
                 term=term,
+                normalized_term=normalized_term,
             )
 
         record = result.single()
@@ -83,6 +99,7 @@ async def lookup_term(
             return {
                 "term": record["term"],
                 "definition": record["definition"],
+                "acronym": record.get("acronym"),
                 "url": record.get("url"),
                 "term_id": record.get("term_id"),
                 "score": record["score"],
@@ -90,6 +107,24 @@ async def lookup_term(
 
         logger.info("Definition term not found: '%s'", term)
         return None
+
+
+def _normalize_for_acronym_match(text: str) -> str:
+    """Normalize text for acronym matching.
+
+    Removes periods and spaces to handle variations like:
+    - "AoA" vs "A.o.A." vs "A o A"
+    - "ALM" vs "A.L.M."
+
+    Args:
+        text: Text to normalize.
+
+    Returns:
+        Lowercase text with periods and spaces removed.
+    """
+    import re
+
+    return re.sub(r"[\s.]", "", text.lower())
 
 
 async def search_terms(
@@ -100,28 +135,52 @@ async def search_terms(
 ) -> list[dict[str, Any]]:
     """Search for definition terms matching a query.
 
+    Searches across term names, definitions, and acronyms with intelligent
+    scoring. Handles acronym variations (AoA, A.o.A., A o A).
+
     Args:
         driver: Neo4j driver instance.
         query: Search query.
         limit: Maximum number of results.
 
     Returns:
-        List of matching terms with definitions.
+        List of matching terms with definitions and acronyms.
     """
     logger.info("Searching definition terms: '%s', limit=%d", query, limit)
 
+    # Normalize query for acronym matching
+    normalized_query = _normalize_for_acronym_match(query)
+
     with driver.session() as session:
         # Use bidirectional matching: term in query OR query in term/definition
-        # This handles both "Analysis of Alternatives" and
-        # "What does the term Analysis of Alternatives stand for?"
+        # Also search acronym field for matches like "AoA" -> "Analysis of Alternatives"
         result = session.run(
             """
             MATCH (d:Definition)
             WHERE toLower(d.term) CONTAINS toLower($search_term)
                OR toLower(d.definition) CONTAINS toLower($search_term)
                OR toLower($search_term) CONTAINS toLower(d.term)
+               // Acronym matching (handle NULL safely)
+               OR (d.acronym IS NOT NULL
+                   AND replace(replace(toLower(d.acronym), '.', ''), ' ', '')
+                     = $normalized_query)
+               OR (d.acronym IS NOT NULL
+                   AND $normalized_query CONTAINS
+                       replace(replace(toLower(d.acronym), '.', ''), ' ', ''))
             WITH d, CASE
+                // Exact term match
                 WHEN toLower(d.term) = toLower($search_term) THEN 1.0
+                // Exact acronym match (e.g., "AoA" -> "Analysis of Alternatives")
+                WHEN d.acronym IS NOT NULL
+                     AND replace(replace(toLower(d.acronym), '.', ''), ' ', '')
+                       = $normalized_query THEN 1.0
+                // Acronym found within query (e.g., "What is AoA?")
+                WHEN d.acronym IS NOT NULL
+                     AND size(d.acronym) >= 2
+                     AND $normalized_query CONTAINS
+                         replace(replace(toLower(d.acronym), '.', ''), ' ', '')
+                    THEN 0.9
+                // Term found within query
                 WHEN toLower($search_term) CONTAINS toLower(d.term)
                      AND size(d.term) > 3 THEN 0.85
                 WHEN toLower(d.term) STARTS WITH toLower($search_term) THEN 0.8
@@ -130,12 +189,14 @@ async def search_terms(
             END AS score
             RETURN d.term AS term,
                    d.definition AS definition,
+                   d.acronym AS acronym,
                    d.url AS url,
                    score
             ORDER BY score DESC, size(d.term) DESC, d.term
             LIMIT $limit
             """,
             search_term=query,
+            normalized_query=normalized_query,
             limit=limit,
         )
 
@@ -143,6 +204,7 @@ async def search_terms(
             {
                 "term": r["term"],
                 "definition": r["definition"],
+                "acronym": r.get("acronym"),
                 "url": r.get("url"),
                 "score": round(float(r["score"]), 4),
             }

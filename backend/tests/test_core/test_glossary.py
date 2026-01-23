@@ -204,3 +204,127 @@ class TestListAllTerms:
         call_args = mock_session.run.call_args
         # Parameters passed as keyword arguments
         assert call_args[1]["limit"] == 50
+
+
+# =============================================================================
+# Acronym Normalization Tests
+# =============================================================================
+
+
+class TestNormalizeForAcronymMatch:
+    """Tests for _normalize_for_acronym_match helper function."""
+
+    def test_normalize_removes_periods(self) -> None:
+        """Test that periods are removed."""
+        from requirements_graphrag_api.core.definitions import _normalize_for_acronym_match
+
+        assert _normalize_for_acronym_match("A.o.A.") == "aoa"
+
+    def test_normalize_removes_spaces(self) -> None:
+        """Test that spaces are removed."""
+        from requirements_graphrag_api.core.definitions import _normalize_for_acronym_match
+
+        assert _normalize_for_acronym_match("A o A") == "aoa"
+
+    def test_normalize_lowercases(self) -> None:
+        """Test that text is lowercased."""
+        from requirements_graphrag_api.core.definitions import _normalize_for_acronym_match
+
+        assert _normalize_for_acronym_match("AoA") == "aoa"
+
+    def test_normalize_combined(self) -> None:
+        """Test combined normalization."""
+        from requirements_graphrag_api.core.definitions import _normalize_for_acronym_match
+
+        # All variations should normalize to same value
+        assert _normalize_for_acronym_match("AoA") == "aoa"
+        assert _normalize_for_acronym_match("A.o.A.") == "aoa"
+        assert _normalize_for_acronym_match("A o A") == "aoa"
+        assert _normalize_for_acronym_match("a.o.a") == "aoa"
+
+
+# =============================================================================
+# Acronym Search Tests
+# =============================================================================
+
+
+@pytest.fixture
+def mock_driver_with_acronym() -> MagicMock:
+    """Create a mock Neo4j driver with a term that has an acronym."""
+    return create_mock_driver_with_results(
+        [
+            [
+                {
+                    "term": "Analysis of Alternatives",
+                    "definition": "A systematic evaluation of alternatives to satisfy a requirement.",
+                    "acronym": "AoA",
+                    "url": "https://example.com/glossary#aoa",
+                    "term_id": "term-aoa",
+                    "score": 1.0,
+                }
+            ]
+        ]
+    )
+
+
+class TestAcronymSearch:
+    """Tests for acronym search functionality."""
+
+    @pytest.mark.asyncio
+    async def test_lookup_term_by_acronym(self, mock_driver_with_acronym: MagicMock) -> None:
+        """Test looking up a term by its acronym."""
+        result = await lookup_term(mock_driver_with_acronym, "AoA")
+
+        assert result is not None
+        assert result["term"] == "Analysis of Alternatives"
+        assert result["acronym"] == "AoA"
+
+    @pytest.mark.asyncio
+    async def test_lookup_term_by_acronym_normalized(
+        self, mock_driver_with_acronym: MagicMock
+    ) -> None:
+        """Test looking up by acronym with periods (e.g., A.o.A.)."""
+        # The query should use normalized_term parameter
+        await lookup_term(mock_driver_with_acronym, "A.o.A.")
+
+        mock_session = mock_driver_with_acronym.session.return_value.__enter__.return_value
+        call_args = mock_session.run.call_args
+        # Check that normalized_term is passed to the query
+        assert "normalized_term" in call_args[1]
+        assert call_args[1]["normalized_term"] == "aoa"
+
+    @pytest.mark.asyncio
+    async def test_search_terms_includes_acronym_field(
+        self, mock_driver_with_acronym: MagicMock
+    ) -> None:
+        """Test that search results include the acronym field."""
+        results = await search_terms(mock_driver_with_acronym, "AoA")
+
+        assert len(results) > 0
+        assert "acronym" in results[0]
+        assert results[0]["acronym"] == "AoA"
+
+    @pytest.mark.asyncio
+    async def test_search_cypher_includes_acronym_matching(
+        self, mock_driver_with_acronym: MagicMock
+    ) -> None:
+        """Test that search Cypher query includes acronym matching logic."""
+        await search_terms(mock_driver_with_acronym, "AoA")
+
+        mock_session = mock_driver_with_acronym.session.return_value.__enter__.return_value
+        call_args = mock_session.run.call_args
+        cypher = call_args[0][0]
+        # Verify acronym matching is in the query
+        assert "d.acronym" in cypher
+        assert "normalized_query" in call_args[1]
+
+    @pytest.mark.asyncio
+    async def test_lookup_returns_acronym_field(
+        self, mock_driver_with_acronym: MagicMock
+    ) -> None:
+        """Test that lookup returns the acronym field in result."""
+        result = await lookup_term(mock_driver_with_acronym, "Analysis of Alternatives")
+
+        assert result is not None
+        assert "acronym" in result
+        assert result["acronym"] == "AoA"
