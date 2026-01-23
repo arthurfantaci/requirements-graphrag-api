@@ -37,8 +37,8 @@ jobs:
         run: uv run python scripts/push_prompts.py
         env:
           LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
-          # Empty org means workspace-scoped prompts
-          LANGSMITH_ORG: ""
+          # LangSmith Hub requires an owner (user or org) for prompts
+          LANGSMITH_ORG: ${{ secrets.LANGSMITH_ORG }}
 
       - name: Summary
         run: |
