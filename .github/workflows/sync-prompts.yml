@@ -1,0 +1,49 @@
+# Sync prompts to LangSmith Hub when definitions change
+name: Sync Prompts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/src/requirements_graphrag_api/prompts/definitions.py'
+  workflow_dispatch:
+    # Allow manual trigger from GitHub Actions UI
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  sync-prompts:
+    name: Sync Prompts to LangSmith Hub
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Push prompts to LangSmith Hub
+        run: uv run python scripts/push_prompts.py
+        env:
+          LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+          # Empty org means workspace-scoped prompts
+          LANGSMITH_ORG: ""
+
+      - name: Summary
+        run: |
+          echo "## Prompt Sync Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Prompts have been synchronized to LangSmith Hub." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "View prompts at: https://smith.langchain.com/hub" >> $GITHUB_STEP_SUMMARY

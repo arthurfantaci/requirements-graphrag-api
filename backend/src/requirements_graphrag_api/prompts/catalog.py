@@ -342,6 +342,64 @@ class PromptCatalog:
         logger.info("Invalidated %d cache entries for prompt: %s", invalidated, name)
         return invalidated
 
+    async def push(self, name: PromptName) -> str:
+        """Push a prompt to LangSmith Hub.
+
+        Args:
+            name: Prompt name identifier.
+
+        Returns:
+            URL of the pushed prompt.
+
+        Raises:
+            KeyError: If prompt name is not found.
+            RuntimeError: If LangSmith API key is not configured.
+        """
+        if not self.use_hub:
+            raise RuntimeError(
+                "LangSmith Hub is not enabled. Set LANGSMITH_API_KEY environment variable."
+            )
+
+        if name not in PROMPT_DEFINITIONS:
+            raise KeyError(f"Unknown prompt name: {name}")
+
+        definition = PROMPT_DEFINITIONS[name]
+        hub_path = self._get_hub_path(name)
+
+        try:
+            from langsmith import Client
+
+            client = Client()
+            url = await asyncio.to_thread(
+                client.push_prompt,
+                hub_path,
+                object=definition.template,
+                description=definition.metadata.description,
+                tags=[*definition.metadata.tags, "ChatPromptTemplate"],
+            )
+            logger.info("Pushed prompt to hub: %s -> %s", name.value, url)
+            return str(url)
+        except Exception as e:
+            logger.error("Failed to push prompt %s: %s", name.value, e)
+            raise
+
+    async def push_all(self) -> dict[str, str]:
+        """Push all prompts to LangSmith Hub.
+
+        Returns:
+            Dictionary mapping prompt names to URLs or error messages.
+        """
+        results: dict[str, str] = {}
+
+        for name in PROMPT_DEFINITIONS:
+            try:
+                url = await self.push(name)
+                results[name.value] = url
+            except Exception as e:
+                results[name.value] = f"ERROR: {e}"
+
+        return results
+
 
 # =============================================================================
 # MODULE-LEVEL SINGLETON AND CONVENIENCE FUNCTIONS
