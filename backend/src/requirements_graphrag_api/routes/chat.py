@@ -19,6 +19,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from requirements_graphrag_api.core import stream_chat
+from requirements_graphrag_api.observability import create_thread_metadata
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -112,13 +113,18 @@ async def _generate_sse_events(
             {"role": msg.role, "content": msg.content} for msg in request.conversation_history
         ]
 
+    # Create LangSmith thread metadata for conversation grouping
+    thread_metadata = create_thread_metadata(request.conversation_id)
+
     async for event in stream_chat(
         config,
         retriever,
         driver,
         request.message,
         conversation_history=history,
+        conversation_id=request.conversation_id,
         max_sources=request.options.max_sources,
+        langsmith_extra=thread_metadata,
     ):
         # Format as SSE: event type and JSON data
         yield f"event: {event.event_type.value}\n"

@@ -77,9 +77,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Create Neo4j driver with serverless-optimized settings
     logger.info(
-        "Connecting to Neo4j: %s (pool_size=%d)",
+        "Connecting to Neo4j: %s (pool_size=%d, max_lifetime=%ds)",
         config.neo4j_uri.split("@")[-1] if "@" in config.neo4j_uri else config.neo4j_uri,
         config.neo4j_max_connection_pool_size,
+        config.neo4j_max_connection_lifetime,
     )
 
     driver = GraphDatabase.driver(
@@ -87,6 +88,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         auth=(config.neo4j_username, config.neo4j_password),
         max_connection_pool_size=config.neo4j_max_connection_pool_size,
         connection_acquisition_timeout=config.neo4j_connection_acquisition_timeout,
+        liveness_check_timeout=config.neo4j_liveness_check_timeout,
+        max_connection_lifetime=config.neo4j_max_connection_lifetime,
     )
 
     # Verify connectivity (fail fast)

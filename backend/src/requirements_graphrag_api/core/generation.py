@@ -320,7 +320,9 @@ async def stream_chat(
     message: str,
     *,
     conversation_history: list[dict[str, str]] | None = None,
+    conversation_id: str | None = None,
     max_sources: int = 5,
+    langsmith_extra: dict[str, Any] | None = None,  # For thread metadata
 ) -> AsyncIterator[StreamEvent]:
     """Stream chat response with progressive events.
 
@@ -330,6 +332,7 @@ async def stream_chat(
     3. DONE event with complete answer
 
     This enables LangSmith to capture streaming metrics like TTFT.
+    When conversation_id is provided, traces are grouped into LangSmith Threads.
 
     Args:
         config: Application configuration.
@@ -337,12 +340,16 @@ async def stream_chat(
         driver: Neo4j driver for graph queries.
         message: User's message.
         conversation_history: Optional list of previous messages for multi-turn.
+        conversation_id: Optional conversation ID for LangSmith thread grouping.
         max_sources: Maximum sources to retrieve.
+        langsmith_extra: Optional LangSmith metadata (used internally for threading).
 
     Yields:
         StreamEvent objects for sources, tokens, and completion.
     """
-    logger.info("Streaming chat: message='%s'", message[:50])
+    # Note: langsmith_extra is consumed by the @traceable decorator, not used here
+    _ = langsmith_extra  # Suppress unused variable warning
+    logger.info("Streaming chat: message='%s', conversation_id=%s", message[:50], conversation_id)
 
     try:
         # 1. Retrieval (non-streamed)
