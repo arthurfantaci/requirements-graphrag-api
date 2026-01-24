@@ -147,20 +147,21 @@ async def _generate_answer(
     Returns:
         Tuple of (generated_answer, retrieved_contexts).
     """
-    from requirements_graphrag_api.core.generation import generate_response
-    from requirements_graphrag_api.core.retrieval import graph_enriched_search
+    from requirements_graphrag_api.core.generation import generate_answer
 
-    # Retrieve relevant contexts
-    results = await graph_enriched_search(retriever, driver, question, limit=6)
-    contexts = [r["content"] for r in results if r.get("content")]
-
-    # Generate answer
-    answer = await generate_response(
+    # Generate answer using the updated RAG pipeline
+    result = await generate_answer(
         config=config,
+        retriever=retriever,
+        driver=driver,
         question=question,
-        contexts=contexts,
-        stream=False,
+        retrieval_limit=6,
     )
+
+    # Extract answer and contexts from result
+    answer = result.get("answer", "")
+    sources = result.get("sources", [])
+    contexts = [s.get("content", "") for s in sources if s.get("content")]
 
     return answer, contexts
 
