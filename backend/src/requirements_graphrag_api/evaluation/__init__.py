@@ -147,21 +147,56 @@ async def _generate_answer(
     Returns:
         Tuple of (generated_answer, retrieved_contexts).
     """
-    from requirements_graphrag_api.core.generation import generate_answer
+    # Import core functions directly to avoid decorator issues during CI evaluation
+    # (the @traceable_safe decorator can have interaction issues with langsmith)
+    from langchain_core.output_parsers import StrOutputParser
+    from langchain_openai import ChatOpenAI
 
-    # Generate answer using the updated RAG pipeline
-    result = await generate_answer(
-        config=config,
-        retriever=retriever,
-        driver=driver,
-        question=question,
-        retrieval_limit=6,
+    from requirements_graphrag_api.core.definitions import search_terms
+    from requirements_graphrag_api.core.generation import _build_context_from_results
+    from requirements_graphrag_api.core.retrieval import graph_enriched_search
+    from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
+
+    # Search for relevant definitions/glossary terms
+    definitions = await search_terms(driver, question, limit=3)
+
+    # Retrieve relevant context from chunks
+    search_results = await graph_enriched_search(
+        retriever,
+        driver,
+        question,
+        limit=6,
     )
 
-    # Extract answer and contexts from result
-    answer = result.get("answer", "")
-    sources = result.get("sources", [])
-    contexts = [s.get("content", "") for s in sources if s.get("content")]
+    # Build context and extract resources
+    build_result = _build_context_from_results(
+        definitions,
+        search_results,
+        include_entities=True,
+    )
+
+    # Get prompt from catalog
+    prompt_template = get_prompt_sync(PromptName.RAG_GENERATION)
+
+    # Generate answer with LLM
+    llm = ChatOpenAI(
+        model=config.chat_model,
+        temperature=0.1,
+        api_key=config.openai_api_key,
+    )
+
+    chain = prompt_template | llm | StrOutputParser()
+
+    answer = await chain.ainvoke(
+        {
+            "context": build_result.context,
+            "entities": build_result.entities_str,
+            "question": question,
+        }
+    )
+
+    # Extract contexts from sources
+    contexts = [s.get("content", "") for s in build_result.sources if s.get("content")]
 
     return answer, contexts
 
