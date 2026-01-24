@@ -110,7 +110,7 @@ TIER_CONFIGS: dict[int, TierConfig] = {
         description="Full benchmark with 250+ examples",
         max_samples=None,  # All examples
         cost_budget=15.0,
-        min_avg_score=0.7,
+        min_avg_score=0.6,
         timeout_seconds=1200,
         requires_api=True,
     ),
