@@ -1,1 +1,21 @@
+# CODEOWNERS - Automatically request reviews from code owners
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for all files
 * @arthurfantaci
+
+# Backend (Python/FastAPI)
+/backend/ @arthurfantaci
+
+# Frontend (React/Vite)
+/frontend/ @arthurfantaci
+
+# Infrastructure and CI/CD
+/.github/ @arthurfantaci
+/docker-compose.yml @arthurfantaci
+/railway.toml @arthurfantaci
+*.Dockerfile @arthurfantaci
+
+# Documentation
+/*.md @arthurfantaci
+/docs/ @arthurfantaci
