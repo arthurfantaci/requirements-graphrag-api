@@ -398,6 +398,11 @@ class PromptCatalog:
             logger.info("Pushed prompt to hub: %s -> %s", name.value, url)
             return str(url)
         except Exception as e:
+            # Handle 409 Conflict when prompt hasn't changed - treat as success
+            error_str = str(e)
+            if "409" in error_str and "Nothing to commit" in error_str:
+                logger.info("Prompt unchanged, no commit needed: %s", name.value)
+                return f"[UNCHANGED] {hub_path}"
             logger.error("Failed to push prompt %s: %s", name.value, e)
             raise
 

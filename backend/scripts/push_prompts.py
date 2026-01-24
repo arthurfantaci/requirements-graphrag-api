@@ -115,17 +115,27 @@ async def push_prompts(
         logger.info("\n🚀 Pushing all prompts to LangSmith Hub\n")
         results = await catalog.push_all()
 
-        success_count = sum(1 for url in results.values() if not str(url).startswith("ERROR"))
-        error_count = len(results) - success_count
+        pushed_count = sum(
+            1 for url in results.values() if not str(url).startswith(("ERROR", "[UNCHANGED]"))
+        )
+        unchanged_count = sum(1 for url in results.values() if str(url).startswith("[UNCHANGED]"))
+        error_count = sum(1 for url in results.values() if str(url).startswith("ERROR"))
 
         logger.info("\n📊 Results:")
         for name, url in results.items():
             if str(url).startswith("ERROR"):
                 logger.error("   ❌ %s: %s", name, url)
+            elif str(url).startswith("[UNCHANGED]"):
+                logger.info("   ⏭️  %s: %s", name, url)
             else:
                 logger.info("   ✅ %s: %s", name, url)
 
-        logger.info("\n📈 Summary: %d succeeded, %d failed", success_count, error_count)
+        logger.info(
+            "\n📈 Summary: %d pushed, %d unchanged, %d failed",
+            pushed_count,
+            unchanged_count,
+            error_count,
+        )
 
         if error_count > 0:
             sys.exit(1)
