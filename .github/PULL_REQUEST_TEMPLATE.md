@@ -2,6 +2,12 @@
 
 <!-- Provide a brief description of the changes in this PR -->
 
+## Related Issues
+
+<!-- Link related issues. Use keywords to auto-close: Fixes #123, Closes #456, Resolves #789 -->
+
+Fixes #
+
 ## Type of Change
 
 <!-- Mark the relevant option with an 'x' -->
@@ -38,13 +44,17 @@
 - [ ] Docstrings updated
 - [ ] SPECIFICATION.md updated (if needed)
 
-## Related Issues
-
-<!-- Link any related issues: Fixes #123, Relates to #456 -->
-
 ## Screenshots / Examples
 
 <!-- If applicable, add screenshots or examples to demonstrate the changes -->
+
+## Release Notes
+
+<!-- Brief description for the changelog. Leave empty for internal/infrastructure changes. -->
+
+```release-notes
+
+```
 
 ## Checklist
 
@@ -53,3 +63,4 @@
 - [ ] I have added/updated tests that prove my fix/feature works
 - [ ] I have updated documentation as needed
 - [ ] My changes generate no new warnings
+- [ ] I have linked this PR to a related issue
