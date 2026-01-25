@@ -101,6 +101,7 @@ class WebinarContent(BaseModel):
 
     title: str | None = None
     url: str | None = None
+    thumbnail_url: str | None = None
 
 
 class VideoContent(BaseModel):

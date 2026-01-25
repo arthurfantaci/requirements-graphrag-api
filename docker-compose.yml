@@ -5,8 +5,8 @@ services:
   # GraphRAG REST API Backend
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
       target: production
     container_name: requirements-graphrag-backend
     ports:

@@ -407,7 +407,7 @@ Key Node Types:
 - Entity: name, display_name (subtypes: Tool, Concept, Standard, Industry, Methodology)
 - Definition: term, definition, url, acronym
 - Standard: name, display_name, organization
-- Webinar: title, url
+- Webinar: title, url, thumbnail_url
 - Video: title, url
 - Image: url, alt_text, context
 

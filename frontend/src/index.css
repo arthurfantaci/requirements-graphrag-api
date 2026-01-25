@@ -1,3 +1,32 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* Jama Software brand colors */
+@theme {
+  --color-jama-orange: #f78f2c;
+  --color-jama-orange-dark: #d6522b;
+  --color-jama-orange-light: #fef3e7;
+}
 
 /* Custom styles can be added below */
+
+/* Ensure Jama orange links maintain color after being visited */
+a.text-jama-orange:visited {
+  color: var(--color-jama-orange);
+}
+
+/* Fade-in animation for feedback thank you message */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}

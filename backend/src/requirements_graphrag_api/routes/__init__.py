@@ -7,12 +7,14 @@ This package contains all route handlers organized by domain:
 - standards: Industry standards queries
 - schema: Knowledge graph schema introspection
 - health: Health check endpoints
+- feedback: User feedback collection for LangSmith
 """
 
 from __future__ import annotations
 
 from requirements_graphrag_api.routes.chat import router as chat_router
 from requirements_graphrag_api.routes.definitions import router as definitions_router
+from requirements_graphrag_api.routes.feedback import router as feedback_router
 from requirements_graphrag_api.routes.health import router as health_router
 from requirements_graphrag_api.routes.schema import router as schema_router
 from requirements_graphrag_api.routes.search import router as search_router
@@ -21,6 +23,7 @@ from requirements_graphrag_api.routes.standards import router as standards_route
 __all__ = [
     "chat_router",
     "definitions_router",
+    "feedback_router",
     "health_router",
     "schema_router",
     "search_router",

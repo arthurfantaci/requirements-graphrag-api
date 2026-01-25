@@ -33,6 +33,7 @@ from requirements_graphrag_api.observability import configure_tracing
 from requirements_graphrag_api.routes import (
     chat_router,
     definitions_router,
+    feedback_router,
     health_router,
     schema_router,
     search_router,
@@ -153,6 +154,7 @@ app.add_middleware(
 # Mount routers
 app.include_router(health_router, tags=["Health"])
 app.include_router(chat_router, tags=["Chat"])
+app.include_router(feedback_router, tags=["Feedback"])
 app.include_router(search_router, tags=["Search"])
 app.include_router(definitions_router, tags=["Definitions"])
 app.include_router(standards_router, tags=["Standards"])
