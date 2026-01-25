@@ -580,8 +580,15 @@ def _enrich_with_media(
                      alt_text: img.alt_text,
                      context: img.context
                  })[..$max_items] AS images,
-                 collect(DISTINCT {title: web.title, url: web.url})[..$max_items] AS webinars,
-                 collect(DISTINCT {title: vid.title, url: vid.url})[..$max_items] AS videos
+                 collect(DISTINCT {
+                     title: web.title,
+                     url: web.url,
+                     thumbnail_url: web.thumbnail_url
+                 })[..$max_items] AS webinars,
+                 collect(DISTINCT {
+                     title: vid.title,
+                     url: vid.url
+                 })[..$max_items] AS videos
             RETURN chunk_id, images, webinars, videos
             """,
             chunk_ids=chunk_ids,

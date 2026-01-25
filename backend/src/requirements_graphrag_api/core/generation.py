@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any, Final
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
+from langsmith import get_current_run_tree
 
 from requirements_graphrag_api.core.definitions import search_terms
 from requirements_graphrag_api.core.retrieval import graph_enriched_search
@@ -80,12 +81,14 @@ class Resource:
         url: URL to access the resource.
         alt_text: Alternative text (primarily for images).
         source_title: Title of the source this resource came from.
+        thumbnail_url: Thumbnail image URL (primarily for webinars).
     """
 
     title: str
     url: str
     alt_text: str = ""
     source_title: str = ""
+    thumbnail_url: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,14 +97,14 @@ class ContextBuildResult:
 
     Attributes:
         sources: List of source dictionaries with metadata.
-        entities: List of entity names.
+        entities: List of entity dicts with name and optional definition.
         context: Formatted context string for LLM.
         entities_str: Comma-separated entity string for LLM.
         resources: Dictionary mapping resource types to lists of Resource objects.
     """
 
     sources: list[dict[str, Any]]
-    entities: list[str]
+    entities: list[dict[str, Any]]
     context: str
     entities_str: str
     resources: dict[str, list[Resource]] = field(default_factory=dict)
@@ -192,6 +195,7 @@ async def generate_answer(
                 "title": r.title,
                 "url": r.url,
                 "source_title": r.source_title,
+                "thumbnail_url": r.thumbnail_url,
             }
             for r in build_result.resources.get("webinars", [])
         ],
@@ -247,7 +251,9 @@ def _build_context_from_results(
     """
     context_parts: list[str] = []
     sources: list[dict[str, Any]] = []
-    all_entities: set[str] = set()
+    # Map entity names to {definition, label} for tracking node labels
+    # label is the Neo4j node label (e.g., "Concept", "Entity", "Definition")
+    all_entities: dict[str, dict[str, Any]] = {}
 
     # Track resources globally for deduplication by URL
     seen_urls: set[str] = set()
@@ -275,7 +281,11 @@ def _build_context_from_results(
                         "relevance_score": defn.get("score", 0.5),
                     }
                 )
-                all_entities.add(defn["term"])
+                # Store entity with its definition and label (Definition node)
+                all_entities[defn["term"]] = {
+                    "definition": defn.get("definition"),
+                    "label": "Definition",
+                }
 
     for i, result in enumerate(search_results, 1):
         title = result["metadata"].get("title", "Unknown")
@@ -299,14 +309,32 @@ def _build_context_from_results(
         if include_entities:
             for entity in result.get("entities", []):
                 if isinstance(entity, dict) and entity.get("name"):
-                    all_entities.add(entity["name"])
+                    name = entity["name"]
+                    label = entity.get("type", "Entity")  # Neo4j node label
+                    definition = entity.get("definition")
+                    # Don't overwrite if we already have a definition
+                    if name not in all_entities:
+                        all_entities[name] = {"definition": definition, "label": label}
+                    elif definition and not all_entities[name].get("definition"):
+                        # Update with definition if we didn't have one
+                        all_entities[name]["definition"] = definition
                 elif isinstance(entity, str) and entity:
-                    all_entities.add(entity)
+                    if entity not in all_entities:
+                        all_entities[entity] = {"definition": None, "label": "Entity"}
+            # Glossary definitions include the actual definition text
             for defn in result.get("glossary_definitions", []):
                 if isinstance(defn, dict) and defn.get("term"):
-                    all_entities.add(defn["term"])
+                    term = defn["term"]
+                    definition = defn.get("definition")
+                    # Prefer definition over None, mark as Definition label
+                    if term not in all_entities:
+                        all_entities[term] = {"definition": definition, "label": "Definition"}
+                    elif definition and not all_entities[term].get("definition"):
+                        all_entities[term]["definition"] = definition
+                        all_entities[term]["label"] = "Definition"
                 elif isinstance(defn, str) and defn:
-                    all_entities.add(defn)
+                    if defn not in all_entities:
+                        all_entities[defn] = {"definition": None, "label": "Entity"}
 
         # Extract resources from media (with per-source limits and global deduplication)
         source_resources: list[str] = []
@@ -345,11 +373,13 @@ def _build_context_from_results(
                 seen_urls.add(webinar_url)
                 source_webinar_count += 1
                 webinar_title = webinar.get("title", "Webinar")
+                webinar_thumbnail = webinar.get("thumbnail_url", "")
                 all_webinars.append(
                     Resource(
                         title=webinar_title,
                         url=webinar_url,
                         source_title=title,
+                        thumbnail_url=webinar_thumbnail,
                     )
                 )
                 source_resources.append(f'- 📹 Webinar: "{webinar_title}" - {webinar_url}')
@@ -383,8 +413,18 @@ def _build_context_from_results(
         context_parts.append(source_context)
 
     context = "\n".join(context_parts) if context_parts else "No relevant context found."
-    entities_str = ", ".join(sorted(all_entities)[:20]) if all_entities else "None identified"
-    entities_list = list(all_entities)[:20]
+    # Sort by name and limit to 20 entities
+    sorted_names = sorted(all_entities.keys())[:20]
+    entities_str = ", ".join(sorted_names) if sorted_names else "None identified"
+    # Build list of entity objects with name, definition, and node label
+    entities_list = [
+        {
+            "name": name,
+            "definition": all_entities[name].get("definition"),
+            "label": all_entities[name].get("label", "Entity"),
+        }
+        for name in sorted_names
+    ]
 
     return ContextBuildResult(
         sources=sources,
@@ -472,6 +512,7 @@ async def stream_chat(
                     "title": r.title,
                     "url": r.url,
                     "source_title": r.source_title,
+                    "thumbnail_url": r.thumbnail_url,
                 }
                 for r in build_result.resources.get("webinars", [])
             ],
@@ -530,10 +571,22 @@ async def stream_chat(
                 data={"token": token},
             )
 
-        # 7. Emit completion event
+        # 7. Emit completion event with run_id for feedback correlation
+        run_id = None
+        try:
+            run_tree = get_current_run_tree()
+            if run_tree:
+                run_id = str(run_tree.id)
+        except Exception:
+            logger.debug("Could not get run_id - tracing may be disabled")
+
         yield StreamEvent(
             event_type=StreamEventType.DONE,
-            data={"full_answer": full_answer, "source_count": len(build_result.sources)},
+            data={
+                "full_answer": full_answer,
+                "source_count": len(build_result.sources),
+                "run_id": run_id,
+            },
         )
 
     except Exception as e:
