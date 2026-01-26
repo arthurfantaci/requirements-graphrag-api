@@ -58,7 +58,7 @@ function RelevanceBar({ score }) {
   const percentage = Math.round(score * 100)
 
   return (
-    <div className="flex items-center gap-2 text-xs text-gray-500">
+    <div className="flex items-center gap-2 text-xs text-charcoal-muted">
       <div className="w-16 h-1.5 bg-emerald-100 rounded-full overflow-hidden">
         <div
           className="h-full bg-emerald-500 rounded-full"
@@ -77,9 +77,9 @@ function SourceItem({ source }) {
   const { title, url, relevance_score } = source
 
   return (
-    <div className="flex items-start justify-between gap-2 py-2 border-b border-gray-100 last:border-b-0">
+    <div className="flex items-start justify-between gap-2 py-2 border-b border-black/5 last:border-b-0">
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-gray-700 truncate">{title || 'Untitled Source'}</p>
+        <p className="text-sm text-charcoal-light truncate">{title || 'Untitled Source'}</p>
         <RelevanceBar score={relevance_score} />
       </div>
       {url && (
@@ -87,7 +87,7 @@ function SourceItem({ source }) {
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex-shrink-0 p-1 text-gray-400 hover:text-emerald-600 transition-colors"
+          className="flex-shrink-0 p-1 text-charcoal-muted hover:text-emerald-600 transition-colors"
           title="Open source"
         >
           <LinkIcon />
@@ -122,7 +122,7 @@ export function SourcesPanel({ sources }) {
           color="emerald"
           position="top"
         >
-          <span className="text-gray-400 hover:text-emerald-600 transition-colors">
+          <span className="text-charcoal-muted hover:text-emerald-600 transition-colors">
             <InfoIcon />
           </span>
         </Tooltip>
@@ -130,7 +130,7 @@ export function SourcesPanel({ sources }) {
 
       {/* Expandable content */}
       {isOpen && (
-        <div className="px-3 pb-2 border-t border-emerald-100 bg-white">
+        <div className="px-3 pb-2 border-t border-emerald-100 bg-ivory-light">
           {sources.map((source, index) => (
             <SourceItem key={`source-${index}`} source={source} />
           ))}

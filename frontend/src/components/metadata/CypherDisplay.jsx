@@ -30,7 +30,7 @@ function CheckIcon() {
 /**
  * Cypher query display component
  *
- * Shows the Cypher query in a monospace code block with copy functionality
+ * Shows the Cypher query in a terminal-style code block with copy functionality
  */
 export function CypherDisplay({ query }) {
   const [copied, setCopied] = useState(false)
@@ -56,13 +56,13 @@ export function CypherDisplay({ query }) {
   }
 
   return (
-    <div className="border border-gray-200 rounded-lg overflow-hidden">
+    <div className="border border-black/10 rounded-lg overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b border-gray-200">
-        <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Query</span>
+      <div className="flex items-center justify-between px-3 py-2 bg-terminal-bg border-b border-black/10">
+        <span className="text-xs font-medium text-terracotta uppercase tracking-widest">Query</span>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors"
+          className="flex items-center gap-1 text-xs text-terminal-text/60 hover:text-terminal-text transition-colors"
           title={copied ? 'Copied!' : 'Copy query'}
         >
           {copied ? <CheckIcon /> : <CopyIcon />}
@@ -71,8 +71,8 @@ export function CypherDisplay({ query }) {
       </div>
 
       {/* Query content */}
-      <div className="p-3 bg-gray-900 overflow-x-auto">
-        <pre className="text-sm text-green-400 font-mono whitespace-pre-wrap break-words">
+      <div className="p-3 bg-terminal-bg overflow-x-auto">
+        <pre className="text-sm text-terminal-green font-mono whitespace-pre-wrap break-words">
           {query}
         </pre>
       </div>

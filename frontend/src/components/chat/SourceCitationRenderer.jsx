@@ -14,7 +14,7 @@ function SourceCitation({ sourceNumber, source }) {
 
   if (!source) {
     // Source not found, render as plain text
-    return <span className="text-gray-500">[Source {sourceNumber}]</span>
+    return <span className="text-charcoal-muted">[Source {sourceNumber}]</span>
   }
 
   const { title, url, relevance_score } = source
@@ -84,17 +84,17 @@ function renderTextWithCitations(text, sources) {
     // Create citation links
     parts.push(
       <span key={match.index} className="inline-flex items-center">
-        <span className="text-gray-500">[</span>
+        <span className="text-charcoal-muted">[</span>
         {sourceNumbers.map((num, idx) => (
           <span key={num}>
-            {idx > 0 && <span className="text-gray-500">, </span>}
+            {idx > 0 && <span className="text-charcoal-muted">, </span>}
             <SourceCitation
               sourceNumber={num}
               source={sources?.[num - 1]} // Convert 1-indexed to 0-indexed
             />
           </span>
         ))}
-        <span className="text-gray-500">]</span>
+        <span className="text-charcoal-muted">]</span>
       </span>
     )
 
