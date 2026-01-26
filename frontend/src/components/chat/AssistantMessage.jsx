@@ -44,7 +44,7 @@ export function AssistantMessage({ message }) {
     <div className="max-w-2xl w-full space-y-3">
       {/* Header with intent badge */}
       {intent && (
-        <div className="flex justify-start">
+        <div className="flex justify-end">
           <QueryIntentBadge intent={intent} />
         </div>
       )}
