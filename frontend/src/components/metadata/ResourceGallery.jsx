@@ -107,7 +107,7 @@ function ImageThumbnail({ image }) {
  * Shows one row by default with "+N more" expand control.
  */
 export function ResourceGallery({ resources }) {
-  const [isOpen, setIsOpen] = useState(false)
+  const [isOpen, setIsOpen] = useState(true)
   const [showAll, setShowAll] = useState(false)
 
   if (!resources) return null

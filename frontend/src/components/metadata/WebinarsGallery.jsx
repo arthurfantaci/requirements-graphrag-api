@@ -137,7 +137,7 @@ function WebinarThumbnail({ webinar }) {
  * Displays webinars as thumbnail cards inside a rose collapsible container.
  */
 export function WebinarsGallery({ resources }) {
-  const [isOpen, setIsOpen] = useState(false)
+  const [isOpen, setIsOpen] = useState(true)
 
   if (!resources) return null
 

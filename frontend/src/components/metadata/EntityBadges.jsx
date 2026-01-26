@@ -189,7 +189,7 @@ function ConceptBadge({ entity }) {
  * Terms with definitions show a popover on hover/tap.
  */
 export function EntityBadges({ entities }) {
-  const [isOpen, setIsOpen] = useState(false)
+  const [isOpen, setIsOpen] = useState(true)
   const [showAll, setShowAll] = useState(false)
 
   if (!entities || entities.length === 0) return null

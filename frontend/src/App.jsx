@@ -10,7 +10,7 @@ function App() {
       <header className="bg-ivory-light border-b border-black/10 px-6 py-4 relative z-10">
         {/* Top bar: branding + nav */}
         <div className="flex items-center justify-between mb-2">
-          <span className="font-heading text-sm text-charcoal tracking-wide">
+          <span className="font-heading text-2xl text-charcoal">
             Norfolk AI/BI
           </span>
           <nav className="flex items-center gap-4 text-xs text-charcoal-muted">
@@ -34,18 +34,18 @@ function App() {
         </div>
 
         {/* Title + subtitle */}
-        <h1 className="font-heading text-xl text-charcoal">
+        <h1 className="font-heading text-2xl text-charcoal">
           Requirements Management Assistant
         </h1>
-        <p className="text-sm text-charcoal-muted">
-          Powered by GraphRAG &middot;{' '}
+        <p className="text-base text-charcoal-muted">
+          Ask questions about Jama Software&apos;s{' '}
           <a
             href="https://www.jamasoftware.com/requirements-management-guide"
             target="_blank"
             rel="noopener noreferrer"
-            className="font-semibold italic text-jama-orange hover:text-jama-orange-dark hover:underline"
+            className="font-bold italic text-jama-orange hover:text-jama-orange-dark hover:underline"
           >
-            Jama Software Knowledge Base
+            The Essential Guide to Requirements Management and Traceability
           </a>
         </p>
       </header>

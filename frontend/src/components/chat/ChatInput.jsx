@@ -27,9 +27,12 @@ export function ChatInput({ onSend, disabled }) {
         <button
           type="submit"
           disabled={disabled || !input.trim()}
-          className="px-6 py-3 bg-terracotta text-white rounded-lg font-medium hover:bg-terracotta-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="w-10 h-10 flex items-center justify-center bg-terracotta text-white rounded-full hover:bg-terracotta-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0 self-center"
+          aria-label="Send"
         >
-          Send
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+          </svg>
         </button>
       </form>
     </footer>

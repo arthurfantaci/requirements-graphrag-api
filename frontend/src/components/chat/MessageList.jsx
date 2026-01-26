@@ -6,7 +6,7 @@ import { AssistantMessage } from './AssistantMessage'
 function UserMessage({ content }) {
   return (
     <div className="flex justify-end">
-      <div className="max-w-2xl px-4 py-3 rounded-lg bg-terracotta text-white">
+      <div className="max-w-2xl px-5 py-4 rounded-2xl bg-ivory-medium text-charcoal">
         <p className="whitespace-pre-wrap">{content}</p>
       </div>
     </div>

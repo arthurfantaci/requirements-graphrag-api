@@ -41,113 +41,88 @@ export function AssistantMessage({ message }) {
   const hasResults = results && results.length > 0
 
   return (
-    <div className="flex justify-start">
-      <div className="max-w-2xl w-full bg-ivory-light border border-black/10 rounded-lg">
-        {/* Header with intent badge */}
-        {intent && (
-          <div className="flex justify-end px-4 pt-3">
-            <QueryIntentBadge intent={intent} />
-          </div>
-        )}
+    <div className="max-w-2xl w-full space-y-3">
+      {/* Header with intent badge */}
+      {intent && (
+        <div className="flex justify-start">
+          <QueryIntentBadge intent={intent} />
+        </div>
+      )}
 
-        {/* Structured: Cypher query display */}
-        {isStructured && hasCypher && (
-          <div className="px-4 pt-3">
-            <CypherDisplay query={cypher} />
-          </div>
-        )}
+      {/* Structured: Cypher query display */}
+      {isStructured && hasCypher && (
+        <CypherDisplay query={cypher} />
+      )}
 
-        {/* Structured: Results table */}
-        {isStructured && hasResults && (
-          <div className="px-4 pt-3">
-            <ResultsTable results={results} rowCount={rowCount} />
-          </div>
-        )}
+      {/* Structured: Results table */}
+      {isStructured && hasResults && (
+        <ResultsTable results={results} rowCount={rowCount} />
+      )}
 
-        {/* Explanatory: Main content with Markdown rendering and clickable citations */}
-        {isExplanatory && hasContent && (
-          <div className="px-4 pt-3">
-            <div className="prose prose-sm prose-neutral max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-headings:mt-4 prose-headings:mb-2">
-              {hasSources ? (
-                <SourceCitationRenderer content={content} sources={sources} />
-              ) : (
-                <ReactMarkdown>{content}</ReactMarkdown>
-              )}
-            </div>
-          </div>
-        )}
+      {/* Explanatory: Main content with Markdown rendering and clickable citations */}
+      {isExplanatory && hasContent && (
+        <div className="prose prose-sm prose-neutral max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-headings:mt-4 prose-headings:mb-2">
+          {hasSources ? (
+            <SourceCitationRenderer content={content} sources={sources} />
+          ) : (
+            <ReactMarkdown>{content}</ReactMarkdown>
+          )}
+        </div>
+      )}
 
-        {/* Fallback: Show content when no intent yet (streaming) */}
-        {!intent && hasContent && (
-          <div className="px-4 pt-3">
-            <div className="prose prose-sm prose-neutral max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-headings:mt-4 prose-headings:mb-2">
-              <ReactMarkdown>{content}</ReactMarkdown>
-            </div>
-          </div>
-        )}
+      {/* Fallback: Show content when no intent yet (streaming) */}
+      {!intent && hasContent && (
+        <div className="prose prose-sm prose-neutral max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-headings:mt-4 prose-headings:mb-2">
+          <ReactMarkdown>{content}</ReactMarkdown>
+        </div>
+      )}
 
-        {/* Streaming indicator */}
-        {status === 'streaming' && !hasContent && (
-          <div className="px-4 py-3">
-            <div className="flex space-x-2">
-              <div className="w-2 h-2 bg-charcoal-muted rounded-full animate-bounce" />
-              <div
-                className="w-2 h-2 bg-charcoal-muted rounded-full animate-bounce"
-                style={{ animationDelay: '0.1s' }}
-              />
-              <div
-                className="w-2 h-2 bg-charcoal-muted rounded-full animate-bounce"
-                style={{ animationDelay: '0.2s' }}
-              />
-            </div>
+      {/* Streaming indicator */}
+      {status === 'streaming' && !hasContent && (
+        <div className="py-1">
+          <div className="flex space-x-2">
+            <div className="w-2 h-2 bg-charcoal-muted rounded-full animate-bounce" />
+            <div
+              className="w-2 h-2 bg-charcoal-muted rounded-full animate-bounce"
+              style={{ animationDelay: '0.1s' }}
+            />
+            <div
+              className="w-2 h-2 bg-charcoal-muted rounded-full animate-bounce"
+              style={{ animationDelay: '0.2s' }}
+            />
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Error display */}
-        {status === 'error' && (
-          <div className="px-4 pt-3">
-            <p className="text-red-600">{error || 'An error occurred'}</p>
-          </div>
-        )}
+      {/* Error display */}
+      {status === 'error' && (
+        <p className="text-red-600">{error || 'An error occurred'}</p>
+      )}
 
-        {/* Sources panel */}
-        {hasSources && (
-          <div className="px-4 pt-3">
-            <SourcesPanel sources={sources} />
-          </div>
-        )}
+      {/* Sources panel */}
+      {hasSources && (
+        <SourcesPanel sources={sources} />
+      )}
 
-        {/* Terms (Entity badges) */}
-        {hasEntities && (
-          <div className="px-4 pt-3">
-            <EntityBadges entities={entities} />
-          </div>
-        )}
+      {/* Terms (Entity badges) */}
+      {hasEntities && (
+        <EntityBadges entities={entities} />
+      )}
 
-        {/* Images gallery */}
-        {hasImages && (
-          <div className="px-4 pt-3">
-            <ResourceGallery resources={resources} />
-          </div>
-        )}
+      {/* Images gallery */}
+      {hasImages && (
+        <ResourceGallery resources={resources} />
+      )}
 
-        {/* Webinars gallery */}
-        {hasWebinars && (
-          <div className="px-4 pt-3">
-            <WebinarsGallery resources={resources} />
-          </div>
-        )}
+      {/* Webinars gallery */}
+      {hasWebinars && (
+        <WebinarsGallery resources={resources} />
+      )}
 
-        {/* Response actions - show when complete */}
-        {status === 'complete' && (
-          <div className="px-4 pt-3">
-            <ResponseActions content={content} runId={runId} messageId={id} />
-          </div>
-        )}
-
-        {/* Bottom padding */}
-        <div className="h-3" />
-      </div>
+      {/* Response actions - show when complete */}
+      {status === 'complete' && (
+        <ResponseActions content={content} runId={runId} messageId={id} />
+      )}
     </div>
   )
 }
