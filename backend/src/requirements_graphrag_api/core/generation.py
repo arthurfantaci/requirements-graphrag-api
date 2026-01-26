@@ -261,6 +261,14 @@ def _build_context_from_results(
     all_webinars: list[Resource] = []
     all_videos: list[Resource] = []
 
+    # Pre-collect webinar thumbnail URLs to exclude from images (Issue #54)
+    webinar_thumbnail_urls: set[str] = set()
+    for r in search_results:
+        for w in r.get("media", {}).get("webinars", []):
+            thumb = w.get("thumbnail_url")
+            if thumb:
+                webinar_thumbnail_urls.add(thumb)
+
     # Add definitions to context first (if any found)
     if definitions:
         for defn in definitions:
@@ -345,7 +353,7 @@ def _build_context_from_results(
             source_image_count = 0
             for img in media.get("images", []):
                 img_url = img.get("url")
-                if not img_url or img_url in seen_urls:
+                if not img_url or img_url in seen_urls or img_url in webinar_thumbnail_urls:
                     continue
                 if source_image_count >= max_resources_per_type:
                     break
