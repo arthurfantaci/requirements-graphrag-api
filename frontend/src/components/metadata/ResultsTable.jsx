@@ -5,7 +5,7 @@ const MAX_ROWS = 50
  */
 function formatCellValue(value) {
   if (value === null || value === undefined) {
-    return <span className="text-gray-400 italic">null</span>
+    return <span className="text-charcoal-muted italic">null</span>
   }
   if (typeof value === 'object') {
     return JSON.stringify(value)
@@ -20,7 +20,7 @@ function formatCellValue(value) {
         href={value}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-blue-600 hover:underline truncate block max-w-xs"
+        className="text-terracotta hover:underline truncate block max-w-xs"
         title={value}
       >
         {value}
@@ -39,7 +39,7 @@ function formatCellValue(value) {
 export function ResultsTable({ results, rowCount }) {
   if (!results || results.length === 0) {
     return (
-      <div className="border border-gray-200 rounded-lg p-4 text-center text-gray-500 text-sm">
+      <div className="border border-black/10 rounded-lg p-4 text-center text-charcoal-muted text-sm">
         No results found
       </div>
     )
@@ -52,39 +52,39 @@ export function ResultsTable({ results, rowCount }) {
   const hasMore = totalRows > MAX_ROWS
 
   return (
-    <div className="border border-gray-200 rounded-lg overflow-hidden">
+    <div className="border border-black/10 rounded-lg overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b border-gray-200">
-        <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+      <div className="flex items-center justify-between px-3 py-2 bg-ivory-medium border-b border-black/10">
+        <span className="text-xs font-medium text-terracotta uppercase tracking-widest">
           Results
         </span>
-        <span className="text-xs text-gray-500">
+        <span className="text-xs text-charcoal-muted">
           {hasMore ? `Showing ${MAX_ROWS} of ${totalRows} rows` : `${totalRows} row${totalRows !== 1 ? 's' : ''}`}
         </span>
       </div>
 
       {/* Table */}
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+        <table className="min-w-full divide-y divide-black/10">
+          <thead className="bg-ivory-medium">
             <tr>
               {columns.map((column) => (
                 <th
                   key={column}
-                  className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  className="px-3 py-2 text-left text-xs font-medium text-charcoal-muted uppercase tracking-wider"
                 >
                   {column}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-100">
+          <tbody className="bg-ivory-light divide-y divide-black/5">
             {displayResults.map((row, rowIndex) => (
-              <tr key={rowIndex} className="hover:bg-gray-50">
+              <tr key={rowIndex} className="hover:bg-ivory-medium">
                 {columns.map((column) => (
                   <td
                     key={`${rowIndex}-${column}`}
-                    className="px-3 py-2 text-sm text-gray-700 whitespace-nowrap"
+                    className="px-3 py-2 text-sm text-charcoal-light whitespace-nowrap"
                   >
                     {formatCellValue(row[column])}
                   </td>
@@ -97,7 +97,7 @@ export function ResultsTable({ results, rowCount }) {
 
       {/* More rows indicator */}
       {hasMore && (
-        <div className="px-3 py-2 bg-gray-50 border-t border-gray-200 text-center text-xs text-gray-500">
+        <div className="px-3 py-2 bg-ivory-medium border-t border-black/10 text-center text-xs text-charcoal-muted">
           {totalRows - MAX_ROWS} more row{totalRows - MAX_ROWS !== 1 ? 's' : ''} not shown
         </div>
       )}

@@ -1,18 +1,38 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
-/* Jama Software brand colors */
+/* Norfolk AI/BI + Jama brand design tokens */
 @theme {
+  --color-ivory: #FAF9F0;
+  --color-ivory-light: #FDFCF7;
+  --color-ivory-medium: #F5F4EB;
+  --color-ivory-dark: #EDEAD9;
+  --color-charcoal: #181818;
+  --color-charcoal-light: #4A4A4A;
+  --color-charcoal-muted: #6B6B6B;
+  --color-terracotta: #CC785C;
+  --color-terracotta-light: #D89478;
+  --color-terracotta-dark: #B56A50;
+  --color-terminal-bg: #1E1E1E;
+  --color-terminal-text: #E0E0E0;
+  --color-terminal-green: #7EC699;
+  --color-terminal-blue: #9CDCFE;
   --color-jama-orange: #f78f2c;
   --color-jama-orange-dark: #d6522b;
   --color-jama-orange-light: #fef3e7;
+  --font-heading: Georgia, Cambria, 'Times New Roman', Times, serif;
+  --font-mono: 'SF Mono', Monaco, Inconsolata, 'Roboto Mono', monospace;
 }
 
 /* Custom styles can be added below */
 
-/* Ensure Jama orange links maintain color after being visited */
+/* Ensure brand-colored links maintain color after being visited */
 a.text-jama-orange:visited {
   color: var(--color-jama-orange);
+}
+
+a.text-terracotta:visited {
+  color: var(--color-terracotta);
 }
 
 /* Fade-in animation for feedback thank you message */

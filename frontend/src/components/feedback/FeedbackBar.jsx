@@ -100,7 +100,7 @@ export function FeedbackBar({ runId, messageId, disabled }) {
   if (!runId) return null
 
   return (
-    <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+    <div className="flex items-center gap-2 pt-2 border-t border-black/5">
       {/* Feedback buttons */}
       <div className="flex items-center gap-1">
         <button
@@ -109,7 +109,7 @@ export function FeedbackBar({ runId, messageId, disabled }) {
           className={`p-1.5 rounded transition-colors ${
             feedback === 'positive'
               ? 'text-green-600 bg-green-50'
-              : 'text-gray-400 hover:text-green-600 hover:bg-green-50'
+              : 'text-charcoal-muted hover:text-green-600 hover:bg-green-50'
           } disabled:opacity-50 disabled:cursor-not-allowed`}
           title="Helpful"
           aria-label="Mark as helpful"
@@ -122,7 +122,7 @@ export function FeedbackBar({ runId, messageId, disabled }) {
           className={`p-1.5 rounded transition-colors ${
             feedback === 'negative'
               ? 'text-red-600 bg-red-50'
-              : 'text-gray-400 hover:text-red-600 hover:bg-red-50'
+              : 'text-charcoal-muted hover:text-red-600 hover:bg-red-50'
           } disabled:opacity-50 disabled:cursor-not-allowed`}
           title="Not helpful"
           aria-label="Mark as not helpful"
@@ -133,14 +133,14 @@ export function FeedbackBar({ runId, messageId, disabled }) {
 
       {/* Thank you message */}
       {showThanks && (
-        <span className="text-xs text-gray-500 animate-fade-in">
+        <span className="text-xs text-charcoal-muted animate-fade-in">
           Thanks for your feedback!
         </span>
       )}
 
       {/* Feedback label when not yet submitted */}
       {!feedback && !showThanks && (
-        <span className="text-xs text-gray-400">Was this helpful?</span>
+        <span className="text-xs text-charcoal-muted">Was this helpful?</span>
       )}
     </div>
   )
