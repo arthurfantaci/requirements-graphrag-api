@@ -1,36 +1,71 @@
 import { useSSEChat } from './hooks/useSSEChat'
-import { MessageList, ChatInput } from './components/chat'
+import { MessageList, ChatInput, WelcomeScreen } from './components/chat'
 
 function App() {
   const { messages, isLoading, sendMessage } = useSSEChat()
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-ivory flex flex-col">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-6 py-4 relative z-10">
-        <h1 className="text-xl font-semibold text-gray-900">
+      <header className="bg-ivory-light border-b border-black/10 px-6 py-4 relative z-10">
+        {/* Top bar: branding + nav */}
+        <div className="flex items-center justify-between mb-2">
+          <span className="font-heading text-sm text-charcoal tracking-wide">
+            Norfolk AI/BI
+          </span>
+          <nav className="flex items-center gap-4 text-xs text-charcoal-muted">
+            <a
+              href="https://github.com/arthurfantaci/requirements-graphrag-api"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-charcoal transition-colors"
+            >
+              GitHub
+            </a>
+            <a
+              href="https://norfolkaibi.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-charcoal transition-colors"
+            >
+              &larr; Norfolk AI/BI
+            </a>
+          </nav>
+        </div>
+
+        {/* Title + subtitle */}
+        <h1 className="font-heading text-xl text-charcoal">
           Requirements Management Assistant
         </h1>
-        <p className="text-sm text-gray-500">
-          Ask questions about Jama Software's{' '}
+        <p className="text-sm text-charcoal-muted">
+          Powered by GraphRAG &middot;{' '}
           <a
             href="https://www.jamasoftware.com/requirements-management-guide"
             target="_blank"
             rel="noopener noreferrer"
             className="font-semibold italic text-jama-orange hover:text-jama-orange-dark hover:underline"
           >
-            The Essential Guide to Requirements Management and Traceability
+            Jama Software Knowledge Base
           </a>
         </p>
       </header>
 
-      {/* Messages */}
+      {/* Messages or Welcome Screen */}
       <main className="flex-1 overflow-y-auto p-6 space-y-4">
-        <MessageList messages={messages} />
+        {messages.length === 0 ? (
+          <WelcomeScreen onQuickStart={sendMessage} />
+        ) : (
+          <MessageList messages={messages} />
+        )}
       </main>
 
       {/* Input */}
       <ChatInput onSend={sendMessage} disabled={isLoading} />
+
+      {/* Footer */}
+      <footer className="bg-ivory-light border-t border-black/10 px-6 py-2 text-center text-xs text-charcoal-muted">
+        &copy; 2026 Norfolk AI/BI &middot; GraphRAG &middot; Neo4j &middot; LangChain &middot; LangSmith
+      </footer>
     </div>
   )
 }

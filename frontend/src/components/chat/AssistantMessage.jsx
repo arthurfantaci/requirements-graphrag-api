@@ -42,7 +42,7 @@ export function AssistantMessage({ message }) {
 
   return (
     <div className="flex justify-start">
-      <div className="max-w-2xl w-full bg-white border border-gray-200 rounded-lg">
+      <div className="max-w-2xl w-full bg-ivory-light border border-black/10 rounded-lg">
         {/* Header with intent badge */}
         {intent && (
           <div className="flex justify-end px-4 pt-3">
@@ -67,7 +67,7 @@ export function AssistantMessage({ message }) {
         {/* Explanatory: Main content with Markdown rendering and clickable citations */}
         {isExplanatory && hasContent && (
           <div className="px-4 pt-3">
-            <div className="prose prose-sm prose-gray max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-headings:mt-4 prose-headings:mb-2">
+            <div className="prose prose-sm prose-neutral max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-headings:mt-4 prose-headings:mb-2">
               {hasSources ? (
                 <SourceCitationRenderer content={content} sources={sources} />
               ) : (
@@ -80,7 +80,7 @@ export function AssistantMessage({ message }) {
         {/* Fallback: Show content when no intent yet (streaming) */}
         {!intent && hasContent && (
           <div className="px-4 pt-3">
-            <div className="prose prose-sm prose-gray max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-headings:mt-4 prose-headings:mb-2">
+            <div className="prose prose-sm prose-neutral max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-headings:mt-4 prose-headings:mb-2">
               <ReactMarkdown>{content}</ReactMarkdown>
             </div>
           </div>
@@ -90,13 +90,13 @@ export function AssistantMessage({ message }) {
         {status === 'streaming' && !hasContent && (
           <div className="px-4 py-3">
             <div className="flex space-x-2">
-              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
+              <div className="w-2 h-2 bg-charcoal-muted rounded-full animate-bounce" />
               <div
-                className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                className="w-2 h-2 bg-charcoal-muted rounded-full animate-bounce"
                 style={{ animationDelay: '0.1s' }}
               />
               <div
-                className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                className="w-2 h-2 bg-charcoal-muted rounded-full animate-bounce"
                 style={{ animationDelay: '0.2s' }}
               />
             </div>

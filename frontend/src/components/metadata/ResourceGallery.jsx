@@ -21,6 +21,22 @@ function InfoIcon() {
 }
 
 /**
+ * Chevron icon component
+ */
+function ChevronIcon({ isOpen }) {
+  return (
+    <svg
+      className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-90' : ''}`}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+    </svg>
+  )
+}
+
+/**
  * Image icon component (fallback)
  */
 function ImageIcon() {
@@ -85,12 +101,13 @@ function ImageThumbnail({ image }) {
 }
 
 /**
- * Images gallery component
+ * Collapsible images gallery component
  *
- * Displays images as clickable thumbnails with "IMAGES" section header.
+ * Displays images as clickable thumbnails inside an amber collapsible container.
  * Shows one row by default with "+N more" expand control.
  */
 export function ResourceGallery({ resources }) {
+  const [isOpen, setIsOpen] = useState(false)
   const [showAll, setShowAll] = useState(false)
 
   if (!resources) return null
@@ -105,46 +122,52 @@ export function ResourceGallery({ resources }) {
   const hasOverflow = hiddenCount > 0 && !showAll
 
   return (
-    <div className="space-y-2">
-      {/* Section header */}
-      <div className="flex items-center gap-1.5">
-        <span className="text-xs font-medium text-amber-600 uppercase tracking-wide">
-          Images
-        </span>
+    <div className="border border-amber-200 rounded-lg overflow-hidden bg-amber-50/30">
+      {/* Header - always visible */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-amber-700 hover:bg-amber-50 transition-colors"
+      >
+        <ChevronIcon isOpen={isOpen} />
+        <span className="font-medium">Images ({images.length})</span>
         <Tooltip
           title="Visual Resources"
           description="Diagrams and illustrations from the source articles. Click any image to view full size."
           color="amber"
           position="top"
         >
-          <span className="text-gray-400 hover:text-amber-600 transition-colors">
+          <span className="text-charcoal-muted hover:text-amber-600 transition-colors">
             <InfoIcon />
           </span>
         </Tooltip>
-      </div>
+      </button>
 
-      {/* Images row with expand control */}
-      <div className="flex flex-wrap gap-2 items-center">
-        {visibleImages.map((image, index) => (
-          <ImageThumbnail key={`img-${index}`} image={image} />
-        ))}
-        {hasOverflow && (
-          <button
-            onClick={() => setShowAll(true)}
-            className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-gray-50 text-gray-500 hover:bg-gray-100 transition-colors h-16"
-          >
-            +{hiddenCount} more
-          </button>
-        )}
-        {showAll && images.length > MAX_VISIBLE_ROW && (
-          <button
-            onClick={() => setShowAll(false)}
-            className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-gray-50 text-gray-500 hover:bg-gray-100 transition-colors"
-          >
-            Show less
-          </button>
-        )}
-      </div>
+      {/* Expandable content */}
+      {isOpen && (
+        <div className="px-3 pb-2 border-t border-amber-100 bg-ivory-light">
+          <div className="flex flex-wrap gap-2 items-center pt-2">
+            {visibleImages.map((image, index) => (
+              <ImageThumbnail key={`img-${index}`} image={image} />
+            ))}
+            {hasOverflow && (
+              <button
+                onClick={() => setShowAll(true)}
+                className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-ivory-medium text-charcoal-muted hover:bg-ivory transition-colors h-16"
+              >
+                +{hiddenCount} more
+              </button>
+            )}
+            {showAll && images.length > MAX_VISIBLE_ROW && (
+              <button
+                onClick={() => setShowAll(false)}
+                className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-ivory-medium text-charcoal-muted hover:bg-ivory transition-colors"
+              >
+                Show less
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

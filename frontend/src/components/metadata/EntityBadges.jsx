@@ -20,6 +20,22 @@ function InfoIcon() {
 }
 
 /**
+ * Chevron icon component
+ */
+function ChevronIcon({ isOpen }) {
+  return (
+    <svg
+      className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-90' : ''}`}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+    </svg>
+  )
+}
+
+/**
  * Color configuration for Neo4j node labels
  *
  * Each node label gets distinct colors for visual differentiation.
@@ -166,14 +182,14 @@ function ConceptBadge({ entity }) {
 }
 
 /**
- * Concepts component displaying extracted knowledge graph concepts
+ * Collapsible concepts component displaying extracted knowledge graph concepts
  *
- * Shows "CONCEPTS" section header with up to MAX_VISIBLE entities
- * and a "+N more" overflow indicator.
+ * Shows a purple collapsible container with concept count in header.
  * Concepts are color-coded by their Neo4j node label.
  * Terms with definitions show a popover on hover/tap.
  */
 export function EntityBadges({ entities }) {
+  const [isOpen, setIsOpen] = useState(false)
   const [showAll, setShowAll] = useState(false)
 
   if (!entities || entities.length === 0) return null
@@ -189,46 +205,52 @@ export function EntityBadges({ entities }) {
   }
 
   return (
-    <div className="space-y-2">
-      {/* Section header */}
-      <div className="flex items-center gap-1.5">
-        <span className="text-xs font-medium text-purple-600 uppercase tracking-wide">
-          Concepts
-        </span>
+    <div className="border border-purple-200 rounded-lg overflow-hidden bg-purple-50/30">
+      {/* Header - always visible */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-purple-700 hover:bg-purple-50 transition-colors"
+      >
+        <ChevronIcon isOpen={isOpen} />
+        <span className="font-medium">Concepts ({entities.length})</span>
         <Tooltip
           title="Knowledge Graph Concepts"
           description="Extracted concepts from the knowledge graph. Colors indicate node labels: purple for Concepts, blue for Definitions, teal for Entities. Items with a ? have definitions on hover."
           color="purple"
           position="top"
         >
-          <span className="text-gray-400 hover:text-purple-600 transition-colors">
+          <span className="text-charcoal-muted hover:text-purple-600 transition-colors">
             <InfoIcon />
           </span>
         </Tooltip>
-      </div>
+      </button>
 
-      {/* Entity badges */}
-      <div className="flex flex-wrap gap-2 items-center">
-        {visibleEntities.map((entity, index) => (
-          <ConceptBadge key={getEntityKey(entity, index)} entity={entity} />
-        ))}
-        {hasOverflow && (
-          <button
-            onClick={() => setShowAll(true)}
-            className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-gray-50 text-gray-500 hover:bg-gray-100 transition-colors"
-          >
-            +{hiddenCount} more
-          </button>
-        )}
-        {showAll && entities.length > MAX_VISIBLE && (
-          <button
-            onClick={() => setShowAll(false)}
-            className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-gray-50 text-gray-500 hover:bg-gray-100 transition-colors"
-          >
-            Show less
-          </button>
-        )}
-      </div>
+      {/* Expandable content */}
+      {isOpen && (
+        <div className="px-3 pb-2 border-t border-purple-100 bg-ivory-light">
+          <div className="flex flex-wrap gap-2 items-center pt-2">
+            {visibleEntities.map((entity, index) => (
+              <ConceptBadge key={getEntityKey(entity, index)} entity={entity} />
+            ))}
+            {hasOverflow && (
+              <button
+                onClick={() => setShowAll(true)}
+                className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-ivory-medium text-charcoal-muted hover:bg-ivory transition-colors"
+              >
+                +{hiddenCount} more
+              </button>
+            )}
+            {showAll && entities.length > MAX_VISIBLE && (
+              <button
+                onClick={() => setShowAll(false)}
+                className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-ivory-medium text-charcoal-muted hover:bg-ivory transition-colors"
+              >
+                Show less
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

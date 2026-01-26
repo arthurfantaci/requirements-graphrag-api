@@ -101,11 +101,11 @@ export function ResponseActions({ content, runId, messageId }) {
 
   return (
     <>
-      <div className="flex items-center gap-1 pt-2 border-t border-gray-100">
+      <div className="flex items-center gap-1 pt-2 border-t border-black/5">
         {/* Copy button */}
         <button
           onClick={handleCopy}
-          className="p-1.5 text-gray-400 hover:text-gray-600 rounded transition-colors"
+          className="p-1.5 text-charcoal-muted hover:text-charcoal-light rounded transition-colors"
           title={copied ? 'Copied!' : 'Copy'}
         >
           {copied ? (
@@ -125,8 +125,8 @@ export function ResponseActions({ content, runId, messageId }) {
             feedbackGiven === 'positive'
               ? 'text-green-600'
               : feedbackGiven
-              ? 'text-gray-300 cursor-not-allowed'
-              : 'text-gray-400 hover:text-gray-600'
+              ? 'text-charcoal-muted/60 cursor-not-allowed'
+              : 'text-charcoal-muted hover:text-charcoal-light'
           }`}
           title="Good response"
         >
@@ -141,8 +141,8 @@ export function ResponseActions({ content, runId, messageId }) {
             feedbackGiven === 'negative'
               ? 'text-red-600'
               : feedbackGiven
-              ? 'text-gray-300 cursor-not-allowed'
-              : 'text-gray-400 hover:text-gray-600'
+              ? 'text-charcoal-muted/60 cursor-not-allowed'
+              : 'text-charcoal-muted hover:text-charcoal-light'
           }`}
           title="Bad response"
         >
