@@ -860,6 +860,115 @@ class TestBuildContextFromResults:
         assert len(result.resources["webinars"]) == 1
         assert result.resources["webinars"][0].url == shared_url
 
+    def test_filters_webinar_thumbnails_from_images(self) -> None:
+        """Verify images matching a webinar thumbnail_url are excluded."""
+        thumbnail_url = "https://img.youtube.com/vi/abc123/maxresdefault.jpg"
+        search_results = [
+            {
+                "content": "Content about webinars",
+                "score": 0.9,
+                "metadata": {"title": "Article 1", "url": "https://example.com/1"},
+                "entities": [],
+                "glossary_definitions": [],
+                "media": {
+                    "images": [
+                        {"url": thumbnail_url, "alt_text": "Webinar preview"},
+                        {"url": "https://example.com/diagram.png", "alt_text": "Diagram"},
+                    ],
+                    "webinars": [
+                        {
+                            "title": "Best Practices Webinar",
+                            "url": "https://youtube.com/watch?v=abc123",
+                            "thumbnail_url": thumbnail_url,
+                        },
+                    ],
+                    "videos": [],
+                },
+            },
+        ]
+
+        result = _build_context_from_results(
+            definitions=[],
+            search_results=search_results,
+        )
+
+        # Thumbnail image should be excluded; non-matching image preserved
+        images = result.resources["images"]
+        assert len(images) == 1
+        assert images[0].url == "https://example.com/diagram.png"
+
+        # Webinar should still be present
+        webinars = result.resources["webinars"]
+        assert len(webinars) == 1
+        assert webinars[0].thumbnail_url == thumbnail_url
+
+    def test_filters_cross_article_webinar_thumbnails(self) -> None:
+        """Verify thumbnail filtering works across different search results."""
+        thumbnail_url = "https://i.vimeocdn.com/video/12345_640.jpg"
+        search_results = [
+            {
+                "content": "Article with the webinar",
+                "score": 0.9,
+                "metadata": {"title": "Article A", "url": "https://example.com/a"},
+                "entities": [],
+                "glossary_definitions": [],
+                "media": {
+                    "images": [],
+                    "webinars": [
+                        {
+                            "title": "Deep Dive Webinar",
+                            "url": "https://vimeo.com/12345",
+                            "thumbnail_url": thumbnail_url,
+                        },
+                    ],
+                    "videos": [],
+                },
+            },
+            {
+                "content": "Article with the matching image",
+                "score": 0.85,
+                "metadata": {"title": "Article B", "url": "https://example.com/b"},
+                "entities": [],
+                "glossary_definitions": [],
+                "media": {
+                    "images": [
+                        {"url": thumbnail_url, "alt_text": "Vimeo thumbnail"},
+                        {"url": "https://example.com/photo.png", "alt_text": "Photo"},
+                    ],
+                    "webinars": [],
+                    "videos": [],
+                },
+            },
+        ]
+
+        result = _build_context_from_results(
+            definitions=[],
+            search_results=search_results,
+        )
+
+        # Cross-article thumbnail should be filtered out
+        images = result.resources["images"]
+        assert len(images) == 1
+        assert images[0].url == "https://example.com/photo.png"
+
+        # Webinar from Article A preserved
+        webinars = result.resources["webinars"]
+        assert len(webinars) == 1
+        assert webinars[0].title == "Deep Dive Webinar"
+
+    def test_preserves_images_when_no_webinar_thumbnails(
+        self, mock_search_results_with_media: list[dict]
+    ) -> None:
+        """Verify all images preserved when webinars have no thumbnail_url."""
+        # mock_search_results_with_media has webinars without thumbnail_url
+        result = _build_context_from_results(
+            definitions=[],
+            search_results=mock_search_results_with_media,
+        )
+
+        # All 3 images should still be present (regression guard)
+        assert len(result.resources["images"]) == 3
+
     def test_handles_missing_media_field(self, mock_search_results: list[dict]) -> None:
         """Verify no error when search result lacks media field."""
         # mock_search_results doesn't have media field

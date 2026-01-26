@@ -54,6 +54,9 @@ htmlcov/
 # ruff
 .ruff_cache/
 
+# Playwright MCP
+.playwright-mcp/
+
 # OS
 .DS_Store
 Thumbs.db
