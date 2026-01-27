@@ -123,7 +123,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 # Create FastAPI app
 app = FastAPI(
-    title="Jama GraphRAG API",
+    title="Requirements GraphRAG API",
     description=(
         "GraphRAG REST API for Requirements Management Knowledge Graph. "
         "Provides RAG-powered Q&A, semantic search, and knowledge graph exploration."
@@ -165,7 +165,7 @@ app.include_router(schema_router, tags=["Schema"])
 async def root() -> dict[str, str]:
     """Root endpoint with API information."""
     return {
-        "name": "Jama GraphRAG API",
+        "name": "Requirements GraphRAG API",
         "version": "1.0.0",
         "docs": "/docs",
         "health": "/health",
