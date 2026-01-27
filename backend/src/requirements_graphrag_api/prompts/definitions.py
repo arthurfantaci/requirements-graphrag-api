@@ -430,6 +430,8 @@ Guidelines:
 4. Return meaningful property values, not just node counts
 5. Limit results to 25 unless aggregating
 6. For media queries (webinars, videos, images), traverse from Article
+7. For media listing queries, use COLLECT(DISTINCT ...) to aggregate
+   source articles and avoid duplicate rows
 
 Generate only the Cypher query, no explanation."""
 
@@ -509,21 +511,24 @@ LIMIT 5
 Example 8:
 Question: List all webinars
 Cypher: MATCH (a:Article)-[:HAS_WEBINAR]->(w:Webinar)
-RETURN w.title AS webinar_title, w.url AS webinar_url, a.article_title AS source_article
+RETURN w.title AS webinar_title, w.url AS webinar_url,
+       COLLECT(DISTINCT a.article_title) AS source_articles
 ORDER BY w.title
 
 Example 9:
 Question: Show me all videos in the knowledge base
 Cypher: MATCH (a:Article)-[:HAS_VIDEO]->(v:Video)
-RETURN v.title AS video_title, v.url AS video_url, a.article_title AS source_article
+RETURN v.title AS video_title, v.url AS video_url,
+       COLLECT(DISTINCT a.article_title) AS source_articles
 ORDER BY v.title
 
 Example 10:
 Question: What images are available about traceability?
-Cypher: MATCH (e)-[:MENTIONED_IN]->(c:Chunk)-[:FROM_ARTICLE]->(a:Article)-[:HAS_IMAGE]->(img:Image)
-WHERE toLower(e.name) CONTAINS 'traceability'
-   OR toLower(img.alt_text) CONTAINS 'traceability'
-RETURN DISTINCT img.alt_text AS description, img.url AS image_url, a.article_title AS source
+Cypher: MATCH (a:Article)-[:HAS_IMAGE]->(img:Image)
+WHERE toLower(img.alt_text) CONTAINS 'traceability'
+RETURN img.alt_text AS description, img.url AS image_url,
+       COLLECT(DISTINCT a.article_title) AS source_articles
+ORDER BY description
 LIMIT 10
 
 Example 11:
