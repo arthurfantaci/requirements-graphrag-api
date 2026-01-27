@@ -1,6 +1,6 @@
-"""Jama GraphRAG API - FastAPI REST API for Requirements Management Knowledge Graph.
+"""Requirements GraphRAG API - FastAPI REST API for Requirements Management Knowledge Graph.
 
-This package provides the REST API backend for the Jama GraphRAG system,
+This package provides the REST API backend for the Requirements GraphRAG system,
 deployable to Vercel serverless functions.
 """
 
