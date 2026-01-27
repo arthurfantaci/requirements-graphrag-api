@@ -7,6 +7,9 @@ function formatCellValue(value) {
   if (value === null || value === undefined) {
     return <span className="text-charcoal-muted italic">null</span>
   }
+  if (Array.isArray(value)) {
+    return value.join(', ')
+  }
   if (typeof value === 'object') {
     return JSON.stringify(value)
   }
