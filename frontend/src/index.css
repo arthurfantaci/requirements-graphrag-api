@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
-/* Norfolk AI/BI + Jama brand design tokens */
+/* Norfolk AI | BI + Jama brand design tokens */
 @theme {
   --color-ivory: #FAF9F0;
   --color-ivory-light: #FDFCF7;
@@ -13,6 +13,7 @@
   --color-terracotta: #CC785C;
   --color-terracotta-light: #D89478;
   --color-terracotta-dark: #B56A50;
+  --color-norfolk-red: #B50101;
   --color-terminal-bg: #1E1E1E;
   --color-terminal-text: #E0E0E0;
   --color-terminal-green: #7EC699;

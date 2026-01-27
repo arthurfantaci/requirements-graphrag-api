@@ -147,7 +147,7 @@ export function Sidebar({ isOpen, onClose, onQuickStart }) {
 
       {/* Footer */}
       <div className="border-t border-black/10 px-4 py-2.5 text-[10px] text-charcoal-muted text-center">
-        Norfolk AI/BI &middot; GraphRAG
+        Norfolk <span className="text-norfolk-red">AI | BI</span> &middot; GraphRAG
       </div>
     </aside>
   )
