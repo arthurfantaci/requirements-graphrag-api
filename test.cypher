@@ -1,5 +1,5 @@
 // =============================================================================
-// Fix Issue #62: Remove orphaned webinar thumbnail Image nodes
+// Fix Issue #63: Remove orphaned webinar thumbnail Image nodes
 // =============================================================================
 // Phase 3 dedup (Issue #53) deleted duplicate Webinar nodes whose thumbnail_url
 // values differed from the keeper nodes. The Image nodes referencing those old
