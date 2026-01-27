@@ -571,20 +571,28 @@ def _enrich_with_media(
             """
             MATCH (c:Chunk)-[:FROM_ARTICLE]->(a:Article)
             WHERE elementId(c) IN $chunk_ids
-            OPTIONAL MATCH (a)-[:HAS_IMAGE]->(img:Image)
             OPTIONAL MATCH (a)-[:HAS_WEBINAR]->(web:Webinar)
-            OPTIONAL MATCH (a)-[:HAS_VIDEO]->(vid:Video)
-            WITH elementId(c) AS chunk_id,
+            WITH c, a,
+                 [x IN collect(DISTINCT web.thumbnail_url)
+                  WHERE x IS NOT NULL] AS _thumb_urls,
+                 collect(DISTINCT {
+                     title: web.title,
+                     url: web.url,
+                     thumbnail_url: web.thumbnail_url
+                 })[..$max_items] AS webinars
+            OPTIONAL MATCH (a)-[:HAS_IMAGE]->(img:Image)
+            WHERE NOT img.url IN _thumb_urls
+            WITH c, a,
                  collect(DISTINCT {
                      url: img.url,
                      alt_text: img.alt_text,
                      context: img.context
                  })[..$max_items] AS images,
-                 collect(DISTINCT {
-                     title: web.title,
-                     url: web.url,
-                     thumbnail_url: web.thumbnail_url
-                 })[..$max_items] AS webinars,
+                 webinars
+            OPTIONAL MATCH (a)-[:HAS_VIDEO]->(vid:Video)
+            WITH elementId(c) AS chunk_id,
+                 images,
+                 webinars,
                  collect(DISTINCT {
                      title: vid.title,
                      url: vid.url

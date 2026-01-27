@@ -15,6 +15,7 @@ import pytest
 
 from requirements_graphrag_api.core.retrieval import (
     GraphEnrichmentOptions,
+    _enrich_with_media,
     explore_entity,
     graph_enriched_search,
     hybrid_search,
@@ -383,3 +384,158 @@ class TestExploreEntity:
 
         mock_session = driver.session.return_value
         assert mock_session.run.call_count == 1
+
+
+# =============================================================================
+# Media Enrichment Tests
+# =============================================================================
+
+
+class TestEnrichWithMedia:
+    """Tests for _enrich_with_media function."""
+
+    def test_enrich_with_media_returns_media(self) -> None:
+        """Test that _enrich_with_media returns images, webinars, videos."""
+        driver = create_mock_driver_with_results(
+            [
+                [
+                    {
+                        "chunk_id": "4:abc:100",
+                        "images": [
+                            {
+                                "url": "https://example.com/diagram.png",
+                                "alt_text": "Diagram",
+                                "context": "A diagram",
+                            }
+                        ],
+                        "webinars": [
+                            {
+                                "title": "Webinar 1",
+                                "url": "https://example.com/webinar",
+                                "thumbnail_url": "https://example.com/thumb.png",
+                            }
+                        ],
+                        "videos": [
+                            {
+                                "title": "Video 1",
+                                "url": "https://example.com/video",
+                            }
+                        ],
+                    }
+                ]
+            ]
+        )
+
+        result = _enrich_with_media(driver, ["4:abc:100"])
+
+        assert "4:abc:100" in result
+        media = result["4:abc:100"]
+        assert len(media["images"]) == 1
+        assert media["images"][0]["url"] == "https://example.com/diagram.png"
+        assert len(media["webinars"]) == 1
+        assert len(media["videos"]) == 1
+
+    def test_enrich_with_media_empty_chunk_ids(self) -> None:
+        """Test that empty chunk_ids returns empty dict."""
+        driver = MagicMock()
+        result = _enrich_with_media(driver, [])
+        assert result == {}
+
+    def test_enrich_with_media_cypher_filters_webinar_thumbnails(self) -> None:
+        """Test that the Cypher query excludes Image URLs matching Webinar thumbnails.
+
+        The multi-stage WITH query should contain a NOT IN filter that prevents
+        Image nodes whose URLs match any Webinar thumbnail_url from being
+        returned. This is defense-in-depth against webinar thumbnails leaking
+        into the images gallery (Issue #62).
+        """
+        driver = create_mock_driver_with_results(
+            [
+                # Simulate query result where Cypher-level filtering already
+                # excluded the thumbnail image — only the real diagram remains
+                [
+                    {
+                        "chunk_id": "4:abc:200",
+                        "images": [
+                            {
+                                "url": "https://example.com/real-diagram.png",
+                                "alt_text": "Real diagram",
+                                "context": "Article diagram",
+                            }
+                        ],
+                        "webinars": [
+                            {
+                                "title": "Best Practices Webinar",
+                                "url": "https://example.com/webinar",
+                                "thumbnail_url": "https://example.com/webinar-thumb.png",
+                            }
+                        ],
+                        "videos": [],
+                    }
+                ]
+            ]
+        )
+
+        result = _enrich_with_media(driver, ["4:abc:200"])
+
+        # Verify the result shape — thumbnail image should NOT be present
+        media = result["4:abc:200"]
+        image_urls = [img["url"] for img in media["images"]]
+        assert "https://example.com/webinar-thumb.png" not in image_urls
+        assert "https://example.com/real-diagram.png" in image_urls
+
+        # Verify the Cypher query contains the thumbnail filter clause
+        mock_session = driver.session.return_value
+        cypher_query = mock_session.run.call_args[0][0]
+        assert "NOT img.url IN _thumb_urls" in cypher_query
+
+    def test_enrich_with_media_no_webinars_still_returns_images(self) -> None:
+        """Test that articles with no webinars still return their images.
+
+        When there are no webinars, _thumb_urls should be an empty list
+        (handled by the NULL filter in the list comprehension), so no images
+        are incorrectly excluded.
+        """
+        driver = create_mock_driver_with_results(
+            [
+                [
+                    {
+                        "chunk_id": "4:abc:300",
+                        "images": [
+                            {
+                                "url": "https://example.com/photo.png",
+                                "alt_text": "Photo",
+                                "context": "A photo",
+                            }
+                        ],
+                        "webinars": [],
+                        "videos": [],
+                    }
+                ]
+            ]
+        )
+
+        result = _enrich_with_media(driver, ["4:abc:300"])
+
+        media = result["4:abc:300"]
+        assert len(media["images"]) == 1
+        assert media["images"][0]["url"] == "https://example.com/photo.png"
+
+    def test_enrich_with_media_skips_empty_media(self) -> None:
+        """Test that chunks with no media are not included in results."""
+        driver = create_mock_driver_with_results(
+            [
+                [
+                    {
+                        "chunk_id": "4:abc:400",
+                        "images": [],
+                        "webinars": [],
+                        "videos": [],
+                    }
+                ]
+            ]
+        )
+
+        result = _enrich_with_media(driver, ["4:abc:400"])
+
+        assert "4:abc:400" not in result
