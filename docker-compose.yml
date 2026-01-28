@@ -23,7 +23,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LANGSMITH_API_KEY=${LANGSMITH_API_KEY:-}
       - LANGSMITH_TRACING=${LANGSMITH_TRACING:-false}
-      - LANGSMITH_PROJECT=${LANGSMITH_PROJECT:-requirements-graphrag}
+      - LANGSMITH_PROJECT=${LANGSMITH_PROJECT:-graphrag-api-dev}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
     env_file:
       - .env
