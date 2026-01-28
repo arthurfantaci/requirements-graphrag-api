@@ -66,7 +66,7 @@ jobs:
           NEO4J_DATABASE: ${{ secrets.NEO4J_DATABASE }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
-          LANGSMITH_PROJECT: requirements-graphrag-release
+          LANGSMITH_PROJECT: graphrag-api-release
           LANGSMITH_TRACING: "true"
 
       - name: Upload Tier 3 results
@@ -135,7 +135,7 @@ jobs:
           NEO4J_DATABASE: ${{ secrets.NEO4J_DATABASE }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
-          LANGSMITH_PROJECT: requirements-graphrag-nightly
+          LANGSMITH_PROJECT: graphrag-api-nightly
           LANGSMITH_TRACING: "true"
 
       - name: Upload Tier 4 results

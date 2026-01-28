@@ -248,7 +248,7 @@ See [`backend/.env.example`](backend/.env.example) for the full template with in
 | `NEO4J_CONNECTION_TIMEOUT` | No | `30.0` | Connection timeout in seconds |
 | `LANGSMITH_TRACING` | No | `false` | Enable LangSmith tracing |
 | `LANGSMITH_API_KEY` | No | — | LangSmith API key |
-| `LANGSMITH_PROJECT` | No | `requirements-graphrag` | LangSmith project name |
+| `LANGSMITH_PROJECT` | No | `graphrag-api-dev` | LangSmith project name |
 | `CORS_ORIGINS` | No | `localhost:3000,5173` | Allowed CORS origins (comma-separated) |
 | `VITE_API_URL` | Yes (frontend) | — | Backend API URL for the frontend |
 

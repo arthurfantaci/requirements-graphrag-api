@@ -86,7 +86,7 @@ class AppConfig:
     neo4j_max_connection_lifetime: int = 300  # Max seconds a connection can live (5 min)
     # LangSmith observability settings
     langsmith_api_key: str = ""
-    langsmith_project: str = "requirements-graphrag"
+    langsmith_project: str = "graphrag-api-dev"
     langsmith_tracing_enabled: bool = False
     langsmith_workspace_id: str = ""  # Required for org-scoped API keys
     # Prompt catalog settings
