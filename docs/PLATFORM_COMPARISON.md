@@ -18,7 +18,7 @@ This document provides a comprehensive comparison of LangSmith and MLflow for LL
 ```bash
 # Total setup: ~5 minutes
 export LANGSMITH_API_KEY=<your-key>
-export LANGSMITH_PROJECT=requirements-graphrag
+export LANGSMITH_PROJECT=graphrag-api-dev
 export LANGSMITH_TRACING=true
 # Done! LangChain auto-traces everything.
 ```
@@ -39,7 +39,7 @@ export LANGSMITH_TRACING=true
 pip install mlflow
 mlflow server --host 0.0.0.0 --port 5000
 export MLFLOW_TRACKING_URI=http://localhost:5000
-mlflow experiments create -n requirements-graphrag
+mlflow experiments create -n graphrag-api
 # Then: manual instrumentation in code
 ```
 

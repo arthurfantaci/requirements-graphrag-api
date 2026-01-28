@@ -19,16 +19,15 @@ Create distinct projects for each environment:
 
 | Project | Purpose | Environment Variable |
 |---------|---------|---------------------|
-| `requirements-graphrag-dev` | Development testing | `LANGSMITH_PROJECT=requirements-graphrag-dev` |
-| `requirements-graphrag-staging` | Pre-production | `LANGSMITH_PROJECT=requirements-graphrag-staging` |
-| `requirements-graphrag-prod` | Production | `LANGSMITH_PROJECT=requirements-graphrag-prod` |
+| `graphrag-api-dev` | Development testing | `LANGSMITH_PROJECT=graphrag-api-dev` |
+| `graphrag-api-prod` | Production | `LANGSMITH_PROJECT=graphrag-api-prod` |
 
 ### Environment Configuration
 
 ```bash
 # Production .env
 LANGSMITH_TRACING=true
-LANGSMITH_PROJECT=requirements-graphrag-prod
+LANGSMITH_PROJECT=graphrag-api-prod
 LANGSMITH_API_KEY=<org-scoped-key>
 LANGSMITH_WORKSPACE_ID=33c08fbf-3b88-4b49-ae32-9677043ebed2
 PROMPT_ENVIRONMENT=production
@@ -53,7 +52,7 @@ PROMPT_ENVIRONMENT=production
 ### Creating an Alert (UI)
 
 1. Click **"Create Alert"**
-2. Select project: `requirements-graphrag-prod`
+2. Select project: `graphrag-api-prod`
 3. Configure condition:
    - Metric: `latency_p95`
    - Operator: `greater_than`
@@ -107,7 +106,7 @@ Annotation queues enable human review of LLM outputs.
 2. Click **"Create Queue"**
 3. Configure:
    - Name: `low-confidence-review`
-   - Project: `requirements-graphrag-prod`
+   - Project: `graphrag-api-prod`
    - Filter: `metadata.confidence < 0.5`
 4. Assign reviewers
 5. Save
@@ -137,7 +136,7 @@ client = Client()
 
 # Get successful production runs
 runs = client.list_runs(
-    project_name="requirements-graphrag-prod",
+    project_name="graphrag-api-prod",
     filter='eq(status, "success")',
     limit=100,
 )
@@ -178,7 +177,7 @@ uv run python scripts/run_prompt_comparison.py router \
 # Required for production
 LANGSMITH_TRACING=true
 LANGSMITH_API_KEY=<your-org-api-key>
-LANGSMITH_PROJECT=requirements-graphrag-prod
+LANGSMITH_PROJECT=graphrag-api-prod
 LANGSMITH_WORKSPACE_ID=33c08fbf-3b88-4b49-ae32-9677043ebed2
 PROMPT_ENVIRONMENT=production
 ```

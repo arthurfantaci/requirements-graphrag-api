@@ -53,7 +53,7 @@ The feedback loop enables systematic improvement of RAG quality through:
 ```bash
 # Export runs with confidence below 0.7 from the last 7 days
 python scripts/export_for_annotation.py \
-    --project jama-mcp-graphrag \
+    --project graphrag-api-dev \
     --threshold 0.7 \
     --days 7 \
     --output data/annotations/pending.json
@@ -115,7 +115,7 @@ Exports low-confidence evaluation runs for human review.
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--output`, `-o` | `data/annotations/pending.json` | Output file path |
-| `--project`, `-p` | `jama-mcp-graphrag` | LangSmith project name |
+| `--project`, `-p` | `graphrag-api-dev` | LangSmith project name |
 | `--threshold`, `-t` | `0.7` | Confidence threshold |
 | `--max-runs`, `-m` | `100` | Maximum runs to export |
 | `--days`, `-d` | `7` | Days to look back |
@@ -137,7 +137,7 @@ Imports annotated feedback and generates evaluation examples.
 |------|---------|-------------|
 | `--input`, `-i` | Required | Input JSON file |
 | `--from-langsmith` | `false` | Import from LangSmith instead |
-| `--project`, `-p` | `jama-mcp-graphrag` | LangSmith project |
+| `--project`, `-p` | `graphrag-api-dev` | LangSmith project |
 | `--output`, `-o` | `data/feedback/new_examples.json` | Output file |
 | `--generate-examples` | `true` | Generate evaluation examples |
 | `--validate-only` | `false` | Only validate, don't import |
@@ -238,7 +238,7 @@ When marking as incorrect, provide:
 # Import feedback directly from LangSmith
 python scripts/import_feedback.py \
     --from-langsmith \
-    --project jama-mcp-graphrag \
+    --project graphrag-api-dev \
     --days 14
 ```
 
@@ -288,7 +288,7 @@ Track these metrics over feedback cycles:
 ### No Runs Exported
 
 - Verify LangSmith API key is set: `echo $LANGSMITH_API_KEY`
-- Check project name matches: `--project jama-mcp-graphrag`
+- Check project name matches: `--project graphrag-api-dev`
 - Lower threshold: `--threshold 0.5`
 - Extend date range: `--days 30`
 
