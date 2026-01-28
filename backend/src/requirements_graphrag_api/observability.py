@@ -177,11 +177,14 @@ def create_thread_metadata(conversation_id: str | None) -> dict[str, Any] | None
     LangSmith Threads. Use this with the `langsmith_extra` parameter
     when calling @traceable decorated functions.
 
+    Note: LangSmith requires the key to be `thread_id` (not `conversation_id`)
+    for runs to be grouped into Threads in the LangSmith UI.
+
     Args:
         conversation_id: Unique ID for the conversation thread.
 
     Returns:
-        Metadata dict with conversation_id, or None if no ID provided.
+        Metadata dict with thread_id, or None if no ID provided.
 
     Example:
         @traceable_safe(name="stream_chat", run_type="chain")
@@ -196,7 +199,7 @@ def create_thread_metadata(conversation_id: str | None) -> dict[str, Any] | None
     """
     if not conversation_id:
         return None
-    return {"metadata": {"conversation_id": conversation_id}}
+    return {"metadata": {"thread_id": conversation_id}}
 
 
 def configure_tracing(config: AppConfig) -> bool:

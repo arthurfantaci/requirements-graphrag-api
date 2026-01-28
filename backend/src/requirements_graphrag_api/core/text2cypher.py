@@ -125,6 +125,7 @@ async def text2cypher_query(
     question: str,
     *,
     execute: bool = True,
+    langsmith_extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Generate and optionally execute a Cypher query from natural language.
 
@@ -133,10 +134,13 @@ async def text2cypher_query(
         driver: Neo4j driver.
         question: Natural language question.
         execute: Whether to execute the query (default True).
+        langsmith_extra: Optional LangSmith metadata for thread grouping.
 
     Returns:
         Dictionary with generated query and optional results.
     """
+    # Note: langsmith_extra is consumed by the @traceable decorator for thread grouping
+    _ = langsmith_extra  # Suppress unused variable warning
     logger.info("Text2Cypher: question='%s', execute=%s", question, execute)
 
     # Generate the Cypher query

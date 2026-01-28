@@ -398,12 +398,13 @@ class TestCreateThreadMetadata:
     """Tests for create_thread_metadata function."""
 
     def test_create_thread_metadata_with_id(self) -> None:
-        """Test that metadata is created with conversation_id."""
+        """Test that metadata is created with thread_id for LangSmith Threads."""
         result = create_thread_metadata("conversation-123")
 
         assert result is not None
         assert "metadata" in result
-        assert result["metadata"]["conversation_id"] == "conversation-123"
+        # LangSmith requires 'thread_id' key for Thread grouping
+        assert result["metadata"]["thread_id"] == "conversation-123"
 
     def test_create_thread_metadata_without_id(self) -> None:
         """Test that None is returned without conversation_id."""
@@ -416,4 +417,5 @@ class TestCreateThreadMetadata:
         result = create_thread_metadata(uuid_id)
 
         assert result is not None
-        assert result["metadata"]["conversation_id"] == uuid_id
+        # LangSmith requires 'thread_id' key for Thread grouping
+        assert result["metadata"]["thread_id"] == uuid_id

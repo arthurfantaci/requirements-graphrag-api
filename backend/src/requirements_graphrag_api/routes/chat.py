@@ -222,8 +222,17 @@ async def _generate_structured_events(
         Formatted SSE event strings.
     """
     try:
+        # Create LangSmith thread metadata for conversation grouping
+        thread_metadata = create_thread_metadata(request.conversation_id)
+
         # Generate and execute Cypher query
-        result = await text2cypher_query(config, driver, request.message, execute=True)
+        result = await text2cypher_query(
+            config,
+            driver,
+            request.message,
+            execute=True,
+            langsmith_extra=thread_metadata,
+        )
 
         # Emit Cypher query event
         yield f"event: {StreamEventType.CYPHER.value}\n"
