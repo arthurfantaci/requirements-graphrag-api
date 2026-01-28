@@ -14,7 +14,24 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Final
+
+from dotenv import load_dotenv
+
+# Load .env file for local development
+# Checks backend/.env first, then falls back to root .env
+# Does not override existing environment variables (deployment configs take precedence)
+# Path from config.py: backend/src/requirements_graphrag_api/config.py
+#   -> 3 parents up = backend/
+#   -> 4 parents up = project root
+_backend_env = Path(__file__).parent.parent.parent / ".env"
+_root_env = Path(__file__).parent.parent.parent.parent / ".env"
+
+if _backend_env.exists():
+    load_dotenv(_backend_env, override=False)
+elif _root_env.exists():
+    load_dotenv(_root_env, override=False)
 
 logger = logging.getLogger(__name__)
 
