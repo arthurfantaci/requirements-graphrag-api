@@ -113,29 +113,39 @@ async def submit_feedback(
 
         client = Client()
 
-        # Build feedback value dict with optional fields
-        value: dict = {}
-        if body.category:
-            value["category"] = body.category
-        if body.correction:
-            value["correction"] = body.correction
-        if body.message_id:
-            value["message_id"] = body.message_id
-        if body.conversation_id:
-            value["conversation_id"] = body.conversation_id
+        # Determine feedback value as a simple string for charting/filtering
+        # LangSmith UI cannot display dict values in charts (shows as [object Object])
+        feedback_value = (
+            body.category if body.category else ("positive" if body.score >= 0.5 else "negative")
+        )
 
-        # Build comment string
-        comment = body.comment or ""
-        if body.category and not comment:
-            comment = f"Issue category: {body.category}"
+        # Build comment string with all metadata for human review
+        comment_parts: list[str] = []
+        if body.comment:
+            comment_parts.append(body.comment)
+        if body.category:
+            comment_parts.append(f"Category: {body.category}")
+        if body.correction:
+            comment_parts.append(f"Correction: {body.correction}")
+        if body.message_id:
+            comment_parts.append(f"Message ID: {body.message_id}")
+        if body.conversation_id:
+            comment_parts.append(f"Conversation ID: {body.conversation_id}")
+
+        comment = " | ".join(comment_parts) if comment_parts else None
 
         # Create feedback in LangSmith
+        # - score: numeric value (0.0-1.0) for quantitative metrics
+        # - value: simple string for categorical filtering in charts
+        # - comment: detailed metadata for human review
+        # - correction: structured correction dict (if provided)
         feedback = client.create_feedback(
             run_id=body.run_id,
             key="user-feedback",
             score=body.score,
-            comment=comment if comment else None,
-            value=value if value else None,
+            comment=comment,
+            value=feedback_value,
+            correction={"text": body.correction} if body.correction else None,
         )
 
         feedback_id = str(feedback.id) if feedback else None
