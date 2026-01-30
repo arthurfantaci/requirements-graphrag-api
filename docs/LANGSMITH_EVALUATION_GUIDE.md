@@ -94,6 +94,9 @@ uv run python scripts/run_ragas_evaluation.py
 # With custom experiment name
 uv run python scripts/run_ragas_evaluation.py --experiment-name "ragas-baseline-v1"
 
+# Filter to only explanatory queries (RECOMMENDED for RAGAS)
+uv run python scripts/run_ragas_evaluation.py --filter-intent explanatory
+
 # With different model
 uv run python scripts/run_ragas_evaluation.py --model gpt-4o
 
@@ -108,9 +111,21 @@ uv run python scripts/run_ragas_evaluation.py --dry-run
 | `--dataset, -d` | Dataset name (default: graphrag-rag-golden) |
 | `--experiment-name, -e` | Custom experiment name |
 | `--model, -m` | Model for generation (default: gpt-4o-mini) |
+| `--filter-intent, -f` | Filter by intent: `explanatory` or `structured` |
 | `--max-concurrency` | Parallel evaluations (default: 4) |
 | `--verbose, -v` | Detailed output |
 | `--list, -l` | List available datasets |
+
+### Why Filter by Intent?
+
+The golden dataset contains two types of queries:
+
+| Intent | Purpose | RAGAS Evaluation |
+|--------|---------|------------------|
+| **explanatory** | Concept questions → RAG pipeline | Full RAGAS metrics meaningful |
+| **structured** | List/count queries → Text2Cypher | Context recall not applicable |
+
+**Recommendation:** Use `--filter-intent explanatory` for meaningful RAGAS scores, since structured queries have placeholder expected answers that don't work with context_recall evaluation.
 
 ### View Results
 
@@ -293,6 +308,7 @@ Possible causes:
 |------|---------|
 | Create golden dataset | `uv run python scripts/create_golden_dataset.py` |
 | Run RAGAS evaluation | `uv run python scripts/run_ragas_evaluation.py` |
+| Run RAGAS (explanatory only) | `uv run python scripts/run_ragas_evaluation.py -f explanatory` |
 | List experiments | `uv run python scripts/compare_experiments.py --list` |
 | Compare experiments | `uv run python scripts/compare_experiments.py --compare exp1 exp2` |
 | View experiment | `uv run python scripts/compare_experiments.py --show exp-name` |

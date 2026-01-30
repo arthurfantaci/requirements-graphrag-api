@@ -6,6 +6,7 @@ This script demonstrates comprehensive LangSmith integration:
 - Creating experiments with metadata
 - Using custom RAGAS evaluators
 - Experiment naming conventions
+- Filtering examples by intent for targeted evaluation
 
 Usage:
     # Run evaluation against golden dataset
@@ -16,6 +17,9 @@ Usage:
 
     # Run with specific model
     uv run python scripts/run_ragas_evaluation.py --model gpt-4o
+
+    # Filter to only explanatory queries (recommended for RAGAS)
+    uv run python scripts/run_ragas_evaluation.py --filter-intent explanatory
 
     # Dry run to see what would be evaluated
     uv run python scripts/run_ragas_evaluation.py --dry-run
@@ -137,6 +141,7 @@ def run_evaluation(
     model: str = DEFAULT_MODEL,
     max_concurrency: int = 4,
     *,
+    filter_intent: str | None = None,
     verbose: bool = False,
 ) -> dict[str, Any]:
     """Run RAGAS evaluation using langsmith.evaluate().
@@ -146,6 +151,7 @@ def run_evaluation(
         experiment_name: Custom experiment name (auto-generated if None).
         model: Model to use for RAG generation.
         max_concurrency: Maximum concurrent evaluations.
+        filter_intent: Filter examples by intent (e.g., 'explanatory', 'structured').
         verbose: If True, print detailed output.
 
     Returns:
@@ -173,9 +179,11 @@ def run_evaluation(
     logger.info("Dataset: %s", dataset_name)
     logger.info("Experiment: %s", experiment_name)
     logger.info("Model: %s", model)
+    if filter_intent:
+        logger.info("Filter: intent=%s", filter_intent)
     logger.info("=" * 60)
 
-    # Verify dataset exists
+    # Verify dataset exists and load examples
     try:
         dataset = client.read_dataset(dataset_name=dataset_name)
         examples = list(client.list_examples(dataset_id=dataset.id))
@@ -184,6 +192,24 @@ def run_evaluation(
         logger.error("Dataset not found: %s - %s", dataset_name, e)
         logger.error("Run create_golden_dataset.py first to create the dataset.")
         return {"error": str(e)}
+
+    # Filter examples by intent if specified
+    if filter_intent:
+        original_count = len(examples)
+        examples = [
+            ex
+            for ex in examples
+            if ex.outputs and ex.outputs.get("intent", "").lower() == filter_intent.lower()
+        ]
+        logger.info(
+            "Filtered to %d examples with intent='%s' (from %d total)",
+            len(examples),
+            filter_intent,
+            original_count,
+        )
+        if not examples:
+            logger.error("No examples found with intent='%s'", filter_intent)
+            return {"error": f"No examples with intent={filter_intent}"}
 
     # Create synchronous wrapper for the async target
     async def async_target(inputs: dict[str, Any]) -> dict[str, Any]:
@@ -204,19 +230,28 @@ def run_evaluation(
     # Run evaluation with LangSmith
     logger.info("Running evaluation with %d evaluators...", len(evaluators))
 
+    # Build metadata
+    eval_metadata = {
+        "model": model,
+        "evaluation_type": "ragas",
+        "dataset": dataset_name,
+        "timestamp": datetime.now(tz=UTC).isoformat(),
+    }
+    if filter_intent:
+        eval_metadata["filter_intent"] = filter_intent
+        eval_metadata["filtered_count"] = len(examples)
+
     try:
+        # Use filtered examples if filter applied, otherwise use dataset name
+        data_source = examples if filter_intent else dataset_name
+
         results = evaluate(
             sync_target,
-            data=dataset_name,
+            data=data_source,
             evaluators=evaluators,
             experiment_prefix=experiment_name,
             max_concurrency=max_concurrency,
-            metadata={
-                "model": model,
-                "evaluation_type": "ragas",
-                "dataset": dataset_name,
-                "timestamp": datetime.now(tz=UTC).isoformat(),
-            },
+            metadata=eval_metadata,
         )
 
         # Extract summary metrics
@@ -273,6 +308,7 @@ def main(
     model: str = DEFAULT_MODEL,
     max_concurrency: int = 4,
     *,
+    filter_intent: str | None = None,
     dry_run: bool = False,
     verbose: bool = False,
     list_datasets_flag: bool = False,
@@ -284,6 +320,7 @@ def main(
         experiment_name: Custom experiment name.
         model: Model for RAG generation.
         max_concurrency: Maximum concurrent evaluations.
+        filter_intent: Filter examples by intent (e.g., 'explanatory').
         dry_run: If True, only show what would be evaluated.
         verbose: If True, print detailed output.
         list_datasets_flag: If True, list available datasets.
@@ -310,6 +347,8 @@ def main(
         exp_preview = experiment_name or f"{DEFAULT_EXPERIMENT_PREFIX}-<timestamp>"
         logger.info("  Experiment: %s", exp_preview)
         logger.info("  Model: %s", model)
+        if filter_intent:
+            logger.info("  Filter: intent=%s", filter_intent)
         logger.info("  Evaluators: faithfulness, answer_relevancy, context_precision, recall")
         return 0
 
@@ -318,6 +357,7 @@ def main(
         experiment_name=experiment_name,
         model=model,
         max_concurrency=max_concurrency,
+        filter_intent=filter_intent,
         verbose=verbose,
     )
 
@@ -353,6 +393,12 @@ if __name__ == "__main__":
         help="Maximum concurrent evaluations (default: 4)",
     )
     parser.add_argument(
+        "--filter-intent",
+        "-f",
+        choices=["explanatory", "structured"],
+        help="Filter examples by intent (recommended: 'explanatory' for RAGAS)",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Show what would be evaluated without running",
@@ -379,6 +425,7 @@ if __name__ == "__main__":
             experiment_name=args.experiment_name,
             model=args.model,
             max_concurrency=args.max_concurrency,
+            filter_intent=args.filter_intent,
             dry_run=args.dry_run,
             verbose=args.verbose,
             list_datasets_flag=args.list_datasets,
