@@ -10,10 +10,10 @@ Quick Start:
     from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
 
     # Get a prompt synchronously
-    prompt = get_prompt_sync(PromptName.ROUTER)
+    prompt = get_prompt_sync(PromptName.INTENT_CLASSIFIER)
 
     # Get a prompt asynchronously (supports Hub lookup)
-    prompt = await get_prompt(PromptName.ROUTER)
+    prompt = await get_prompt(PromptName.INTENT_CLASSIFIER)
 """
 
 from __future__ import annotations
