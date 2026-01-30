@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
+from langsmith import get_current_run_tree
 
 from requirements_graphrag_api.observability import traceable_safe
 from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
@@ -176,6 +177,14 @@ async def text2cypher_query(
                 response["error"] = str(e)
                 response["results"] = []
                 response["row_count"] = 0
+
+    # Capture run_id for feedback correlation (must be inside @traceable function)
+    try:
+        run_tree = get_current_run_tree()
+        if run_tree:
+            response["run_id"] = str(run_tree.id)
+    except Exception:
+        logger.debug("Could not get run_id - tracing may be disabled")
 
     return response
 
