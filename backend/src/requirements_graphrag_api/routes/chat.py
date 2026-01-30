@@ -22,7 +22,6 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
-from langsmith import get_current_run_tree
 from pydantic import BaseModel, Field
 
 from requirements_graphrag_api.core import (
@@ -246,14 +245,8 @@ async def _generate_structured_events(
         }
         yield f"data: {json.dumps(results_data)}\n\n"
 
-        # Get run_id for feedback correlation
-        run_id = None
-        try:
-            run_tree = get_current_run_tree()
-            if run_tree:
-                run_id = str(run_tree.id)
-        except Exception:
-            logger.debug("Could not get run_id - tracing may be disabled")
+        # Get run_id from result (captured inside text2cypher_query for correct context)
+        run_id = result.get("run_id")
 
         # Emit done event
         if "error" in result:
