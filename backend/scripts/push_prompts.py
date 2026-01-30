@@ -16,7 +16,7 @@ Usage:
     uv run python scripts/push_prompts.py --org my-organization
 
     # Push specific prompt
-    uv run python scripts/push_prompts.py --prompt graphrag-router
+    uv run python scripts/push_prompts.py --prompt graphrag-intent-classifier
 
     # Dry run (list prompts without pushing)
     uv run python scripts/push_prompts.py --dry-run

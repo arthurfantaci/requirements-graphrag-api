@@ -24,7 +24,6 @@ class PromptName(StrEnum):
     """
 
     INTENT_CLASSIFIER = "graphrag-intent-classifier"
-    ROUTER = "graphrag-router"  # Deprecated: use INTENT_CLASSIFIER
     CRITIC = "graphrag-critic"
     STEPBACK = "graphrag-stepback"
     QUERY_UPDATER = "graphrag-query-updater"
@@ -132,62 +131,6 @@ INTENT_CLASSIFIER_METADATA = PromptMetadata(
         "valid_json_output",
     ],
     tags=["routing", "classification", "intent"],
-)
-
-
-# =============================================================================
-# ROUTER PROMPT (Deprecated - use INTENT_CLASSIFIER)
-# Routes queries to the most appropriate retrieval tool(s)
-# =============================================================================
-
-ROUTER_SYSTEM: Final[
-    str
-] = """You are a retrieval router for a Requirements Management knowledge graph.
-
-Your task is to analyze the user's question and select the best retrieval tool(s).
-
-Available tools:
-{tools}
-
-Selection Guidelines:
-1. For simple lookups or general questions -> graphrag_vector_search or graphrag_hybrid_search
-2. For questions about how concepts relate -> graphrag_graph_enriched_search
-3. For deep dives into specific entities -> graphrag_explore_entity
-4. For regulatory/compliance questions -> graphrag_lookup_standard
-5. For terminology definitions -> graphrag_lookup_term
-6. For aggregations or complex patterns -> graphrag_text2cypher
-7. For multi-faceted questions requiring synthesis -> graphrag_chat
-
-You may select multiple tools if the question has multiple parts.
-
-Respond with a JSON object:
-{{
-    "selected_tools": ["tool_name1", "tool_name2"],
-    "reasoning": "Brief explanation of why these tools were selected",
-    "tool_params": {{
-        "tool_name1": {{"param": "value"}},
-        "tool_name2": {{"param": "value"}}
-    }}
-}}"""
-
-ROUTER_TEMPLATE = ChatPromptTemplate.from_messages(
-    [
-        ("system", ROUTER_SYSTEM),
-        ("human", "Question: {question}"),
-    ]
-)
-
-ROUTER_METADATA = PromptMetadata(
-    version="1.0.0",
-    description="Routes queries to optimal retrieval tools based on question characteristics",
-    input_variables=["tools", "question"],
-    output_format="json",
-    evaluation_criteria=[
-        "correct_tool_selection",
-        "appropriate_params",
-        "valid_json_output",
-    ],
-    tags=["routing", "agentic", "classification"],
 )
 
 
@@ -549,11 +492,6 @@ PROMPT_DEFINITIONS: Final[dict[PromptName, PromptDefinition]] = {
         name=PromptName.INTENT_CLASSIFIER,
         template=INTENT_CLASSIFIER_TEMPLATE,
         metadata=INTENT_CLASSIFIER_METADATA,
-    ),
-    PromptName.ROUTER: PromptDefinition(
-        name=PromptName.ROUTER,
-        template=ROUTER_TEMPLATE,
-        metadata=ROUTER_METADATA,
     ),
     PromptName.CRITIC: PromptDefinition(
         name=PromptName.CRITIC,

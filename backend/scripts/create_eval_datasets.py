@@ -41,170 +41,138 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # =============================================================================
-# ROUTER EVALUATION DATASET
-# Tests tool routing accuracy based on question characteristics
+# INTENT CLASSIFIER EVALUATION DATASET
+# Tests intent classification accuracy (explanatory vs structured)
 # =============================================================================
 
-ROUTER_EXAMPLES: list[dict[str, Any]] = [
-    # Simple concept lookups -> vector_search
+INTENT_CLASSIFIER_EXAMPLES: list[dict[str, Any]] = [
+    # EXPLANATORY intent - concept/definition questions
     {
-        "inputs": {
-            "tools": """Available tools:
-- graphrag_vector_search: Semantic search for general knowledge questions
-- graphrag_hybrid_search: Combined keyword + semantic search for specific terms
-- graphrag_graph_enriched_search: Search with related entities for complex topics
-- graphrag_explore_entity: Deep dive into specific entities
-- graphrag_lookup_standard: Look up regulatory standards
-- graphrag_lookup_term: Look up glossary definitions
-- graphrag_text2cypher: Convert questions to Cypher for aggregations
-- graphrag_chat: Multi-turn conversation with synthesis""",
-            "question": "What is requirements traceability?",
-        },
+        "inputs": {"question": "What is requirements traceability?"},
         "outputs": {
-            "expected_tools": ["graphrag_vector_search"],
-            "reasoning": "Simple concept definition question",
+            "intent": "explanatory",
+            "reasoning": "Definition question asking 'what is'",
         },
     },
     {
-        "inputs": {
-            "tools": """[same tools list]""",
-            "question": "Explain the basics of requirements management.",
-        },
+        "inputs": {"question": "Explain the basics of requirements management."},
         "outputs": {
-            "expected_tools": ["graphrag_vector_search"],
-            "reasoning": "General knowledge question about fundamentals",
-        },
-    },
-    # Specific term lookups -> hybrid_search or lookup_term
-    {
-        "inputs": {
-            "tools": """[same tools list]""",
-            "question": "What does ASIL stand for in automotive?",
-        },
-        "outputs": {
-            "expected_tools": ["graphrag_lookup_term", "graphrag_hybrid_search"],
-            "reasoning": "Acronym/term definition lookup",
+            "intent": "explanatory",
+            "reasoning": "Explanation request using 'explain'",
         },
     },
     {
-        "inputs": {
-            "tools": """[same tools list]""",
-            "question": "Define 'traceability matrix'.",
-        },
+        "inputs": {"question": "How do I implement change management?"},
         "outputs": {
-            "expected_tools": ["graphrag_lookup_term"],
-            "reasoning": "Direct term definition request",
-        },
-    },
-    # Regulatory/standards questions -> lookup_standard
-    {
-        "inputs": {
-            "tools": """[same tools list]""",
-            "question": "What are the requirements of ISO 26262?",
-        },
-        "outputs": {
-            "expected_tools": ["graphrag_lookup_standard", "graphrag_hybrid_search"],
-            "reasoning": "Standards-specific question",
+            "intent": "explanatory",
+            "reasoning": "How-to question seeking guidance",
         },
     },
     {
-        "inputs": {
-            "tools": """[same tools list]""",
-            "question": "Which standards apply to medical device development?",
-        },
+        "inputs": {"question": "Why is bidirectional traceability important?"},
         "outputs": {
-            "expected_tools": ["graphrag_lookup_standard"],
-            "reasoning": "Industry-specific standards lookup",
-        },
-    },
-    # Relationship/connection questions -> graph_enriched_search
-    {
-        "inputs": {
-            "tools": """[same tools list]""",
-            "question": "How does requirements traceability relate to change management?",
-        },
-        "outputs": {
-            "expected_tools": ["graphrag_graph_enriched_search"],
-            "reasoning": "Question about relationships between concepts",
+            "intent": "explanatory",
+            "reasoning": "Why question seeking understanding",
         },
     },
     {
-        "inputs": {
-            "tools": """[same tools list]""",
-            "question": "What tools support both requirements management and test management?",
-        },
+        "inputs": {"question": "What are best practices for requirements verification?"},
         "outputs": {
-            "expected_tools": ["graphrag_graph_enriched_search", "graphrag_explore_entity"],
-            "reasoning": "Cross-domain relationship question",
-        },
-    },
-    # Entity exploration -> explore_entity
-    {
-        "inputs": {
-            "tools": """[same tools list]""",
-            "question": "Tell me everything about Jama Connect.",
-        },
-        "outputs": {
-            "expected_tools": ["graphrag_explore_entity"],
-            "reasoning": "Deep dive into specific entity",
+            "intent": "explanatory",
+            "reasoning": "Best practices request for guidance",
         },
     },
     {
-        "inputs": {
-            "tools": """[same tools list]""",
-            "question": "What features does DOORS have?",
-        },
+        "inputs": {"question": "What's the difference between verification and validation?"},
         "outputs": {
-            "expected_tools": ["graphrag_explore_entity", "graphrag_hybrid_search"],
-            "reasoning": "Specific product/entity exploration",
-        },
-    },
-    # Aggregation/counting questions -> text2cypher
-    {
-        "inputs": {
-            "tools": """[same tools list]""",
-            "question": "How many articles mention ISO 26262?",
-        },
-        "outputs": {
-            "expected_tools": ["graphrag_text2cypher"],
-            "reasoning": "Counting/aggregation query",
+            "intent": "explanatory",
+            "reasoning": "Comparison question seeking explanation",
         },
     },
     {
-        "inputs": {
-            "tools": """[same tools list]""",
-            "question": "Which industries have the most standards?",
-        },
+        "inputs": {"question": "Help me understand how trace links work."},
         "outputs": {
-            "expected_tools": ["graphrag_text2cypher"],
-            "reasoning": "Comparative aggregation query",
-        },
-    },
-    # Multi-part/complex questions -> chat
-    {
-        "inputs": {
-            "tools": """[same tools list]""",
-            "question": (
-                "I'm implementing requirements management for automotive. "
-                "What standards should I follow and what tools would you recommend?"
-            ),
-        },
-        "outputs": {
-            "expected_tools": ["graphrag_chat"],
-            "reasoning": "Multi-faceted question requiring synthesis",
+            "intent": "explanatory",
+            "reasoning": "Understanding request with 'help me understand'",
         },
     },
     {
-        "inputs": {
-            "tools": """[same tools list]""",
-            "question": (
-                "Compare the traceability features of different RM tools "
-                "and explain which is best for regulated industries."
-            ),
-        },
+        "inputs": {"question": "Describe the V-model in software development."},
         "outputs": {
-            "expected_tools": ["graphrag_chat", "graphrag_graph_enriched_search"],
-            "reasoning": "Comparison requiring multiple lookups and synthesis",
+            "intent": "explanatory",
+            "reasoning": "Description request using 'describe'",
+        },
+    },
+    # STRUCTURED intent - enumeration/list/count questions
+    {
+        "inputs": {"question": "List all webinars in the knowledge base."},
+        "outputs": {
+            "intent": "structured",
+            "reasoning": "List request using 'list all'",
+        },
+    },
+    {
+        "inputs": {"question": "Show me all videos about requirements."},
+        "outputs": {
+            "intent": "structured",
+            "reasoning": "Enumeration request using 'show me all'",
+        },
+    },
+    {
+        "inputs": {"question": "How many articles mention ISO 26262?"},
+        "outputs": {
+            "intent": "structured",
+            "reasoning": "Count query using 'how many'",
+        },
+    },
+    {
+        "inputs": {"question": "What standards are in the knowledge base?"},
+        "outputs": {
+            "intent": "structured",
+            "reasoning": "Enumeration of entities in collection",
+        },
+    },
+    {
+        "inputs": {"question": "Provide a table of all requirements management tools."},
+        "outputs": {
+            "intent": "structured",
+            "reasoning": "Table/structured data request",
+        },
+    },
+    {
+        "inputs": {"question": "Which articles discuss MBSE?"},
+        "outputs": {
+            "intent": "structured",
+            "reasoning": "Specific lookup with 'which [noun]s'",
+        },
+    },
+    {
+        "inputs": {"question": "Count the number of entities in the graph."},
+        "outputs": {
+            "intent": "structured",
+            "reasoning": "Explicit count request",
+        },
+    },
+    {
+        "inputs": {"question": "What are the top 5 most mentioned concepts?"},
+        "outputs": {
+            "intent": "structured",
+            "reasoning": "Ranking/aggregation query",
+        },
+    },
+    # Edge cases - ambiguous queries that should default to EXPLANATORY
+    {
+        "inputs": {"question": "Tell me about ISO 26262."},
+        "outputs": {
+            "intent": "explanatory",
+            "reasoning": "Ambiguous 'tell me about' defaults to explanatory",
+        },
+    },
+    {
+        "inputs": {"question": "I need information on requirements management tools."},
+        "outputs": {
+            "intent": "explanatory",
+            "reasoning": "Information request defaults to explanatory",
         },
     },
 ]
@@ -624,12 +592,12 @@ def main(dry_run: bool = False) -> int:
 
     datasets = [
         {
-            "name": "graphrag-router-eval",
+            "name": "graphrag-intent-classifier-eval",
             "description": (
-                "Evaluation dataset for the GraphRAG router prompt. "
-                "Tests tool selection accuracy based on question characteristics."
+                "Evaluation dataset for the GraphRAG intent classifier prompt. "
+                "Tests classification of queries as explanatory or structured."
             ),
-            "examples": ROUTER_EXAMPLES,
+            "examples": INTENT_CLASSIFIER_EXAMPLES,
         },
         {
             "name": "graphrag-critic-eval",

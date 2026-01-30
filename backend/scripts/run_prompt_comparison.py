@@ -56,10 +56,10 @@ SIGNIFICANCE_THRESHOLD = 0.01
 
 # Mapping of prompt names to their evaluation datasets
 PROMPT_DATASET_MAP = {
-    "router": {
-        "prompt_name": "graphrag-router",
-        "dataset_name": "graphrag-router-eval",
-        "description": "Tool routing accuracy",
+    "intent-classifier": {
+        "prompt_name": "graphrag-intent-classifier",
+        "dataset_name": "graphrag-intent-classifier-eval",
+        "description": "Intent classification accuracy",
     },
     "critic": {
         "prompt_name": "graphrag-critic",
@@ -134,8 +134,10 @@ async def evaluate_prompt_on_dataset(
         Dictionary of metric names to scores.
     """
     from langchain_openai import ChatOpenAI
+
     from requirements_graphrag_api.prompts.evaluation import (
         create_cypher_validity_evaluator,
+        create_intent_accuracy_evaluator,
         create_json_validity_evaluator,
         create_length_evaluator,
     )
@@ -168,8 +170,10 @@ async def evaluate_prompt_on_dataset(
 
     # Determine evaluators based on prompt type
     evaluators = [create_length_evaluator()]
-    if "router" in prompt_name or "critic" in prompt_name:
+    if "intent-classifier" in prompt_name or "critic" in prompt_name:
         evaluators.append(create_json_validity_evaluator())
+    if "intent-classifier" in prompt_name:
+        evaluators.append(create_intent_accuracy_evaluator())
     if "cypher" in prompt_name:
         evaluators.append(create_cypher_validity_evaluator())
 
