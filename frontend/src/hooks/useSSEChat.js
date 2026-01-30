@@ -144,6 +144,10 @@ export function useSSEChat() {
 
   /**
    * Parse SSE line to extract event type and data
+   *
+   * Event detection order matters! The 'done' event for structured queries
+   * has {query, row_count, run_id} which could match 'cypher' if not careful.
+   * We check for 'done' indicators (run_id, full_answer, row_count) first.
    */
   const parseSSELine = useCallback((line) => {
     if (!line.startsWith('data: ')) return null
@@ -152,13 +156,17 @@ export function useSSEChat() {
       const data = JSON.parse(line.slice(6))
 
       // Determine event type from data shape
+      // IMPORTANT: Check 'done' patterns BEFORE 'cypher' to avoid misidentification
       if (data.intent !== undefined) return { type: 'routing', data }
       if (data.sources !== undefined) return { type: 'sources', data }
       if (data.token !== undefined) return { type: 'token', data }
-      if (data.query !== undefined && data.results === undefined) return { type: 'cypher', data }
       if (data.results !== undefined) return { type: 'results', data }
-      if (data.full_answer !== undefined || (data.row_count !== undefined && data.query !== undefined))
+      // Done event: has run_id, or full_answer (explanatory), or row_count with query (structured)
+      if (data.run_id !== undefined || data.full_answer !== undefined ||
+          (data.row_count !== undefined && data.query !== undefined))
         return { type: 'done', data }
+      // Cypher event: has query but NOT row_count (done event has both)
+      if (data.query !== undefined && data.row_count === undefined) return { type: 'cypher', data }
       if (data.error !== undefined) return { type: 'error', data }
 
       return null
