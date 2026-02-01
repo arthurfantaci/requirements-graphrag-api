@@ -35,12 +35,14 @@ from requirements_graphrag_api.auth import (
 )
 from requirements_graphrag_api.config import get_auth_config, get_config, get_guardrail_config
 from requirements_graphrag_api.core.retrieval import create_vector_retriever
-from requirements_graphrag_api.middleware.rate_limit import (
+from requirements_graphrag_api.middleware import (
+    SizeLimitMiddleware,
     get_rate_limiter,
     rate_limit_exceeded_handler,
 )
 from requirements_graphrag_api.observability import configure_tracing
 from requirements_graphrag_api.routes import (
+    admin_router,
     chat_router,
     definitions_router,
     feedback_router,
@@ -196,6 +198,10 @@ app.add_middleware(
 _auth_required = os.getenv("REQUIRE_API_KEY", "false").lower() in ("true", "1", "yes")
 app.add_middleware(AuthMiddleware, require_auth=_auth_required)
 
+# Add size limit middleware (Phase 4)
+# Prevents oversized requests from consuming server resources
+app.add_middleware(SizeLimitMiddleware)
+
 # Mount routers
 app.include_router(health_router, tags=["Health"])
 app.include_router(chat_router, tags=["Chat"])
@@ -204,6 +210,7 @@ app.include_router(search_router, tags=["Search"])
 app.include_router(definitions_router, tags=["Definitions"])
 app.include_router(standards_router, tags=["Standards"])
 app.include_router(schema_router, tags=["Schema"])
+app.include_router(admin_router, tags=["Admin"])  # Phase 4: Compliance dashboard
 
 
 @app.get("/")
