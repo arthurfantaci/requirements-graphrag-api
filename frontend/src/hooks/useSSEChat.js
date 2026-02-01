@@ -1,6 +1,5 @@
 import { useState, useMemo, useCallback } from 'react'
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+import { API_URL, API_KEY } from '../utils/api'
 
 /**
  * Generate a unique conversation ID (UUID v4)
@@ -198,7 +197,10 @@ export function useSSEChat() {
 
         const response = await fetch(`${API_URL}/chat`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(API_KEY && { 'X-API-Key': API_KEY }),
+          },
           body: JSON.stringify({
             message: input,
             conversation_id: conversationId,

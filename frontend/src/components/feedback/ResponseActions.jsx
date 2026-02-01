@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { FeedbackModal } from './FeedbackModal'
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+import { apiFetch } from '../../utils/api'
 
 // Copy icon (outline style like Claude Desktop)
 function CopyIcon() {
@@ -78,9 +77,8 @@ export function ResponseActions({ content, runId, messageId }) {
     if (!runId) return
 
     try {
-      await fetch(`${API_URL}/feedback`, {
+      await apiFetch('/feedback', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           run_id: runId,
           score: isPositive ? 1.0 : 0.0,
