@@ -6,6 +6,9 @@ This module provides security guardrails for the GraphRAG API:
 - Toxicity detection (Phase 2)
 - Topic boundary enforcement (Phase 2)
 - Output content filtering (Phase 2)
+- Conversation history validation (Phase 4)
+- Hallucination detection (Phase 4)
+- Guardrail metrics collection (Phase 4)
 - Structured event logging for security monitoring
 
 Usage:
@@ -17,6 +20,10 @@ Usage:
         check_toxicity,
         check_topic_relevance,
         filter_output,
+        # Phase 4 - Advanced Features
+        validate_conversation_history,
+        check_hallucination,
+        metrics,
         # Events
         log_guardrail_event,
     )
@@ -24,6 +31,11 @@ Usage:
 
 from __future__ import annotations
 
+from requirements_graphrag_api.guardrails.conversation import (
+    ConversationValidationResult,
+    create_validated_history,
+    validate_conversation_history,
+)
 from requirements_graphrag_api.guardrails.events import (
     ActionTaken,
     GuardrailEvent,
@@ -32,6 +44,19 @@ from requirements_graphrag_api.guardrails.events import (
     create_topic_event,
     create_toxicity_event,
     log_guardrail_event,
+)
+from requirements_graphrag_api.guardrails.hallucination import (
+    HALLUCINATION_WARNING,
+    HALLUCINATION_WARNING_SHORT,
+    GroundingLevel,
+    HallucinationCheckResult,
+    check_hallucination,
+    check_hallucination_sync,
+)
+from requirements_graphrag_api.guardrails.metrics import (
+    GuardrailMetrics,
+    MetricsCollector,
+    metrics,
 )
 from requirements_graphrag_api.guardrails.output_filter import (
     OutputFilterConfig,
@@ -61,27 +86,48 @@ from requirements_graphrag_api.guardrails.toxicity import (
 )
 
 __all__ = [
+    "HALLUCINATION_WARNING",
+    "HALLUCINATION_WARNING_SHORT",
+    # Events
     "ActionTaken",
+    # Phase 4 - Conversation Validation
+    "ConversationValidationResult",
+    # Phase 4 - Hallucination Detection
+    "GroundingLevel",
     "GuardrailEvent",
     "GuardrailEventType",
+    # Phase 4 - Metrics
+    "GuardrailMetrics",
+    "HallucinationCheckResult",
+    # Phase 1 - Prompt Injection
     "InjectionCheckResult",
     "InjectionRisk",
+    "MetricsCollector",
+    # Phase 2 - Output Filtering
     "OutputFilterConfig",
     "OutputFilterResult",
+    # Phase 1 - PII Detection
     "PIICheckResult",
+    # Phase 2 - Topic Guard
     "TopicCheckResult",
     "TopicClassification",
     "TopicGuardConfig",
+    # Phase 2 - Toxicity
     "ToxicityCategory",
     "ToxicityConfig",
     "ToxicityResult",
+    "check_hallucination",
+    "check_hallucination_sync",
     "check_prompt_injection",
     "check_topic_relevance",
     "check_toxicity",
     "create_output_filter_event",
     "create_topic_event",
     "create_toxicity_event",
+    "create_validated_history",
     "detect_and_redact_pii",
     "filter_output",
     "log_guardrail_event",
+    "metrics",
+    "validate_conversation_history",
 ]
