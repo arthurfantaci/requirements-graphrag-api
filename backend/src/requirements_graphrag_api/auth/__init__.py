@@ -79,6 +79,7 @@ from requirements_graphrag_api.auth.middleware import (
     get_current_request_id,
     get_request_duration_ms,
 )
+from requirements_graphrag_api.auth.postgres_store import PostgresAPIKeyStore
 from requirements_graphrag_api.auth.scopes import (
     DEFAULT_TIER_SCOPES,
     ENDPOINT_SCOPES,
@@ -105,6 +106,7 @@ __all__ = [
     "AuthMiddleware",
     "InMemoryAPIKeyStore",
     "LoggingAuditHandler",
+    "PostgresAPIKeyStore",
     "Scope",
     "ScopeChecker",
     "audit_logger",
