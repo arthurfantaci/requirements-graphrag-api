@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from requirements_graphrag_api.config import AppConfig
+from requirements_graphrag_api.config import AppConfig, GuardrailConfig
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
@@ -132,3 +132,17 @@ def minimal_env_vars() -> Generator[dict[str, str], None, None]:
     }
     with patch.dict("os.environ", test_vars, clear=True):
         yield test_vars
+
+
+@pytest.fixture
+def mock_guardrail_config() -> GuardrailConfig:
+    """Create a mock guardrail configuration for testing.
+
+    Returns a config with all guardrails disabled by default for faster tests.
+    Tests that need guardrails enabled should create their own config.
+    """
+    return GuardrailConfig(
+        prompt_injection_enabled=False,
+        pii_detection_enabled=False,
+        rate_limiting_enabled=False,
+    )

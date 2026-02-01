@@ -40,11 +40,28 @@ def mock_config() -> MagicMock:
 
 
 @pytest.fixture
-def client(mock_app: FastAPI, mock_config: MagicMock) -> TestClient:
+def mock_guardrail_config() -> MagicMock:
+    """Create a mock GuardrailConfig with guardrails disabled."""
+    config = MagicMock()
+    config.prompt_injection_enabled = False
+    config.pii_detection_enabled = False
+    config.rate_limiting_enabled = False
+    config.injection_block_threshold = "high"
+    config.pii_entities = ("EMAIL_ADDRESS", "PHONE_NUMBER")
+    config.pii_score_threshold = 0.7
+    config.pii_anonymize_type = "replace"
+    return config
+
+
+@pytest.fixture
+def client(
+    mock_app: FastAPI, mock_config: MagicMock, mock_guardrail_config: MagicMock
+) -> TestClient:
     """Create a test client with mocked dependencies."""
     mock_app.state.config = mock_config
     mock_app.state.driver = MagicMock()
     mock_app.state.retriever = MagicMock()
+    mock_app.state.guardrail_config = mock_guardrail_config
     return TestClient(mock_app)
 
 

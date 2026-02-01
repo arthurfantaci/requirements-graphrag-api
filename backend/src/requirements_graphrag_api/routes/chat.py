@@ -18,11 +18,13 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from slowapi.util import get_remote_address
 
 from requirements_graphrag_api.core import (
     QueryIntent,
@@ -32,6 +34,17 @@ from requirements_graphrag_api.core import (
     stream_chat,
     text2cypher_query,
 )
+from requirements_graphrag_api.guardrails import (
+    InjectionRisk,
+    check_prompt_injection,
+    detect_and_redact_pii,
+    log_guardrail_event,
+)
+from requirements_graphrag_api.guardrails.events import (
+    create_injection_event,
+    create_pii_event,
+)
+from requirements_graphrag_api.middleware.rate_limit import CHAT_RATE_LIMIT, get_rate_limiter
 from requirements_graphrag_api.observability import create_thread_metadata
 
 if TYPE_CHECKING:
@@ -40,7 +53,7 @@ if TYPE_CHECKING:
     from neo4j import Driver
     from neo4j_graphrag.retrievers import VectorRetriever
 
-    from requirements_graphrag_api.config import AppConfig
+    from requirements_graphrag_api.config import AppConfig, GuardrailConfig
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +131,9 @@ async def _generate_sse_events(
     retriever: VectorRetriever,
     driver: Driver,
     request: ChatRequest,
+    guardrail_config: GuardrailConfig,
+    user_ip: str | None = None,
+    request_id: str | None = None,
 ) -> AsyncIterator[str]:
     """Generate SSE events from streaming chat response with automatic routing.
 
@@ -126,18 +142,81 @@ async def _generate_sse_events(
         retriever: VectorRetriever for semantic search.
         driver: Neo4j driver for graph queries.
         request: Chat request with message and options.
+        guardrail_config: Guardrail configuration.
+        user_ip: Client IP address for logging.
+        request_id: Unique request identifier.
 
     Yields:
         Formatted SSE event strings.
     """
+    if request_id is None:
+        request_id = str(uuid.uuid4())[:8]
+
     try:
-        # Determine query intent
+        # === INPUT GUARDRAILS ===
+        safe_message = request.message
+
+        # 1. Check for prompt injection
+        if guardrail_config.prompt_injection_enabled:
+            injection_result = check_prompt_injection(
+                request.message,
+                block_threshold=InjectionRisk(guardrail_config.injection_block_threshold),
+            )
+
+            if injection_result.should_warn or injection_result.should_block:
+                event = create_injection_event(
+                    request_id=request_id,
+                    risk_level=injection_result.risk_level.value,
+                    patterns=injection_result.detected_patterns,
+                    blocked=injection_result.should_block,
+                    user_ip=user_ip,
+                    input_text=request.message,
+                )
+                log_guardrail_event(event)
+
+            if injection_result.should_block:
+                yield f"event: {StreamEventType.ERROR.value}\n"
+                yield f"data: {json.dumps({'error': 'Request blocked by safety filter'})}\n\n"
+                return
+
+        # 2. Detect and redact PII
+        if guardrail_config.pii_detection_enabled:
+            pii_result = detect_and_redact_pii(
+                safe_message,
+                entities=guardrail_config.pii_entities,
+                score_threshold=guardrail_config.pii_score_threshold,
+                anonymize_type=guardrail_config.pii_anonymize_type,
+            )
+
+            if pii_result.contains_pii:
+                entity_types = tuple(e.entity_type for e in pii_result.detected_entities)
+                event = create_pii_event(
+                    request_id=request_id,
+                    entity_types=entity_types,
+                    entity_count=pii_result.entity_count,
+                    redacted=True,
+                    user_ip=user_ip,
+                    input_text=request.message,
+                )
+                log_guardrail_event(event)
+
+                # Use the anonymized text for processing
+                safe_message = pii_result.anonymized_text
+                logger.info(
+                    "PII detected and redacted: %d entities, types=%s",
+                    pii_result.entity_count,
+                    entity_types,
+                )
+
+        # === QUERY PROCESSING ===
+
+        # Determine query intent (use safe_message for classification)
         intent: QueryIntent
         if request.options.force_intent:
             intent = QueryIntent(request.options.force_intent)
             logger.info("Using forced intent: %s", intent)
         elif request.options.auto_route:
-            intent = await classify_intent(config, request.message)
+            intent = await classify_intent(config, safe_message)
             logger.info("Auto-classified intent: %s", intent)
         else:
             # Default to explanatory if auto_route is disabled
@@ -150,11 +229,15 @@ async def _generate_sse_events(
 
         if intent == QueryIntent.STRUCTURED:
             # Use Text2Cypher for structured queries
-            async for event_str in _generate_structured_events(config, driver, request):
+            async for event_str in _generate_structured_events(
+                config, driver, request, safe_message
+            ):
                 yield event_str
         else:
             # Use RAG for explanatory queries
-            async for event_str in _generate_explanatory_events(config, retriever, driver, request):
+            async for event_str in _generate_explanatory_events(
+                config, retriever, driver, request, safe_message
+            ):
                 yield event_str
 
     except Exception as e:
@@ -168,6 +251,7 @@ async def _generate_explanatory_events(
     retriever: VectorRetriever,
     driver: Driver,
     request: ChatRequest,
+    safe_message: str,
 ) -> AsyncIterator[str]:
     """Generate SSE events for explanatory (RAG) queries.
 
@@ -176,6 +260,7 @@ async def _generate_explanatory_events(
         retriever: VectorRetriever for semantic search.
         driver: Neo4j driver for graph queries.
         request: Chat request with message and options.
+        safe_message: Sanitized message with PII redacted.
 
     Yields:
         Formatted SSE event strings.
@@ -194,7 +279,7 @@ async def _generate_explanatory_events(
         config,
         retriever,
         driver,
-        request.message,
+        safe_message,
         conversation_history=history,
         conversation_id=request.conversation_id,
         max_sources=request.options.max_sources,
@@ -209,6 +294,7 @@ async def _generate_structured_events(
     config: AppConfig,
     driver: Driver,
     request: ChatRequest,
+    safe_message: str,
 ) -> AsyncIterator[str]:
     """Generate SSE events for structured (Text2Cypher) queries.
 
@@ -216,6 +302,7 @@ async def _generate_structured_events(
         config: Application configuration.
         driver: Neo4j driver for graph queries.
         request: Chat request with message and options.
+        safe_message: Sanitized message with PII redacted.
 
     Yields:
         Formatted SSE event strings.
@@ -228,7 +315,7 @@ async def _generate_structured_events(
         result = await text2cypher_query(
             config,
             driver,
-            request.message,
+            safe_message,
             execute=True,
             langsmith_extra=thread_metadata,
         )
@@ -267,7 +354,12 @@ async def _generate_structured_events(
         yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
 
+# Get rate limiter instance for decorator
+limiter = get_rate_limiter()
+
+
 @router.post("/chat")
+@limiter.limit(CHAT_RATE_LIMIT)
 async def chat_endpoint(
     request: Request,
     body: ChatRequest,
@@ -277,6 +369,11 @@ async def chat_endpoint(
     This endpoint automatically routes queries based on intent classification:
     - **EXPLANATORY** queries use RAG with hybrid search and graph enrichment
     - **STRUCTURED** queries use Text2Cypher for direct graph queries
+
+    **Security Guardrails:**
+    - Rate limiting: 20 requests/minute per IP or API key
+    - Prompt injection detection: Blocks malicious instruction manipulation
+    - PII detection: Automatically redacts personal information
 
     **SSE Event Sequence (Explanatory - RAG):**
     1. `routing` - Intent classification result
@@ -335,14 +432,28 @@ async def chat_endpoint(
     config: AppConfig = request.app.state.config
     retriever: VectorRetriever = request.app.state.retriever
     driver: Driver = request.app.state.driver
+    guardrail_config: GuardrailConfig = request.app.state.guardrail_config
+
+    # Get client info for logging
+    user_ip = get_remote_address(request)
+    request_id = str(uuid.uuid4())[:8]
 
     return StreamingResponse(
-        _generate_sse_events(config, retriever, driver, body),
+        _generate_sse_events(
+            config,
+            retriever,
+            driver,
+            body,
+            guardrail_config,
+            user_ip=user_ip,
+            request_id=request_id,
+        ),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # Disable nginx buffering
+            "X-Request-ID": request_id,
         },
     )
 
