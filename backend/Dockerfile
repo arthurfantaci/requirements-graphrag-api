@@ -33,7 +33,8 @@ COPY backend/README.md ./
 RUN uv sync --frozen --no-dev --no-editable
 
 # Download spaCy model for PII detection (Presidio requires this)
-RUN /app/.venv/bin/python -m spacy download en_core_web_lg
+# Note: uv venvs don't include pip, so we use uv pip install directly
+RUN uv pip install https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl
 
 # ============================================================================
 # Production stage
