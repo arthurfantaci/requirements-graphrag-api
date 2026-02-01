@@ -32,6 +32,9 @@ COPY backend/README.md ./
 # Install dependencies (no dev dependencies for production)
 RUN uv sync --frozen --no-dev --no-editable
 
+# Download spaCy model for PII detection (Presidio requires this)
+RUN /app/.venv/bin/python -m spacy download en_core_web_lg
+
 # ============================================================================
 # Production stage
 # ============================================================================
