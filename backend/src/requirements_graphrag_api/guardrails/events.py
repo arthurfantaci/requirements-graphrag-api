@@ -286,3 +286,138 @@ def create_rate_limit_event(
             "endpoint": endpoint,
         },
     )
+
+
+# =============================================================================
+# Phase 2 - Content Safety Events
+# =============================================================================
+
+
+def create_toxicity_event(
+    request_id: str,
+    categories: tuple[str, ...],
+    confidence: float,
+    blocked: bool,
+    check_type: str,
+    user_ip: str | None = None,
+    input_text: str | None = None,
+) -> GuardrailEvent:
+    """Create a toxicity detection event.
+
+    Args:
+        request_id: Unique request identifier.
+        categories: Detected toxicity categories.
+        confidence: Confidence score of detection.
+        blocked: Whether the request was blocked.
+        check_type: Type of check performed ("fast" or "full").
+        user_ip: Client IP address.
+        input_text: Original input (for hashing, not stored).
+
+    Returns:
+        Configured GuardrailEvent.
+    """
+    event_type = (
+        GuardrailEventType.TOXICITY_BLOCKED if blocked else GuardrailEventType.TOXICITY_DETECTED
+    )
+    action = ActionTaken.BLOCKED if blocked else ActionTaken.WARNED
+
+    return GuardrailEvent(
+        event_type=event_type,
+        request_id=request_id,
+        action_taken=action,
+        user_ip=user_ip,
+        input_hash=compute_input_hash(input_text) if input_text else None,
+        risk_level="high" if blocked else "medium",
+        details={
+            "categories": list(categories),
+            "confidence": confidence,
+            "check_type": check_type,
+        },
+    )
+
+
+def create_topic_event(
+    request_id: str,
+    classification: str,
+    confidence: float,
+    reasoning: str | None,
+    check_type: str,
+    user_ip: str | None = None,
+    input_text: str | None = None,
+) -> GuardrailEvent:
+    """Create a topic classification event.
+
+    Args:
+        request_id: Unique request identifier.
+        classification: Topic classification result.
+        confidence: Confidence score of classification.
+        reasoning: Explanation for the classification.
+        check_type: Type of check performed ("keyword" or "llm").
+        user_ip: Client IP address.
+        input_text: Original input (for hashing, not stored).
+
+    Returns:
+        Configured GuardrailEvent.
+    """
+    # Only create event for out-of-scope classifications
+    action = ActionTaken.WARNED if classification == "out_of_scope" else ActionTaken.ALLOWED
+
+    return GuardrailEvent(
+        event_type=GuardrailEventType.TOPIC_OUT_OF_SCOPE,
+        request_id=request_id,
+        action_taken=action,
+        user_ip=user_ip,
+        input_hash=compute_input_hash(input_text) if input_text else None,
+        details={
+            "classification": classification,
+            "confidence": confidence,
+            "reasoning": reasoning,
+            "check_type": check_type,
+        },
+    )
+
+
+def create_output_filter_event(
+    request_id: str,
+    is_safe: bool,
+    confidence_score: float,
+    warnings: tuple[str, ...],
+    modifications: tuple[str, ...],
+    blocked_reason: str | None = None,
+    user_ip: str | None = None,
+) -> GuardrailEvent:
+    """Create an output filter event.
+
+    Args:
+        request_id: Unique request identifier.
+        is_safe: Whether the output passed safety checks.
+        confidence_score: Confidence score of the output.
+        warnings: List of warnings about the output.
+        modifications: List of modifications made.
+        blocked_reason: Reason if output was blocked.
+        user_ip: Client IP address.
+
+    Returns:
+        Configured GuardrailEvent.
+    """
+    if not is_safe:
+        action = ActionTaken.BLOCKED
+    elif modifications:
+        action = ActionTaken.FILTERED
+    else:
+        action = ActionTaken.ALLOWED
+
+    return GuardrailEvent(
+        event_type=GuardrailEventType.OUTPUT_FILTERED,
+        request_id=request_id,
+        action_taken=action,
+        user_ip=user_ip,
+        risk_level="high" if not is_safe else ("medium" if warnings else "low"),
+        details={
+            "is_safe": is_safe,
+            "confidence_score": confidence_score,
+            "warnings": list(warnings),
+            "modifications": list(modifications),
+            "blocked_reason": blocked_reason,
+        },
+    )
