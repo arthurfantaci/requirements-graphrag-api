@@ -16,6 +16,7 @@ Usage:
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import TYPE_CHECKING
 
@@ -221,7 +222,7 @@ class PostgresAPIKeyStore(APIKeyStore):
                 info.rate_limit,
                 info.is_active,
                 list(info.scopes),
-                info.metadata,
+                json.dumps(info.metadata),  # Serialize dict to JSON string for JSONB
             )
         logger.info("Created API key: key_id=%s, tier=%s", info.key_id, info.tier)
 
