@@ -149,6 +149,79 @@ class AppConfig:
             raise ConfigurationError(msg)
 
 
+@dataclass(frozen=True, slots=True)
+class GuardrailConfig:
+    """Configuration for guardrail features.
+
+    Attributes:
+        prompt_injection_enabled: Enable prompt injection detection.
+        pii_detection_enabled: Enable PII detection and redaction.
+        rate_limiting_enabled: Enable request rate limiting.
+        injection_block_threshold: Risk level at which to block (low/medium/high/critical).
+        pii_entities: PII entity types to detect.
+        pii_score_threshold: Minimum confidence score for PII detection.
+        pii_anonymize_type: How to anonymize PII (replace/redact/hash).
+        rate_limit_chat: Rate limit for /chat endpoint.
+        rate_limit_search: Rate limit for /search endpoints.
+        rate_limit_default: Default rate limit for other endpoints.
+    """
+
+    # Feature flags
+    prompt_injection_enabled: bool = True
+    pii_detection_enabled: bool = True
+    rate_limiting_enabled: bool = True
+
+    # Prompt injection settings
+    injection_block_threshold: str = "high"  # low, medium, high, critical
+
+    # PII settings
+    pii_entities: tuple[str, ...] = (
+        "PERSON",
+        "EMAIL_ADDRESS",
+        "PHONE_NUMBER",
+        "CREDIT_CARD",
+        "US_SSN",
+    )
+    pii_score_threshold: float = 0.7
+    pii_anonymize_type: str = "replace"  # replace, redact, hash
+
+    # Rate limiting
+    rate_limit_chat: str = "20/minute"
+    rate_limit_search: str = "60/minute"
+    rate_limit_default: str = "100/minute"
+
+
+def get_guardrail_config() -> GuardrailConfig:
+    """Load guardrail configuration from environment variables.
+
+    Returns:
+        GuardrailConfig instance with values from environment.
+    """
+
+    def str_to_bool(value: str, default: bool = True) -> bool:
+        return value.lower() in ("true", "1", "yes") if value else default
+
+    pii_entities_str = os.getenv(
+        "GUARDRAIL_PII_ENTITIES", "PERSON,EMAIL_ADDRESS,PHONE_NUMBER,CREDIT_CARD,US_SSN"
+    )
+    pii_entities = tuple(e.strip() for e in pii_entities_str.split(",") if e.strip())
+
+    return GuardrailConfig(
+        prompt_injection_enabled=str_to_bool(
+            os.getenv("GUARDRAIL_PROMPT_INJECTION_ENABLED", "true")
+        ),
+        pii_detection_enabled=str_to_bool(os.getenv("GUARDRAIL_PII_DETECTION_ENABLED", "true")),
+        rate_limiting_enabled=str_to_bool(os.getenv("GUARDRAIL_RATE_LIMITING_ENABLED", "true")),
+        injection_block_threshold=os.getenv("GUARDRAIL_PROMPT_INJECTION_THRESHOLD", "high"),
+        pii_entities=pii_entities,
+        pii_score_threshold=float(os.getenv("GUARDRAIL_PII_SCORE_THRESHOLD", "0.7")),
+        pii_anonymize_type=os.getenv("GUARDRAIL_PII_ANONYMIZE_TYPE", "replace"),
+        rate_limit_chat=os.getenv("GUARDRAIL_RATE_LIMIT_CHAT", "20/minute"),
+        rate_limit_search=os.getenv("GUARDRAIL_RATE_LIMIT_SEARCH", "60/minute"),
+        rate_limit_default=os.getenv("GUARDRAIL_RATE_LIMIT_DEFAULT", "100/minute"),
+    )
+
+
 def get_config() -> AppConfig:
     """Load configuration from environment variables.
 

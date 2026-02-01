@@ -26,9 +26,14 @@ from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi.errors import RateLimitExceeded
 
-from requirements_graphrag_api.config import get_config
+from requirements_graphrag_api.config import get_config, get_guardrail_config
 from requirements_graphrag_api.core.retrieval import create_vector_retriever
+from requirements_graphrag_api.middleware.rate_limit import (
+    get_rate_limiter,
+    rate_limit_exceeded_handler,
+)
 from requirements_graphrag_api.observability import configure_tracing
 from requirements_graphrag_api.routes import (
     chat_router,
@@ -106,11 +111,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     retriever = create_vector_retriever(driver, config)
     logger.info("VectorRetriever initialized with index: %s", config.vector_index_name)
 
+    # Initialize guardrails
+    guardrail_config = get_guardrail_config()
+    limiter = get_rate_limiter()
+
     # Store in app state for route handlers
     app.state.config = config
     app.state.driver = driver
     app.state.retriever = retriever
+    app.state.guardrail_config = guardrail_config
+    app.state.limiter = limiter
 
+    logger.info(
+        "Guardrails initialized: injection=%s, pii=%s, rate_limit=%s",
+        guardrail_config.prompt_injection_enabled,
+        guardrail_config.pii_detection_enabled,
+        guardrail_config.rate_limiting_enabled,
+    )
     logger.info("API startup complete")
 
     yield
@@ -133,6 +150,9 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+# Register rate limit exception handler
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
 # Configure CORS for frontend access
 # Use CORS_ORIGINS env var (comma-separated) or defaults for local development
