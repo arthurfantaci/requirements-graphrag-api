@@ -29,6 +29,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 
 from requirements_graphrag_api.auth import (
+    APIKeyStore,
     AuthMiddleware,
     InMemoryAPIKeyStore,
     configure_audit_logging,
@@ -124,7 +125,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Initialize authentication
     auth_config = get_auth_config()
-    api_key_store = InMemoryAPIKeyStore()
+    api_key_store: APIKeyStore
+
+    # Use PostgreSQL store if AUTH_DATABASE_URL is set, otherwise use in-memory
+    auth_db_url = os.getenv("AUTH_DATABASE_URL")
+    if auth_db_url:
+        from requirements_graphrag_api.auth import PostgresAPIKeyStore
+
+        api_key_store = PostgresAPIKeyStore(auth_db_url)
+        await api_key_store.initialize()
+        logger.info("Using PostgreSQL for API key storage")
+    else:
+        api_key_store = InMemoryAPIKeyStore()
+        logger.info("Using in-memory API key store (keys will not persist)")
 
     # Configure audit logging if enabled
     if auth_config.audit_enabled:
@@ -156,6 +169,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Cleanup
     logger.info("Shutting down API...")
+
+    # Close API key store if it supports closing (PostgresAPIKeyStore)
+    if hasattr(api_key_store, "close"):
+        await api_key_store.close()
+        logger.info("API key store closed")
+
     driver.close()
     logger.info("Neo4j driver closed")
 
