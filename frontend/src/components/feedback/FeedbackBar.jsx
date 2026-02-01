@@ -1,6 +1,5 @@
 import { useState } from 'react'
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+import { apiFetch } from '../../utils/api'
 
 /**
  * Thumbs up icon
@@ -62,9 +61,8 @@ export function FeedbackBar({ runId, messageId, disabled }) {
     setIsSubmitting(true)
 
     try {
-      const response = await fetch(`${API_URL}/feedback`, {
+      const response = await apiFetch('/feedback', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           run_id: runId,
           score: score, // 1 for positive, 0 for negative
