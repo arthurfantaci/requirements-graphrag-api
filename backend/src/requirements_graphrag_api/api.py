@@ -28,7 +28,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 
-from requirements_graphrag_api.config import get_config, get_guardrail_config
+from requirements_graphrag_api.auth import (
+    AuthMiddleware,
+    InMemoryAPIKeyStore,
+    configure_audit_logging,
+)
+from requirements_graphrag_api.config import get_auth_config, get_config, get_guardrail_config
 from requirements_graphrag_api.core.retrieval import create_vector_retriever
 from requirements_graphrag_api.middleware.rate_limit import (
     get_rate_limiter,
@@ -115,18 +120,33 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     guardrail_config = get_guardrail_config()
     limiter = get_rate_limiter()
 
+    # Initialize authentication
+    auth_config = get_auth_config()
+    api_key_store = InMemoryAPIKeyStore()
+
+    # Configure audit logging if enabled
+    if auth_config.audit_enabled:
+        configure_audit_logging(enable_logging=True, enable_langsmith=False)
+        logger.info("Audit logging enabled")
+
     # Store in app state for route handlers
     app.state.config = config
     app.state.driver = driver
     app.state.retriever = retriever
     app.state.guardrail_config = guardrail_config
     app.state.limiter = limiter
+    app.state.auth_config = auth_config
+    app.state.api_key_store = api_key_store
 
     logger.info(
         "Guardrails initialized: injection=%s, pii=%s, rate_limit=%s",
         guardrail_config.prompt_injection_enabled,
         guardrail_config.pii_detection_enabled,
         guardrail_config.rate_limiting_enabled,
+    )
+    logger.info(
+        "Authentication initialized: require_api_key=%s",
+        auth_config.require_api_key,
     )
     logger.info("API startup complete")
 
@@ -170,6 +190,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add authentication middleware
+# Note: Middleware runs in reverse order of registration, so auth runs after CORS
+_auth_required = os.getenv("REQUIRE_API_KEY", "false").lower() in ("true", "1", "yes")
+app.add_middleware(AuthMiddleware, require_auth=_auth_required)
 
 # Mount routers
 app.include_router(health_router, tags=["Health"])

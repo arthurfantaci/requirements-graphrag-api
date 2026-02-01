@@ -150,6 +150,48 @@ class AppConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class AuthConfig:
+    """Authentication and authorization configuration.
+
+    Attributes:
+        require_api_key: Whether to require API keys for all requests.
+            When False (default), anonymous access is allowed.
+        api_key_header: Header name for API key authentication.
+        rate_limit_free: Rate limit for free tier (requests/time).
+        rate_limit_standard: Rate limit for standard tier.
+        rate_limit_premium: Rate limit for premium tier.
+        rate_limit_enterprise: Rate limit for enterprise tier.
+        audit_enabled: Whether to enable audit logging.
+        audit_log_requests: Whether to log incoming requests.
+        audit_log_responses: Whether to log outgoing responses.
+    """
+
+    require_api_key: bool = False
+    api_key_header: str = "X-API-Key"
+
+    # Rate limits by tier
+    rate_limit_free: str = "10/minute"
+    rate_limit_standard: str = "50/minute"
+    rate_limit_premium: str = "200/minute"
+    rate_limit_enterprise: str = "1000/minute"
+
+    # Audit logging
+    audit_enabled: bool = True
+    audit_log_requests: bool = True
+    audit_log_responses: bool = True
+
+    @property
+    def rate_limits(self) -> dict[str, str]:
+        """Get rate limits by tier as a dictionary."""
+        return {
+            "free": self.rate_limit_free,
+            "standard": self.rate_limit_standard,
+            "premium": self.rate_limit_premium,
+            "enterprise": self.rate_limit_enterprise,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class GuardrailConfig:
     """Configuration for guardrail features.
 
@@ -219,6 +261,38 @@ def get_guardrail_config() -> GuardrailConfig:
         rate_limit_chat=os.getenv("GUARDRAIL_RATE_LIMIT_CHAT", "20/minute"),
         rate_limit_search=os.getenv("GUARDRAIL_RATE_LIMIT_SEARCH", "60/minute"),
         rate_limit_default=os.getenv("GUARDRAIL_RATE_LIMIT_DEFAULT", "100/minute"),
+    )
+
+
+def get_auth_config() -> AuthConfig:
+    """Load authentication configuration from environment variables.
+
+    Environment variables:
+    - REQUIRE_API_KEY: Whether to require API keys (default: false)
+    - AUTH_RATE_LIMIT_FREE: Rate limit for free tier (default: 10/minute)
+    - AUTH_RATE_LIMIT_STANDARD: Rate limit for standard tier (default: 50/minute)
+    - AUTH_RATE_LIMIT_PREMIUM: Rate limit for premium tier (default: 200/minute)
+    - AUTH_RATE_LIMIT_ENTERPRISE: Rate limit for enterprise tier (default: 1000/minute)
+    - AUTH_AUDIT_ENABLED: Whether to enable audit logging (default: true)
+    - AUTH_AUDIT_LOG_REQUESTS: Whether to log requests (default: true)
+    - AUTH_AUDIT_LOG_RESPONSES: Whether to log responses (default: true)
+
+    Returns:
+        AuthConfig instance with values from environment.
+    """
+
+    def str_to_bool(value: str, default: bool) -> bool:
+        return value.lower() in ("true", "1", "yes") if value else default
+
+    return AuthConfig(
+        require_api_key=str_to_bool(os.getenv("REQUIRE_API_KEY", "false"), False),
+        rate_limit_free=os.getenv("AUTH_RATE_LIMIT_FREE", "10/minute"),
+        rate_limit_standard=os.getenv("AUTH_RATE_LIMIT_STANDARD", "50/minute"),
+        rate_limit_premium=os.getenv("AUTH_RATE_LIMIT_PREMIUM", "200/minute"),
+        rate_limit_enterprise=os.getenv("AUTH_RATE_LIMIT_ENTERPRISE", "1000/minute"),
+        audit_enabled=str_to_bool(os.getenv("AUTH_AUDIT_ENABLED", "true"), True),
+        audit_log_requests=str_to_bool(os.getenv("AUTH_AUDIT_LOG_REQUESTS", "true"), True),
+        audit_log_responses=str_to_bool(os.getenv("AUTH_AUDIT_LOG_RESPONSES", "true"), True),
     )
 
 
