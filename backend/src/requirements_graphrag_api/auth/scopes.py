@@ -25,9 +25,13 @@ Usage:
         _: None = Depends(require_scopes(Scope.ADMIN))
     ):
         ...
-"""
 
-from __future__ import annotations
+Note:
+    This module intentionally does NOT use `from __future__ import annotations`
+    because FastAPI's dependency injection needs to inspect the actual `Request`
+    type at runtime to properly inject the request object. With deferred annotations,
+    the type becomes a string and FastAPI can't recognize it.
+"""
 
 from enum import StrEnum
 from functools import wraps
@@ -113,7 +117,7 @@ def check_scopes(
     return len(missing) == 0, missing
 
 
-def get_client_from_request(request: Request) -> APIKeyInfo | None:
+def get_client_from_request(request: Request) -> "APIKeyInfo | None":
     """Extract client info from request state.
 
     The AuthMiddleware sets request.state.client during authentication.
@@ -154,7 +158,7 @@ class ScopeChecker:
         self.required_scopes = required_scopes
         self.allow_anonymous = allow_anonymous
 
-    async def __call__(self, request: Request) -> APIKeyInfo | None:
+    async def __call__(self, request: Request) -> "APIKeyInfo | None":
         """Check scopes when used as a dependency.
 
         Args:
@@ -223,7 +227,7 @@ def require_scopes(*required_scopes: Scope, allow_anonymous: bool = False) -> Sc
     return ScopeChecker(*required_scopes, allow_anonymous=allow_anonymous)
 
 
-def require_scope(*required_scopes: Scope) -> Callable[[Callable[P, T]], Callable[P, T]]:
+def require_scope(*required_scopes: Scope) -> "Callable[[Callable[P, T]], Callable[P, T]]":
     """Decorator to require specific scopes for an endpoint.
 
     This decorator wraps an endpoint function to check scopes before execution.
@@ -246,7 +250,7 @@ def require_scope(*required_scopes: Scope) -> Callable[[Callable[P, T]], Callabl
             ...
     """
 
-    def decorator(func: Callable[P, T]) -> Callable[P, T]:
+    def decorator(func: "Callable[P, T]") -> "Callable[P, T]":
         @wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             # Find request in args or kwargs
