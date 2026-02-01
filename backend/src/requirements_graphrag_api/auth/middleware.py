@@ -166,8 +166,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Add request ID to response headers for tracing
         # This will be done after call_next
 
-        # Skip auth for specific paths
-        if request.url.path in SKIP_AUTH_PATHS:
+        # Skip auth for specific paths and CORS preflight requests
+        # OPTIONS requests are sent by browsers before actual requests to check CORS
+        if request.url.path in SKIP_AUTH_PATHS or request.method == "OPTIONS":
             request.state.client = None
             request.state.request_id = request_id
             try:
