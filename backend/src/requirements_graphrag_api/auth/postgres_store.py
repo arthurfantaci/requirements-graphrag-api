@@ -34,6 +34,30 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+def _parse_metadata(value: Any) -> dict[str, Any]:
+    """Parse metadata from database, handling both dict and string formats.
+
+    Args:
+        value: The metadata value from the database (dict, string, or None).
+
+    Returns:
+        A dictionary of metadata.
+    """
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        # Handle legacy data that was double-serialized
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except (json.JSONDecodeError, TypeError):
+            return {}
+    return {}
+
+
 # SQL schema for API keys table
 CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS api_keys (
@@ -188,7 +212,7 @@ class PostgresAPIKeyStore(APIKeyStore):
             rate_limit=row["rate_limit"],
             is_active=row["is_active"],
             scopes=tuple(row["scopes"]),
-            metadata=dict(row["metadata"]) if row["metadata"] else {},
+            metadata=_parse_metadata(row["metadata"]),
         )
 
     async def create(self, api_key: str, info: APIKeyInfo) -> None:
@@ -222,7 +246,7 @@ class PostgresAPIKeyStore(APIKeyStore):
                 info.rate_limit,
                 info.is_active,
                 list(info.scopes),
-                json.dumps(info.metadata),  # Serialize dict to JSON string for JSONB
+                info.metadata,  # asyncpg handles JSONB serialization automatically
             )
         logger.info("Created API key: key_id=%s, tier=%s", info.key_id, info.tier)
 
@@ -300,7 +324,7 @@ class PostgresAPIKeyStore(APIKeyStore):
                 rate_limit=row["rate_limit"],
                 is_active=row["is_active"],
                 scopes=tuple(row["scopes"]),
-                metadata=dict(row["metadata"]) if row["metadata"] else {},
+                metadata=_parse_metadata(row["metadata"]),
             )
             for row in rows
         ]
