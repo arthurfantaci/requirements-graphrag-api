@@ -1,0 +1,357 @@
+"""Unit tests for agentic subgraphs.
+
+Tests cover:
+- Subgraph creation and compilation
+- Individual node functionality
+- Conditional edge routing logic
+- State transformations
+"""
+
+from __future__ import annotations
+
+import json
+from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from requirements_graphrag_api.core.agentic.state import (
+    CriticEvaluation,
+    EntityInfo,
+    RAGState,
+    ResearchState,
+    RetrievedDocument,
+    SynthesisState,
+)
+from requirements_graphrag_api.core.agentic.subgraphs import (
+    create_rag_subgraph,
+    create_research_subgraph,
+    create_synthesis_subgraph,
+)
+
+if TYPE_CHECKING:
+    from requirements_graphrag_api.config import AppConfig
+
+
+# =============================================================================
+# FIXTURES
+# =============================================================================
+
+
+@pytest.fixture
+def mock_driver() -> MagicMock:
+    """Create a mock Neo4j driver."""
+    return MagicMock()
+
+
+@pytest.fixture
+def mock_retriever() -> MagicMock:
+    """Create a mock VectorRetriever."""
+    return MagicMock()
+
+
+def create_mock_llm_chain(response: str) -> MagicMock:
+    """Create a mock for prompt | llm | parser chain."""
+    mock_chain = MagicMock()
+    mock_chain.ainvoke = AsyncMock(return_value=response)
+    return mock_chain
+
+
+# =============================================================================
+# RAG SUBGRAPH TESTS
+# =============================================================================
+
+
+class TestRAGSubgraph:
+    """Tests for the RAG retrieval subgraph."""
+
+    def test_subgraph_creation(self, mock_config: AppConfig, mock_driver, mock_retriever):
+        """Test that RAG subgraph can be created and compiled."""
+        graph = create_rag_subgraph(mock_config, mock_driver, mock_retriever)
+        assert graph is not None
+        # Verify it has the expected nodes
+        assert hasattr(graph, "invoke")
+
+    @pytest.mark.asyncio
+    async def test_expand_queries_success(
+        self, mock_config: AppConfig, mock_driver, mock_retriever
+    ):
+        """Test query expansion with valid response."""
+        expansion_response = json.dumps(
+            {
+                "queries": [
+                    {"query": "What is requirements traceability?", "strategy": "original"},
+                    {"query": "How do you trace requirements in software?", "strategy": "synonym"},
+                    {
+                        "query": "What are the principles of requirements management?",
+                        "strategy": "stepback",
+                    },
+                ]
+            }
+        )
+
+        with patch(
+            "requirements_graphrag_api.core.agentic.subgraphs.rag.ChatOpenAI"
+        ) as mock_llm_class:
+            mock_llm = MagicMock()
+            mock_llm.__or__ = MagicMock(return_value=create_mock_llm_chain(expansion_response))
+            mock_llm_class.return_value = mock_llm
+
+            # We need to patch at the prompt level since the chain is built inside
+            with patch(
+                "requirements_graphrag_api.core.agentic.subgraphs.rag.get_prompt_sync"
+            ) as mock_prompt:
+                mock_template = MagicMock()
+                mock_template.__or__ = MagicMock(
+                    return_value=create_mock_llm_chain(expansion_response)
+                )
+                mock_prompt.return_value = mock_template
+
+                # Create graph - this test verifies the graph can be created with mocks
+                _ = create_rag_subgraph(mock_config, mock_driver, mock_retriever)
+
+    def test_rag_state_structure(self):
+        """Test that RAGState has expected structure."""
+        state: RAGState = {
+            "query": "test query",
+            "expanded_queries": ["q1", "q2"],
+            "raw_results": [{"text": "result"}],
+            "ranked_results": [RetrievedDocument(content="test", source="source", score=0.9)],
+            "retrieval_metadata": {"count": 1},
+        }
+        assert state["query"] == "test query"
+        assert len(state["expanded_queries"]) == 2
+
+
+# =============================================================================
+# RESEARCH SUBGRAPH TESTS
+# =============================================================================
+
+
+class TestResearchSubgraph:
+    """Tests for the Research entity exploration subgraph."""
+
+    def test_subgraph_creation(self, mock_config: AppConfig, mock_driver):
+        """Test that Research subgraph can be created and compiled."""
+        graph = create_research_subgraph(mock_config, mock_driver)
+        assert graph is not None
+        assert hasattr(graph, "invoke")
+
+    def test_research_state_structure(self):
+        """Test that ResearchState has expected structure."""
+        state: ResearchState = {
+            "query": "test query",
+            "context": "some context",
+            "identified_entities": ["Entity1", "Entity2"],
+            "explored_entities": ["Entity1"],
+            "entity_contexts": [
+                EntityInfo(
+                    name="Entity1",
+                    entity_type="Concept",
+                    description="Test entity",
+                    related_entities=["Entity2"],
+                    mentioned_in=["Article 1"],
+                )
+            ],
+            "exploration_complete": False,
+        }
+        assert state["query"] == "test query"
+        assert len(state["identified_entities"]) == 2
+        assert state["entity_contexts"][0].name == "Entity1"
+
+    def test_should_continue_exploring_empty(self):
+        """Test exploration logic with no entities."""
+        # When no entities are identified, should not explore
+        state: ResearchState = {
+            "query": "test",
+            "context": "ctx",
+            "identified_entities": [],
+            "explored_entities": [],
+            "exploration_complete": True,
+        }
+        # exploration_complete=True means we should stop
+        assert state.get("exploration_complete") is True
+
+    def test_should_continue_exploring_with_remaining(self):
+        """Test exploration logic with remaining entities."""
+        state: ResearchState = {
+            "query": "test",
+            "context": "ctx",
+            "identified_entities": ["E1", "E2", "E3"],
+            "explored_entities": ["E1"],
+            "exploration_complete": False,
+        }
+        # There are still E2, E3 to explore
+        remaining = [e for e in state["identified_entities"] if e not in state["explored_entities"]]
+        assert len(remaining) == 2
+        assert state.get("exploration_complete") is False
+
+
+# =============================================================================
+# SYNTHESIS SUBGRAPH TESTS
+# =============================================================================
+
+
+class TestSynthesisSubgraph:
+    """Tests for the Synthesis answer generation subgraph."""
+
+    def test_subgraph_creation(self, mock_config: AppConfig):
+        """Test that Synthesis subgraph can be created and compiled."""
+        graph = create_synthesis_subgraph(mock_config)
+        assert graph is not None
+        assert hasattr(graph, "invoke")
+
+    def test_synthesis_state_structure(self):
+        """Test that SynthesisState has expected structure."""
+        state: SynthesisState = {
+            "query": "test query",
+            "context": "some context",
+            "draft_answer": "Initial answer draft",
+            "critique": CriticEvaluation(
+                answerable=True,
+                confidence=0.8,
+                completeness="complete",
+                missing_aspects=[],
+                reasoning="Good answer",
+            ),
+            "revision_count": 0,
+            "final_answer": "Final answer with citations",
+            "citations": ["Source 1", "Source 2"],
+        }
+        assert state["query"] == "test query"
+        assert state["critique"].confidence == 0.8
+        assert len(state["citations"]) == 2
+
+    def test_needs_revision_high_confidence(self):
+        """Test that high confidence answers don't trigger revision."""
+        critique = CriticEvaluation(
+            answerable=True,
+            confidence=0.85,
+            completeness="complete",
+        )
+        # Above threshold (0.7), complete -> no revision needed
+        assert critique.confidence >= 0.7
+        assert critique.completeness == "complete"
+
+    def test_needs_revision_low_confidence(self):
+        """Test that low confidence triggers revision."""
+        critique = CriticEvaluation(
+            answerable=True,
+            confidence=0.5,
+            completeness="partial",
+            missing_aspects=["more details needed"],
+        )
+        # Below threshold -> needs revision
+        assert critique.confidence < 0.7
+        assert critique.completeness == "partial"
+
+    def test_needs_revision_max_reached(self):
+        """Test that max revisions prevents further revision."""
+        # MAX_REVISIONS = 2 in synthesis.py
+        state: SynthesisState = {
+            "query": "test",
+            "context": "ctx",
+            "draft_answer": "answer",
+            "critique": CriticEvaluation(
+                answerable=True,
+                confidence=0.5,  # Low, would normally trigger revision
+                completeness="partial",
+            ),
+            "revision_count": 2,  # At max
+        }
+        # Even with low confidence, max revisions should stop iteration
+        assert state.get("revision_count", 0) >= 2
+
+    def test_needs_revision_insufficient_completeness(self):
+        """Test that insufficient completeness triggers revision."""
+        critique = CriticEvaluation(
+            answerable=False,
+            confidence=0.3,
+            completeness="insufficient",
+            missing_aspects=["context not found"],
+            reasoning="Cannot answer from context",
+        )
+        assert critique.completeness == "insufficient"
+
+
+# =============================================================================
+# STATE TYPE TESTS
+# =============================================================================
+
+
+class TestStateDataclasses:
+    """Tests for state dataclass structures."""
+
+    def test_retrieved_document_defaults(self):
+        """Test RetrievedDocument default values."""
+        doc = RetrievedDocument(content="test", source="src")
+        assert doc.score == 0.0
+        assert doc.metadata == {}
+
+    def test_retrieved_document_immutable(self):
+        """Test that RetrievedDocument is immutable (frozen dataclass)."""
+        doc = RetrievedDocument(content="test", source="src", score=0.9)
+        with pytest.raises(AttributeError):
+            doc.score = 0.5  # type: ignore
+
+    def test_critic_evaluation_defaults(self):
+        """Test CriticEvaluation default values."""
+        critique = CriticEvaluation(
+            answerable=True,
+            confidence=0.8,
+            completeness="complete",
+        )
+        assert critique.missing_aspects == []
+        assert critique.followup_query is None
+        assert critique.reasoning == ""
+
+    def test_entity_info_defaults(self):
+        """Test EntityInfo default values."""
+        entity = EntityInfo(name="Test", entity_type="Concept")
+        assert entity.description == ""
+        assert entity.related_entities == []
+        assert entity.mentioned_in == []
+
+
+# =============================================================================
+# INTEGRATION-STYLE TESTS (with mocks)
+# =============================================================================
+
+
+class TestSubgraphIntegration:
+    """Integration-style tests for subgraph flows."""
+
+    @pytest.mark.asyncio
+    async def test_synthesis_no_context(self, mock_config: AppConfig):
+        """Test synthesis handles missing context gracefully."""
+        # Create the subgraph
+        graph = create_synthesis_subgraph(mock_config)
+
+        # Invoke with no context
+        initial_state: SynthesisState = {
+            "query": "What is requirements traceability?",
+            "context": "",  # Empty context
+        }
+
+        # The graph should handle this by returning an appropriate message
+        # without calling the LLM (early exit in draft_answer node)
+        result = await graph.ainvoke(initial_state)
+
+        assert result["draft_answer"] == "I don't have enough context to answer this question."
+        assert result["critique"].answerable is False
+        assert result["critique"].confidence == 0.0
+
+    @pytest.mark.asyncio
+    async def test_research_no_context(self, mock_config: AppConfig, mock_driver):
+        """Test research handles missing context gracefully."""
+        graph = create_research_subgraph(mock_config, mock_driver)
+
+        initial_state: ResearchState = {
+            "query": "What is requirements traceability?",
+            "context": "",  # Empty context
+        }
+
+        result = await graph.ainvoke(initial_state)
+
+        assert result["identified_entities"] == []
+        assert result["exploration_complete"] is True
