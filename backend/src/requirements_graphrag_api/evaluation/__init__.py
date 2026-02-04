@@ -3,6 +3,7 @@
 Provides comprehensive evaluation of the RAG pipeline using:
 - Standard RAG metrics (faithfulness, relevancy, precision, recall)
 - Domain-specific metrics (citation accuracy, traceability coverage)
+- Agentic metrics (tool selection, iteration efficiency, critic calibration)
 - Benchmark datasets (golden examples, generated examples)
 
 Usage:
@@ -15,6 +16,20 @@ Usage:
         max_samples=10,
     )
     print(f"Average score: {report.aggregate_metrics['avg_score']:.2f}")
+
+Agentic evaluators for LangSmith:
+    from requirements_graphrag_api.evaluation import (
+        tool_selection_evaluator,
+        iteration_efficiency_evaluator,
+        critic_calibration_evaluator,
+        multi_hop_reasoning_evaluator,
+    )
+
+    results = evaluate(
+        target=agentic_rag_chain,
+        data="graphrag-agentic-eval",
+        evaluators=[tool_selection_evaluator, iteration_efficiency_evaluator],
+    )
 """
 
 from __future__ import annotations
@@ -23,6 +38,16 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from requirements_graphrag_api.evaluation.agentic_evaluators import (
+    critic_calibration_evaluator,
+    critic_calibration_evaluator_sync,
+    iteration_efficiency_evaluator,
+    iteration_efficiency_evaluator_sync,
+    multi_hop_reasoning_evaluator,
+    multi_hop_reasoning_evaluator_sync,
+    tool_selection_evaluator,
+    tool_selection_evaluator_sync,
+)
 from requirements_graphrag_api.observability import traceable_safe
 
 if TYPE_CHECKING:
@@ -358,5 +383,13 @@ __all__ = [
     "EvaluationExample",
     "EvaluationReport",
     "EvaluationResult",
+    "critic_calibration_evaluator",
+    "critic_calibration_evaluator_sync",
     "evaluate_rag_pipeline",
+    "iteration_efficiency_evaluator",
+    "iteration_efficiency_evaluator_sync",
+    "multi_hop_reasoning_evaluator",
+    "multi_hop_reasoning_evaluator_sync",
+    "tool_selection_evaluator",
+    "tool_selection_evaluator_sync",
 ]
