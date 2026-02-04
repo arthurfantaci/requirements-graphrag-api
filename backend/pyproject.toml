@@ -52,6 +52,9 @@ dependencies = [
     # Guardrails - Phase 2 (Content Safety)
     "better-profanity>=0.7.0",
     "asyncpg>=0.31.0",
+    "langgraph>=1.0.7",
+    "langgraph-checkpoint-postgres>=3.0.4",
+    "psycopg-binary>=3.3.2",
 ]
 
 [project.optional-dependencies]

@@ -1,0 +1,242 @@
+"""RAG retrieval subgraph for the agentic system.
+
+This subgraph handles the retrieval phase:
+1. Query expansion using QUERY_EXPANSION prompt
+2. Parallel retrieval across multiple queries
+3. Result deduplication and ranking
+
+Flow:
+    START -> expand_queries -> parallel_retrieve -> dedupe_and_rank -> END
+
+State:
+    RAGState with query, expanded_queries, raw_results, ranked_results
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+from typing import TYPE_CHECKING, Any
+
+from langchain_core.output_parsers import StrOutputParser
+from langchain_openai import ChatOpenAI
+from langgraph.graph import END, START, StateGraph
+
+from requirements_graphrag_api.core.agentic.state import RAGState, RetrievedDocument
+from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
+
+if TYPE_CHECKING:
+    from neo4j import Driver
+    from neo4j_graphrag.retrievers import VectorRetriever
+
+    from requirements_graphrag_api.config import AppConfig
+
+logger = logging.getLogger(__name__)
+
+# Constants
+DEFAULT_RETRIEVAL_LIMIT = 6
+MAX_RESULTS_PER_QUERY = 4
+MAX_TOTAL_RESULTS = 10
+
+
+def create_rag_subgraph(
+    config: AppConfig,
+    driver: Driver,
+    retriever: VectorRetriever,
+) -> StateGraph:
+    """Create the RAG retrieval subgraph.
+
+    Args:
+        config: Application configuration.
+        driver: Neo4j driver instance.
+        retriever: Vector retriever instance.
+
+    Returns:
+        Compiled RAG subgraph.
+    """
+    # Import here to avoid circular imports
+    from requirements_graphrag_api.core.retrieval import graph_enriched_search
+
+    # -------------------------------------------------------------------------
+    # Node: expand_queries
+    # -------------------------------------------------------------------------
+    async def expand_queries(state: RAGState) -> dict[str, Any]:
+        """Expand the user query into multiple search queries.
+
+        Uses the QUERY_EXPANSION prompt to generate step-back, synonym,
+        and aspect-specific queries for better retrieval coverage.
+        """
+        query = state["query"]
+        logger.info("Expanding query: %s", query[:50])
+
+        try:
+            prompt_template = get_prompt_sync(PromptName.QUERY_EXPANSION)
+            llm = ChatOpenAI(
+                model=config.chat_model,
+                temperature=0.3,
+                api_key=config.openai_api_key,
+            )
+
+            chain = prompt_template | llm | StrOutputParser()
+            result = await chain.ainvoke({"question": query})
+
+            # Parse JSON response
+            try:
+                parsed = json.loads(result)
+                queries = [q["query"] for q in parsed.get("queries", [])]
+            except (json.JSONDecodeError, KeyError):
+                # Fallback: use original query only
+                logger.warning("Failed to parse query expansion, using original")
+                queries = []
+
+            # Always include original query
+            if query not in queries:
+                queries.insert(0, query)
+
+            # Limit to 4 queries max
+            queries = queries[:4]
+
+            logger.info("Expanded to %d queries", len(queries))
+            return {
+                "expanded_queries": queries,
+                "retrieval_metadata": {"expansion_count": len(queries)},
+            }
+
+        except Exception as e:
+            logger.exception("Query expansion failed")
+            return {
+                "expanded_queries": [query],
+                "retrieval_metadata": {"expansion_error": str(e)},
+            }
+
+    # -------------------------------------------------------------------------
+    # Node: parallel_retrieve
+    # -------------------------------------------------------------------------
+    async def parallel_retrieve(state: RAGState) -> dict[str, Any]:
+        """Perform parallel retrieval across all expanded queries.
+
+        Executes graph_enriched_search for each query concurrently.
+        """
+        queries = state.get("expanded_queries", [state["query"]])
+        logger.info("Retrieving for %d queries", len(queries))
+
+        async def retrieve_single(q: str) -> list[dict[str, Any]]:
+            """Retrieve results for a single query."""
+            try:
+                results = await graph_enriched_search(
+                    retriever=retriever,
+                    driver=driver,
+                    query=q,
+                    limit=MAX_RESULTS_PER_QUERY,
+                )
+                # Tag results with source query
+                for r in results:
+                    r["_source_query"] = q
+                return results
+            except Exception as e:
+                logger.warning("Retrieval failed for query '%s': %s", q[:30], e)
+                return []
+
+        # Execute all retrievals in parallel
+        all_results = await asyncio.gather(
+            *[retrieve_single(q) for q in queries],
+            return_exceptions=True,
+        )
+
+        # Flatten results, filtering out exceptions
+        raw_results = []
+        for result in all_results:
+            if isinstance(result, list):
+                raw_results.extend(result)
+
+        logger.info("Retrieved %d total raw results", len(raw_results))
+        return {"raw_results": raw_results}
+
+    # -------------------------------------------------------------------------
+    # Node: dedupe_and_rank
+    # -------------------------------------------------------------------------
+    async def dedupe_and_rank(state: RAGState) -> dict[str, Any]:
+        """Deduplicate and rank retrieval results.
+
+        Removes duplicates based on chunk ID, then ranks by score.
+        Converts to RetrievedDocument format.
+        """
+        raw_results = state.get("raw_results", [])
+        logger.info("Deduplicating %d results", len(raw_results))
+
+        # Deduplicate by chunk_id (or text hash if no ID)
+        seen: set[str] = set()
+        unique_results: list[dict[str, Any]] = []
+
+        for result in raw_results:
+            # Use chunk_id or hash of text as dedup key
+            chunk_id = result.get("chunk_id") or result.get("id")
+            if not chunk_id:
+                # Fallback to text hash
+                text = result.get("text", "")
+                chunk_id = str(hash(text))
+
+            if chunk_id not in seen:
+                seen.add(chunk_id)
+                unique_results.append(result)
+
+        # Sort by score descending
+        unique_results.sort(key=lambda x: x.get("score", 0), reverse=True)
+
+        # Limit total results
+        unique_results = unique_results[:MAX_TOTAL_RESULTS]
+
+        # Convert to RetrievedDocument format
+        ranked_results = []
+        for result in unique_results:
+            doc = RetrievedDocument(
+                content=result.get("text", ""),
+                source=result.get("article_title", "Unknown"),
+                score=result.get("score", 0.0),
+                metadata={
+                    "chunk_id": result.get("chunk_id"),
+                    "url": result.get("url"),
+                    "entities": result.get("entities", []),
+                    "source_query": result.get("_source_query"),
+                },
+            )
+            ranked_results.append(doc)
+
+        logger.info("Ranked %d unique results", len(ranked_results))
+
+        # Update metadata
+        metadata = state.get("retrieval_metadata", {})
+        metadata.update(
+            {
+                "raw_count": len(raw_results),
+                "unique_count": len(unique_results),
+                "final_count": len(ranked_results),
+            }
+        )
+
+        return {
+            "ranked_results": ranked_results,
+            "retrieval_metadata": metadata,
+        }
+
+    # -------------------------------------------------------------------------
+    # Build the subgraph
+    # -------------------------------------------------------------------------
+    builder = StateGraph(RAGState)
+
+    # Add nodes
+    builder.add_node("expand_queries", expand_queries)
+    builder.add_node("parallel_retrieve", parallel_retrieve)
+    builder.add_node("dedupe_and_rank", dedupe_and_rank)
+
+    # Add edges (linear flow)
+    builder.add_edge(START, "expand_queries")
+    builder.add_edge("expand_queries", "parallel_retrieve")
+    builder.add_edge("parallel_retrieve", "dedupe_and_rank")
+    builder.add_edge("dedupe_and_rank", END)
+
+    return builder.compile()
+
+
+__all__ = ["create_rag_subgraph"]
