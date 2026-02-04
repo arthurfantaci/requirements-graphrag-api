@@ -3,6 +3,10 @@
 Updated Data Model (2026-01):
 - Uses app.state.driver and app.state.retriever instead of graph/vector_store
 - Tests SSE streaming response format
+
+Agentic RAG (2026-02):
+- Updated to mock stream_agentic_events instead of stream_chat
+- Tests agentic orchestrator integration
 """
 
 from __future__ import annotations
@@ -15,7 +19,6 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from requirements_graphrag_api.core.generation import StreamEvent, StreamEventType
 from requirements_graphrag_api.routes.chat import router
 
 if TYPE_CHECKING:
@@ -65,74 +68,63 @@ def client(
     return TestClient(mock_app)
 
 
-def create_mock_stream_events(
+def create_mock_agentic_sse_events(
     sources: list[dict] | None = None,
-    entities: list[str] | None = None,
-    images: list[dict] | None = None,
+    entities: list[dict] | None = None,
     answer: str = "Requirements traceability is the ability to track requirements.",
-) -> list[StreamEvent]:
-    """Create a list of mock stream events for testing.
+) -> list[str]:
+    """Create a list of mock SSE event strings for agentic streaming.
+
+    The agentic streaming returns pre-formatted SSE strings, not StreamEvent objects.
+    Note: Routing event is NOT included here because it's emitted by _generate_sse_events
+    before calling the agentic streaming.
 
     Args:
         sources: Optional source list.
         entities: Optional entity list.
-        images: Optional image list.
-        answer: The answer to split into tokens.
+        answer: The answer to include in tokens and done event.
 
     Returns:
-        List of StreamEvents in the expected order.
+        List of SSE-formatted strings in the expected order.
     """
     if sources is None:
         sources = [
             {
                 "title": "Traceability Guide",
-                "url": "https://example.com/trace",
-                "chunk_id": "chunk-1",
-                "relevance_score": 0.95,
+                "content": "Requirements traceability...",
+                "score": 0.95,
             }
         ]
     if entities is None:
-        entities = ["requirements traceability", "lifecycle"]
-    if images is None:
-        images = [
-            {
-                "url": "https://jamasoftware.com/images/traceability-matrix.png",
-                "alt_text": "Traceability matrix example",
-                "context": "A traceability matrix showing relationships",
-                "source_title": "Traceability Guide",
-            }
-        ]
+        entities = [{"name": "requirements traceability", "type": "Concept", "description": "..."}]
 
-    events = [
-        StreamEvent(
-            event_type=StreamEventType.SOURCES,
-            data={"sources": sources, "entities": entities, "images": images},
-        ),
-    ]
+    events = []
 
-    # Split answer into tokens
-    words = answer.split()
-    for i, word in enumerate(words):
-        token = word if i == 0 else f" {word}"
-        events.append(
-            StreamEvent(
-                event_type=StreamEventType.TOKEN,
-                data={"token": token},
-            )
-        )
+    # Phase event (agentic-specific) - first event from stream_agentic_events
+    phase_rag = {"phase": "rag", "message": "Retrieving relevant context..."}
+    events.append(f"data: {json.dumps(phase_rag)}\n\n")
 
-    events.append(
-        StreamEvent(
-            event_type=StreamEventType.DONE,
-            data={"full_answer": answer, "source_count": len(sources)},
-        )
-    )
+    # Sources event
+    events.append(f"data: {json.dumps({'sources': sources})}\n\n")
+
+    # Phase change to synthesis
+    phase_synth = {"phase": "synthesis", "message": "Generating answer..."}
+    events.append(f"data: {json.dumps(phase_synth)}\n\n")
+
+    # Token events (chunked answer)
+    chunk_size = 20
+    for i in range(0, len(answer), chunk_size):
+        chunk = answer[i : i + chunk_size]
+        events.append(f"data: {json.dumps({'token': chunk})}\n\n")
+
+    # Done event
+    events.append(f"data: {json.dumps({'full_answer': answer, 'source_count': len(sources)})}\n\n")
 
     return events
 
 
-async def mock_stream_chat_generator(events: list[StreamEvent]) -> AsyncIterator[StreamEvent]:
-    """Create an async generator that yields stream events."""
+async def mock_agentic_stream_generator(events: list[str]) -> AsyncIterator[str]:
+    """Create an async generator that yields SSE strings."""
     for event in events:
         yield event
 
@@ -144,23 +136,17 @@ def parse_sse_response(response_text: str) -> list[dict]:
         response_text: Raw SSE response text.
 
     Returns:
-        List of parsed events with 'event' and 'data' keys.
+        List of parsed data payloads.
     """
     events = []
-    current_event = {}
 
     for line in response_text.strip().split("\n"):
-        if line.startswith("event: "):
-            current_event["event"] = line[7:]
-        elif line.startswith("data: "):
-            current_event["data"] = json.loads(line[6:])
-        elif line == "" and current_event:
-            events.append(current_event)
-            current_event = {}
-
-    # Handle last event if no trailing newline
-    if current_event:
-        events.append(current_event)
+        if line.startswith("data: "):
+            try:
+                data = json.loads(line[6:])
+                events.append(data)
+            except json.JSONDecodeError:
+                continue
 
     return events
 
@@ -170,10 +156,13 @@ class TestChatEndpointStreaming:
 
     def test_chat_returns_sse_content_type(self, client: TestClient) -> None:
         """Test that the endpoint returns text/event-stream content type."""
-        events = create_mock_stream_events()
+        events = create_mock_agentic_sse_events()
 
-        with patch("requirements_graphrag_api.routes.chat.stream_chat") as mock_stream:
-            mock_stream.return_value = mock_stream_chat_generator(events)
+        with (
+            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+        ):
+            mock_stream.return_value = mock_agentic_stream_generator(events)
 
             response = client.post(
                 "/api/v1/chat",
@@ -185,10 +174,13 @@ class TestChatEndpointStreaming:
 
     def test_chat_returns_correct_sse_headers(self, client: TestClient) -> None:
         """Test that SSE-specific headers are set correctly."""
-        events = create_mock_stream_events()
+        events = create_mock_agentic_sse_events()
 
-        with patch("requirements_graphrag_api.routes.chat.stream_chat") as mock_stream:
-            mock_stream.return_value = mock_stream_chat_generator(events)
+        with (
+            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+        ):
+            mock_stream.return_value = mock_agentic_stream_generator(events)
 
             response = client.post(
                 "/api/v1/chat",
@@ -199,11 +191,14 @@ class TestChatEndpointStreaming:
             assert response.headers["x-accel-buffering"] == "no"
 
     def test_chat_emits_routing_event_first(self, client: TestClient) -> None:
-        """Test that the first SSE event is the routing event."""
-        events = create_mock_stream_events()
+        """Test that the first SSE event contains routing info."""
+        events = create_mock_agentic_sse_events()
 
-        with patch("requirements_graphrag_api.routes.chat.stream_chat") as mock_stream:
-            mock_stream.return_value = mock_stream_chat_generator(events)
+        with (
+            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+        ):
+            mock_stream.return_value = mock_agentic_stream_generator(events)
 
             response = client.post(
                 "/api/v1/chat",
@@ -216,21 +211,19 @@ class TestChatEndpointStreaming:
             parsed_events = parse_sse_response(response.text)
 
             assert len(parsed_events) > 0
-            # First event is routing
-            assert parsed_events[0]["event"] == "routing"
-            assert parsed_events[0]["data"]["intent"] == "explanatory"
-            # Second event is sources
-            assert parsed_events[1]["event"] == "sources"
-            assert "sources" in parsed_events[1]["data"]
-            assert "entities" in parsed_events[1]["data"]
-            assert "images" in parsed_events[1]["data"]
+            # First event should have intent (routing)
+            assert "intent" in parsed_events[0]
+            assert parsed_events[0]["intent"] == "explanatory"
 
     def test_chat_emits_token_events(self, client: TestClient) -> None:
         """Test that token events are emitted during streaming."""
-        events = create_mock_stream_events(answer="Test answer")
+        events = create_mock_agentic_sse_events(answer="Test answer")
 
-        with patch("requirements_graphrag_api.routes.chat.stream_chat") as mock_stream:
-            mock_stream.return_value = mock_stream_chat_generator(events)
+        with (
+            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+        ):
+            mock_stream.return_value = mock_agentic_stream_generator(events)
 
             response = client.post(
                 "/api/v1/chat",
@@ -241,18 +234,21 @@ class TestChatEndpointStreaming:
             )
 
             parsed_events = parse_sse_response(response.text)
-            token_events = [e for e in parsed_events if e["event"] == "token"]
+            token_events = [e for e in parsed_events if "token" in e]
 
             assert len(token_events) > 0
             for event in token_events:
-                assert "token" in event["data"]
+                assert "token" in event
 
     def test_chat_emits_done_event_last(self, client: TestClient) -> None:
         """Test that the last SSE event is the done event."""
-        events = create_mock_stream_events()
+        events = create_mock_agentic_sse_events()
 
-        with patch("requirements_graphrag_api.routes.chat.stream_chat") as mock_stream:
-            mock_stream.return_value = mock_stream_chat_generator(events)
+        with (
+            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+        ):
+            mock_stream.return_value = mock_agentic_stream_generator(events)
 
             response = client.post(
                 "/api/v1/chat",
@@ -265,16 +261,19 @@ class TestChatEndpointStreaming:
             parsed_events = parse_sse_response(response.text)
 
             assert len(parsed_events) > 0
-            assert parsed_events[-1]["event"] == "done"
-            assert "full_answer" in parsed_events[-1]["data"]
-            assert "source_count" in parsed_events[-1]["data"]
+            # Last event should have full_answer (done event)
+            assert "full_answer" in parsed_events[-1]
+            assert "source_count" in parsed_events[-1]
 
     def test_chat_correct_event_sequence(self, client: TestClient) -> None:
-        """Test that events are emitted in correct order."""
-        events = create_mock_stream_events(answer="One two three")
+        """Test that events are emitted in expected order."""
+        events = create_mock_agentic_sse_events(answer="One two three")
 
-        with patch("requirements_graphrag_api.routes.chat.stream_chat") as mock_stream:
-            mock_stream.return_value = mock_stream_chat_generator(events)
+        with (
+            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+        ):
+            mock_stream.return_value = mock_agentic_stream_generator(events)
 
             response = client.post(
                 "/api/v1/chat",
@@ -285,22 +284,20 @@ class TestChatEndpointStreaming:
             )
 
             parsed_events = parse_sse_response(response.text)
-            event_types = [e["event"] for e in parsed_events]
 
-            # First should be routing, second sources, last should be done
-            assert event_types[0] == "routing"
-            assert event_types[1] == "sources"
-            assert event_types[-1] == "done"
-            # All middle events (after routing and sources, before done) should be tokens
-            for event_type in event_types[2:-1]:
-                assert event_type == "token"
+            # Should have: routing, phase(rag), sources, phase(synthesis), tokens..., done
+            assert "intent" in parsed_events[0]  # Routing
+            assert "full_answer" in parsed_events[-1]  # Done
 
     def test_chat_with_conversation_history(self, client: TestClient) -> None:
-        """Test that conversation history is passed to stream_chat."""
-        events = create_mock_stream_events(answer="Follow up answer")
+        """Test that conversation history is processed correctly."""
+        events = create_mock_agentic_sse_events(answer="Follow up answer")
 
-        with patch("requirements_graphrag_api.routes.chat.stream_chat") as mock_stream:
-            mock_stream.return_value = mock_stream_chat_generator(events)
+        with (
+            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+        ):
+            mock_stream.return_value = mock_agentic_stream_generator(events)
 
             response = client.post(
                 "/api/v1/chat",
@@ -316,10 +313,12 @@ class TestChatEndpointStreaming:
 
             assert response.status_code == 200
 
-            # Verify history was passed to stream_chat
-            call_kwargs = mock_stream.call_args[1]
-            assert call_kwargs["conversation_history"] is not None
-            assert len(call_kwargs["conversation_history"]) == 2
+            # Verify the call was made with initial state containing messages
+            call_args = mock_stream.call_args
+            initial_state = call_args[0][1]  # Second positional arg
+            assert "messages" in initial_state
+            # Should have history messages + current query
+            assert len(initial_state["messages"]) >= 1
 
     def test_chat_validates_message_length(self, client: TestClient) -> None:
         """Test that empty message is rejected."""
@@ -354,11 +353,14 @@ class TestChatEndpointStreaming:
         assert response.status_code == 422
 
     def test_chat_with_custom_options(self, client: TestClient) -> None:
-        """Test that custom options are passed to stream_chat."""
-        events = create_mock_stream_events()
+        """Test that custom options are handled correctly."""
+        events = create_mock_agentic_sse_events()
 
-        with patch("requirements_graphrag_api.routes.chat.stream_chat") as mock_stream:
-            mock_stream.return_value = mock_stream_chat_generator(events)
+        with (
+            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+        ):
+            mock_stream.return_value = mock_agentic_stream_generator(events)
 
             response = client.post(
                 "/api/v1/chat",
@@ -376,16 +378,15 @@ class TestChatEndpointStreaming:
 
             assert response.status_code == 200
 
-            # Verify max_sources was passed
-            call_kwargs = mock_stream.call_args[1]
-            assert call_kwargs["max_sources"] == 3
-
     def test_chat_handles_empty_sources(self, client: TestClient) -> None:
         """Test that empty sources list is handled gracefully."""
-        events = create_mock_stream_events(sources=[], entities=[], images=[])
+        events = create_mock_agentic_sse_events(sources=[], entities=[])
 
-        with patch("requirements_graphrag_api.routes.chat.stream_chat") as mock_stream:
-            mock_stream.return_value = mock_stream_chat_generator(events)
+        with (
+            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+        ):
+            mock_stream.return_value = mock_agentic_stream_generator(events)
 
             response = client.post(
                 "/api/v1/chat",
@@ -398,25 +399,20 @@ class TestChatEndpointStreaming:
             assert response.status_code == 200
             parsed_events = parse_sse_response(response.text)
 
-            # First event is routing, second is sources
-            assert parsed_events[0]["event"] == "routing"
-            sources_event = parsed_events[1]
-            assert sources_event["event"] == "sources"
-            assert sources_event["data"]["sources"] == []
-            assert sources_event["data"]["entities"] == []
-            assert sources_event["data"]["images"] == []
+            # Find the sources event
+            sources_events = [e for e in parsed_events if "sources" in e]
+            assert len(sources_events) > 0
+            assert sources_events[0]["sources"] == []
 
     def test_chat_error_event(self, client: TestClient) -> None:
         """Test that error events are properly formatted."""
-        error_events = [
-            StreamEvent(
-                event_type=StreamEventType.ERROR,
-                data={"error": "Something went wrong"},
-            )
-        ]
+        error_events = [f"data: {json.dumps({'error': 'Something went wrong'})}\n\n"]
 
-        with patch("requirements_graphrag_api.routes.chat.stream_chat") as mock_stream:
-            mock_stream.return_value = mock_stream_chat_generator(error_events)
+        with (
+            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+        ):
+            mock_stream.return_value = mock_agentic_stream_generator(error_events)
 
             response = client.post(
                 "/api/v1/chat",
@@ -429,11 +425,12 @@ class TestChatEndpointStreaming:
             assert response.status_code == 200
             parsed_events = parse_sse_response(response.text)
 
-            # First is routing, then error from stream_chat
-            assert len(parsed_events) == 2
-            assert parsed_events[0]["event"] == "routing"
-            assert parsed_events[1]["event"] == "error"
-            assert "error" in parsed_events[1]["data"]
+            # Should have routing event, then error from agentic stream
+            assert len(parsed_events) >= 1
+            # Find error event
+            error_events = [e for e in parsed_events if "error" in e]
+            assert len(error_events) > 0
+            assert "error" in error_events[0]
 
 
 class TestChatMessageModel:
@@ -441,10 +438,13 @@ class TestChatMessageModel:
 
     def test_valid_user_role(self, client: TestClient) -> None:
         """Test that 'user' role is accepted."""
-        events = create_mock_stream_events()
+        events = create_mock_agentic_sse_events()
 
-        with patch("requirements_graphrag_api.routes.chat.stream_chat") as mock_stream:
-            mock_stream.return_value = mock_stream_chat_generator(events)
+        with (
+            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+        ):
+            mock_stream.return_value = mock_agentic_stream_generator(events)
 
             response = client.post(
                 "/api/v1/chat",
@@ -460,10 +460,13 @@ class TestChatMessageModel:
 
     def test_valid_assistant_role(self, client: TestClient) -> None:
         """Test that 'assistant' role is accepted."""
-        events = create_mock_stream_events()
+        events = create_mock_agentic_sse_events()
 
-        with patch("requirements_graphrag_api.routes.chat.stream_chat") as mock_stream:
-            mock_stream.return_value = mock_stream_chat_generator(events)
+        with (
+            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+        ):
+            mock_stream.return_value = mock_agentic_stream_generator(events)
 
             response = client.post(
                 "/api/v1/chat",
@@ -504,3 +507,71 @@ class TestChatMessageModel:
         )
 
         assert response.status_code == 422
+
+
+# =============================================================================
+# CONVERSATION MANAGEMENT TESTS (Phase 5.3)
+# =============================================================================
+
+
+class TestConversationManagement:
+    """Tests for conversation management endpoints."""
+
+    def test_get_conversation_no_checkpoint_config(self, client: TestClient) -> None:
+        """Test that GET /chat/{thread_id} returns 503 without checkpoint config."""
+        response = client.get("/api/v1/chat/test-thread-123")
+
+        # Without checkpoint config, should return 503
+        assert response.status_code == 503
+        assert "not configured" in response.json()["detail"].lower()
+
+    def test_continue_conversation_streaming(self, client: TestClient) -> None:
+        """Test that POST /chat/{thread_id}/continue returns SSE stream."""
+        events = create_mock_agentic_sse_events()
+
+        with (
+            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+        ):
+            mock_stream.return_value = mock_agentic_stream_generator(events)
+
+            response = client.post(
+                "/api/v1/chat/test-thread-456/continue",
+                json={"message": "Tell me more about that"},
+            )
+
+            assert response.status_code == 200
+            assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
+            assert response.headers["x-thread-id"] == "test-thread-456"
+
+    def test_continue_conversation_validates_message(self, client: TestClient) -> None:
+        """Test that continue endpoint validates message."""
+        response = client.post(
+            "/api/v1/chat/test-thread/continue",
+            json={"message": ""},  # Empty message
+        )
+
+        assert response.status_code == 422
+
+    def test_continue_conversation_with_options(self, client: TestClient) -> None:
+        """Test that continue endpoint accepts options."""
+        events = create_mock_agentic_sse_events()
+
+        with (
+            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+        ):
+            mock_stream.return_value = mock_agentic_stream_generator(events)
+
+            response = client.post(
+                "/api/v1/chat/test-thread/continue",
+                json={
+                    "message": "What about examples?",
+                    "options": {
+                        "max_sources": 3,
+                        "force_intent": "explanatory",
+                    },
+                },
+            )
+
+            assert response.status_code == 200

@@ -23,12 +23,19 @@ class PromptName(StrEnum):
     For local development, the simple name is used as the key.
     """
 
+    # Existing prompts
     INTENT_CLASSIFIER = "graphrag-intent-classifier"
     CRITIC = "graphrag-critic"
     STEPBACK = "graphrag-stepback"
     QUERY_UPDATER = "graphrag-query-updater"
     RAG_GENERATION = "graphrag-rag-generation"
     TEXT2CYPHER = "graphrag-text2cypher"
+
+    # Agentic prompts (Phase 2)
+    AGENT_REASONING = "graphrag-agent-reasoning"
+    QUERY_EXPANSION = "graphrag-query-expansion"
+    SYNTHESIS = "graphrag-synthesis"
+    ENTITY_SELECTOR = "graphrag-entity-selector"
 
 
 @dataclass(frozen=True)
@@ -484,10 +491,290 @@ RETURN webinar_count, count(v) AS video_count
 
 
 # =============================================================================
+# AGENT REASONING PROMPT
+# Main agent loop for tool selection and reasoning
+# =============================================================================
+
+AGENT_REASONING_SYSTEM: Final[str] = """You are an intelligent Requirements Management assistant \
+with access to specialized tools.
+
+Your goal is to answer questions about requirements management, traceability, standards, \
+and related concepts by selecting and using the appropriate tools.
+
+## Available Tools
+
+1. **graph_search** - Search the knowledge base using hybrid vector + graph retrieval
+   - Use for: explanations, concepts, best practices, how-to questions
+   - Returns: ranked content chunks with citations
+
+2. **text2cypher** - Convert questions to Cypher queries for structured data
+   - Use for: counts, lists, enumerations, specific lookups
+   - Returns: query results from the knowledge graph
+
+3. **explore_entity** - Deep dive into a specific entity
+   - Use for: understanding relationships, finding related content
+   - Returns: entity details, related entities, article mentions
+
+4. **lookup_standard** - Get information about industry standards
+   - Use for: specific standard details (ISO 26262, DO-178C, etc.)
+   - Returns: standard info, applicable industries, related standards
+
+5. **search_standards** - Search for standards by criteria
+   - Use for: finding relevant standards for a domain
+   - Returns: list of matching standards
+
+6. **search_definitions** - Search terminology definitions
+   - Use for: finding definitions of technical terms
+   - Returns: matching term definitions
+
+7. **lookup_term** - Get precise definition of a term
+   - Use for: exact term/acronym definitions
+   - Returns: term definition with source
+
+## Decision Guidelines
+
+1. **Start with the most likely tool** - Use graph_search for explanatory questions, \
+text2cypher for structured queries
+2. **Use multiple tools when needed** - Complex questions may require combining results
+3. **Iterate if context is insufficient** - If first results don't fully answer, try different tools
+4. **Know when to stop** - Don't over-iterate; 2-3 tool calls usually suffice
+5. **Synthesize clearly** - Combine tool results into a coherent, cited answer
+
+## Iteration Control
+
+- Maximum iterations: {max_iterations}
+- Current iteration: {iteration}
+- Stop when you have sufficient context to answer confidently
+
+Think step-by-step about which tool(s) will best answer the question."""
+
+AGENT_REASONING_TEMPLATE = ChatPromptTemplate.from_messages(
+    [
+        ("system", AGENT_REASONING_SYSTEM),
+        MessagesPlaceholder(variable_name="messages"),
+    ]
+)
+
+AGENT_REASONING_METADATA = PromptMetadata(
+    version="1.0.0",
+    description="Main agent loop prompt for tool selection and reasoning",
+    input_variables=["max_iterations", "iteration", "messages"],
+    output_format="text",
+    evaluation_criteria=[
+        "tool_selection_accuracy",
+        "iteration_efficiency",
+        "reasoning_quality",
+    ],
+    tags=["agentic", "reasoning", "tool_selection"],
+)
+
+
+# =============================================================================
+# QUERY EXPANSION PROMPT
+# Generates multiple search queries from user question (uses STEPBACK internally)
+# =============================================================================
+
+QUERY_EXPANSION_SYSTEM: Final[str] = """You are a query expansion specialist for a \
+Requirements Management knowledge base.
+
+Your task is to generate multiple search queries that together will retrieve \
+comprehensive context for answering the user's question.
+
+## Expansion Strategies
+
+1. **Step-back Query**: A broader, more general version of the question
+   - Removes specific details to find foundational information
+   - Example: "What are ASIL levels in ISO 26262?" → "What is ISO 26262 safety classification?"
+
+2. **Synonym/Alternate Terms**: Rephrase using different terminology
+   - Requirements Management has many synonymous terms
+   - Example: "traceability" ↔ "trace links" ↔ "requirements linking"
+
+3. **Aspect-Specific Query**: Focus on one aspect of a multi-faceted question
+   - Break complex questions into components
+   - Example: "How to implement V&V?" → "What is verification?" + "What is validation?"
+
+## Output Format
+
+Generate 2-4 queries as a JSON array:
+{{
+    "queries": [
+        {{"query": "...", "strategy": "stepback|synonym|aspect"}},
+        {{"query": "...", "strategy": "stepback|synonym|aspect"}}
+    ],
+    "reasoning": "Brief explanation of why these queries will help"
+}}
+
+Always include at least one step-back query for foundational context."""
+
+QUERY_EXPANSION_TEMPLATE = ChatPromptTemplate.from_messages(
+    [
+        ("system", QUERY_EXPANSION_SYSTEM),
+        ("human", "Original question: {question}\n\nGenerate expanded queries:"),
+    ]
+)
+
+QUERY_EXPANSION_METADATA = PromptMetadata(
+    version="1.0.0",
+    description="Generates multiple search queries using step-back and synonym strategies",
+    input_variables=["question"],
+    output_format="json",
+    evaluation_criteria=[
+        "query_diversity",
+        "retrieval_improvement",
+        "stepback_quality",
+    ],
+    tags=["agentic", "query_expansion", "stepback"],
+)
+
+
+# =============================================================================
+# SYNTHESIS PROMPT
+# Generates final answer with self-critique (uses CRITIC internally)
+# =============================================================================
+
+SYNTHESIS_SYSTEM: Final[str] = """You are a Requirements Management expert synthesizing \
+answers from retrieved context.
+
+Your task is to generate a comprehensive, accurate answer and then critically evaluate it.
+
+## Retrieved Context
+{context}
+
+## Related Entities
+{entities}
+
+## Previous Conversation (if multi-turn)
+{previous_context}
+
+## Synthesis Guidelines
+
+1. **Ground in context** - Every claim should be supported by the retrieved context
+2. **Cite sources** - Use [Source N] format for citations
+3. **Acknowledge gaps** - If context is incomplete, say so
+4. **Use technical terminology** - Maintain domain accuracy
+5. **Structure clearly** - Use headings, bullets for complex answers
+
+## Self-Critique (CRITICAL)
+
+After drafting your answer, evaluate it:
+- **Completeness**: Does it address all parts of the question?
+- **Accuracy**: Is every claim supported by context?
+- **Confidence**: How confident are you (0.0-1.0)?
+
+If confidence < 0.7 or completeness is partial, indicate what additional information would help.
+
+## Output Format
+
+{{
+    "answer": "Your synthesized answer with [Source N] citations...",
+    "critique": {{
+        "completeness": "complete|partial|insufficient",
+        "confidence": 0.0-1.0,
+        "missing_aspects": ["list any gaps"],
+        "would_benefit_from": "suggested follow-up query if needed"
+    }},
+    "citations": ["Source 1 title", "Source 2 title", ...]
+}}"""
+
+SYNTHESIS_TEMPLATE = ChatPromptTemplate.from_messages(
+    [
+        ("system", SYNTHESIS_SYSTEM),
+        MessagesPlaceholder(variable_name="history", optional=True),
+        ("human", "Question: {question}\n\nSynthesize your answer:"),
+    ]
+)
+
+SYNTHESIS_METADATA = PromptMetadata(
+    version="1.0.0",
+    description="Synthesizes answers with self-critique and citations",
+    input_variables=["context", "entities", "previous_context", "question"],
+    output_format="json",
+    evaluation_criteria=[
+        "faithfulness",
+        "completeness",
+        "citation_accuracy",
+        "self_critique_calibration",
+    ],
+    tags=["agentic", "synthesis", "critic", "citation"],
+)
+
+
+# =============================================================================
+# ENTITY SELECTOR PROMPT
+# Selects entities for deep exploration from context
+# =============================================================================
+
+ENTITY_SELECTOR_SYSTEM: Final[str] = """You are an entity analysis specialist for a \
+Requirements Management knowledge base.
+
+Your task is to identify entities from the context that warrant deeper exploration \
+to better answer the question.
+
+## Entity Types in Knowledge Base
+
+- **Standard**: Industry standards (ISO 26262, DO-178C, IEC 62304, etc.)
+- **Tool**: Requirements management tools (Jama Connect, DOORS, etc.)
+- **Concept**: Domain concepts (traceability, verification, validation, etc.)
+- **Methodology**: Development methodologies (Agile, V-Model, MBSE, etc.)
+- **Industry**: Industries (automotive, aerospace, medical, etc.)
+
+## Selection Criteria
+
+Select entities that:
+1. Are central to answering the question
+2. Appear in the context but lack sufficient detail
+3. Have relationships that would enrich the answer
+4. The user might want to learn more about
+
+Do NOT select:
+- Entities already well-explained in context
+- Generic terms that aren't specific entities
+- More than 3 entities (focus on most important)
+
+## Current Context
+{context}
+
+## Output Format
+
+{{
+    "entities": [
+        {{"name": "...", "type": "Standard|Tool|Concept|...", "reason": "why explore"}},
+        ...
+    ],
+    "exploration_priority": "high|medium|low",
+    "reasoning": "Brief explanation of selection"
+}}
+
+If no entities need exploration, return empty list with reasoning."""
+
+ENTITY_SELECTOR_TEMPLATE = ChatPromptTemplate.from_messages(
+    [
+        ("system", ENTITY_SELECTOR_SYSTEM),
+        ("human", "Question: {question}\n\nSelect entities to explore:"),
+    ]
+)
+
+ENTITY_SELECTOR_METADATA = PromptMetadata(
+    version="1.0.0",
+    description="Identifies entities that warrant deeper exploration",
+    input_variables=["context", "question"],
+    output_format="json",
+    evaluation_criteria=[
+        "entity_relevance",
+        "selection_precision",
+        "exploration_value",
+    ],
+    tags=["agentic", "entity_selection", "research"],
+)
+
+
+# =============================================================================
 # PROMPT DEFINITIONS REGISTRY
 # =============================================================================
 
 PROMPT_DEFINITIONS: Final[dict[PromptName, PromptDefinition]] = {
+    # Existing prompts
     PromptName.INTENT_CLASSIFIER: PromptDefinition(
         name=PromptName.INTENT_CLASSIFIER,
         template=INTENT_CLASSIFIER_TEMPLATE,
@@ -517,6 +804,27 @@ PROMPT_DEFINITIONS: Final[dict[PromptName, PromptDefinition]] = {
         name=PromptName.TEXT2CYPHER,
         template=TEXT2CYPHER_TEMPLATE,
         metadata=TEXT2CYPHER_METADATA,
+    ),
+    # Agentic prompts (Phase 2)
+    PromptName.AGENT_REASONING: PromptDefinition(
+        name=PromptName.AGENT_REASONING,
+        template=AGENT_REASONING_TEMPLATE,
+        metadata=AGENT_REASONING_METADATA,
+    ),
+    PromptName.QUERY_EXPANSION: PromptDefinition(
+        name=PromptName.QUERY_EXPANSION,
+        template=QUERY_EXPANSION_TEMPLATE,
+        metadata=QUERY_EXPANSION_METADATA,
+    ),
+    PromptName.SYNTHESIS: PromptDefinition(
+        name=PromptName.SYNTHESIS,
+        template=SYNTHESIS_TEMPLATE,
+        metadata=SYNTHESIS_METADATA,
+    ),
+    PromptName.ENTITY_SELECTOR: PromptDefinition(
+        name=PromptName.ENTITY_SELECTOR,
+        template=ENTITY_SELECTOR_TEMPLATE,
+        metadata=ENTITY_SELECTOR_METADATA,
     ),
 }
 
