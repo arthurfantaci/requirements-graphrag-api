@@ -48,6 +48,24 @@ from requirements_graphrag_api.evaluation.agentic_evaluators import (
     tool_selection_evaluator,
     tool_selection_evaluator_sync,
 )
+from requirements_graphrag_api.evaluation.cost_analysis import (
+    CostReport,
+    CostTracker,
+    LLMCall,
+    estimate_cost,
+    get_cost_report,
+    get_global_cost_tracker,
+    reset_global_cost_tracker,
+)
+from requirements_graphrag_api.evaluation.performance import (
+    ExecutionMetrics,
+    PerformanceTracker,
+    SubgraphMetrics,
+    get_global_tracker,
+    get_performance_summary,
+    reset_global_tracker,
+    track_execution,
+)
 from requirements_graphrag_api.observability import traceable_safe
 
 if TYPE_CHECKING:
@@ -380,16 +398,34 @@ async def evaluate_rag_pipeline(
 
 
 __all__ = [
+    # Cost analysis
+    "CostReport",
+    "CostTracker",
+    # Core evaluation
     "EvaluationExample",
     "EvaluationReport",
     "EvaluationResult",
+    # Performance tracking
+    "ExecutionMetrics",
+    "LLMCall",
+    "PerformanceTracker",
+    "SubgraphMetrics",
+    # Agentic evaluators
     "critic_calibration_evaluator",
     "critic_calibration_evaluator_sync",
+    "estimate_cost",
     "evaluate_rag_pipeline",
+    "get_cost_report",
+    "get_global_cost_tracker",
+    "get_global_tracker",
+    "get_performance_summary",
     "iteration_efficiency_evaluator",
     "iteration_efficiency_evaluator_sync",
     "multi_hop_reasoning_evaluator",
     "multi_hop_reasoning_evaluator_sync",
+    "reset_global_cost_tracker",
+    "reset_global_tracker",
     "tool_selection_evaluator",
     "tool_selection_evaluator_sync",
+    "track_execution",
 ]

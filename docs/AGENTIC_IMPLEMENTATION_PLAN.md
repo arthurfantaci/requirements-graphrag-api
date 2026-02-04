@@ -408,15 +408,19 @@ Use ToolSearch: "select:mcp__ide__getDiagnostics"
   > Run with: `uv run python scripts/run_agentic_evaluation.py`
   > Compare with: `uv run python scripts/compare_experiments.py -d graphrag-agentic-eval`
 
-- [ ] **6.4** Performance optimization
+- [x] **6.4** Performance optimization
   - Identify slow subgraphs
   - Optimize parallel tool execution
   - Tune iteration limits
+  > Completed: evaluation/performance.py with PerformanceTracker, optimization hints
+  > Tests: 18 tests in tests/test_evaluation/test_performance.py
 
-- [ ] **6.5** Cost analysis
+- [x] **6.5** Cost analysis
   - Track LLM calls per query
   - Compare cost: old vs new
   - Implement cost-saving measures if needed
+  > Completed: evaluation/cost_analysis.py with CostTracker, estimate_cost, MODEL_PRICING
+  > Tests: 30 tests in tests/test_evaluation/test_cost_analysis.py
 
 ### Claude Code Commands for Phase 6
 
