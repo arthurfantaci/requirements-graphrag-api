@@ -18,6 +18,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from langchain_core.messages import AIMessage, HumanMessage
 
 from requirements_graphrag_api.routes.chat import router
 
@@ -321,8 +322,47 @@ class TestChatEndpointStreaming:
             call_args = mock_stream.call_args
             initial_state = call_args[0][1]  # Second positional arg
             assert "messages" in initial_state
-            # Should have history messages + current query
-            assert len(initial_state["messages"]) >= 1
+            # Should have history messages + current query (3 total)
+            assert len(initial_state["messages"]) >= 3
+
+    def test_chat_assistant_messages_become_aimessage(self, client: TestClient) -> None:
+        """Test that assistant messages in history are converted to AIMessage (F2 fix)."""
+        events = create_mock_agentic_sse_events(answer="Follow up")
+
+        with (
+            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+        ):
+            mock_stream.return_value = mock_agentic_stream_generator(events)
+
+            response = client.post(
+                "/api/v1/chat",
+                json={
+                    "message": "Tell me more",
+                    "conversation_history": [
+                        {"role": "user", "content": "What is traceability?"},
+                        {"role": "assistant", "content": "Traceability is..."},
+                    ],
+                    "options": {"force_intent": "explanatory"},
+                },
+            )
+
+            assert response.status_code == 200
+
+            call_args = mock_stream.call_args
+            initial_state = call_args[0][1]
+            messages = initial_state["messages"]
+
+            # First message should be HumanMessage (from history)
+            assert isinstance(messages[0], HumanMessage)
+            assert messages[0].content == "What is traceability?"
+
+            # Second message should be AIMessage (from history - F2 fix)
+            assert isinstance(messages[1], AIMessage)
+            assert messages[1].content == "Traceability is..."
+
+            # Third message should be HumanMessage (current query)
+            assert isinstance(messages[2], HumanMessage)
 
     def test_chat_validates_message_length(self, client: TestClient) -> None:
         """Test that empty message is rejected."""

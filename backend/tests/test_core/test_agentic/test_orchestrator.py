@@ -13,13 +13,14 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from requirements_graphrag_api.core.agentic.checkpoints import (
     get_thread_config,
     get_thread_id_from_config,
 )
 from requirements_graphrag_api.core.agentic.orchestrator import (
+    COMPARISON_KEYWORDS,
     DEFAULT_MAX_ITERATIONS,
     RESEARCH_ENTITY_THRESHOLD,
     create_orchestrator_graph,
@@ -264,3 +265,209 @@ class TestOrchestratorConstants:
     def test_research_threshold(self):
         """Test research entity threshold constant."""
         assert RESEARCH_ENTITY_THRESHOLD == 2
+
+    def test_comparison_keywords_exist(self):
+        """Test that comparison keywords are defined."""
+        assert "compare" in COMPARISON_KEYWORDS
+        assert "vs" in COMPARISON_KEYWORDS
+        assert "difference between" in COMPARISON_KEYWORDS
+
+
+class TestResearchSkipHeuristic:
+    """Tests for the should_research() heuristic that skips research for simple queries."""
+
+    # Realistic content long enough to pass the 200-char context threshold
+    _LONG_CONTENT = "A" * 100
+
+    @pytest.mark.asyncio
+    async def test_simple_query_high_score_skips_research(
+        self, mock_config: AppConfig, mock_driver, mock_retriever
+    ):
+        """Test that a short query with high retrieval score skips research."""
+        with (
+            patch(
+                "requirements_graphrag_api.core.agentic.orchestrator.create_rag_subgraph"
+            ) as mock_rag,
+            patch(
+                "requirements_graphrag_api.core.agentic.orchestrator.create_research_subgraph"
+            ) as mock_research,
+            patch(
+                "requirements_graphrag_api.core.agentic.orchestrator.create_synthesis_subgraph"
+            ) as mock_synth,
+        ):
+            c = self._LONG_CONTENT
+            # RAG returns high-confidence results (score > 0.85)
+            mock_rag_graph = MagicMock()
+            mock_rag_graph.ainvoke = AsyncMock(
+                return_value={
+                    "ranked_results": [
+                        RetrievedDocument(content=c, source="s", score=0.95),
+                        RetrievedDocument(content=c, source="t", score=0.90),
+                        RetrievedDocument(content=c, source="u", score=0.88),
+                    ],
+                    "expanded_queries": ["test"],
+                }
+            )
+            mock_rag.return_value = mock_rag_graph
+
+            mock_research_graph = MagicMock()
+            mock_research_graph.ainvoke = AsyncMock(return_value={"entity_contexts": []})
+            mock_research.return_value = mock_research_graph
+
+            mock_synth_graph = MagicMock()
+            mock_synth_graph.ainvoke = AsyncMock(
+                return_value={"final_answer": "Answer", "citations": []}
+            )
+            mock_synth.return_value = mock_synth_graph
+
+            graph = create_orchestrator_graph(mock_config, mock_driver, mock_retriever)
+            state: OrchestratorState = {
+                "messages": [HumanMessage(content="What is traceability?")],
+                "query": "What is traceability?",
+            }
+
+            await graph.ainvoke(state)
+
+            # Research subgraph should NOT have been called (short query + high score)
+            mock_research_graph.ainvoke.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_comparison_query_triggers_research(
+        self, mock_config: AppConfig, mock_driver, mock_retriever
+    ):
+        """Test that comparison queries proceed to research even when short."""
+        with (
+            patch(
+                "requirements_graphrag_api.core.agentic.orchestrator.create_rag_subgraph"
+            ) as mock_rag,
+            patch(
+                "requirements_graphrag_api.core.agentic.orchestrator.create_research_subgraph"
+            ) as mock_research,
+            patch(
+                "requirements_graphrag_api.core.agentic.orchestrator.create_synthesis_subgraph"
+            ) as mock_synth,
+        ):
+            c = self._LONG_CONTENT
+            mock_rag_graph = MagicMock()
+            mock_rag_graph.ainvoke = AsyncMock(
+                return_value={
+                    "ranked_results": [
+                        RetrievedDocument(content=c, source="s", score=0.95),
+                        RetrievedDocument(content=c, source="t", score=0.90),
+                        RetrievedDocument(content=c, source="u", score=0.88),
+                    ],
+                    "expanded_queries": ["test"],
+                }
+            )
+            mock_rag.return_value = mock_rag_graph
+
+            mock_research_graph = MagicMock()
+            mock_research_graph.ainvoke = AsyncMock(return_value={"entity_contexts": []})
+            mock_research.return_value = mock_research_graph
+
+            mock_synth_graph = MagicMock()
+            mock_synth_graph.ainvoke = AsyncMock(
+                return_value={"final_answer": "Answer", "citations": []}
+            )
+            mock_synth.return_value = mock_synth_graph
+
+            graph = create_orchestrator_graph(mock_config, mock_driver, mock_retriever)
+            # "compare" keyword should trigger research
+            state: OrchestratorState = {
+                "messages": [HumanMessage(content="Compare DOORS vs Jama")],
+                "query": "Compare DOORS vs Jama",
+            }
+
+            await graph.ainvoke(state)
+
+            # Research subgraph SHOULD have been called (comparison query)
+            mock_research_graph.ainvoke.assert_called_once()
+
+
+class TestPreviousContext:
+    """Tests for previous_context flowing through orchestrator to synthesis (F4/F6)."""
+
+    @pytest.mark.asyncio
+    async def test_previous_context_from_conversation_history(
+        self, mock_config: AppConfig, mock_driver, mock_retriever
+    ):
+        """Test that multi-turn history is passed as previous_context to synthesis."""
+        with (
+            patch(
+                "requirements_graphrag_api.core.agentic.orchestrator.create_rag_subgraph"
+            ) as mock_rag,
+            patch("requirements_graphrag_api.core.agentic.orchestrator.create_research_subgraph"),
+            patch(
+                "requirements_graphrag_api.core.agentic.orchestrator.create_synthesis_subgraph"
+            ) as mock_synth,
+        ):
+            mock_rag_graph = MagicMock()
+            mock_rag_graph.ainvoke = AsyncMock(
+                return_value={"ranked_results": [], "expanded_queries": []}
+            )
+            mock_rag.return_value = mock_rag_graph
+
+            mock_synth_graph = MagicMock()
+            mock_synth_graph.ainvoke = AsyncMock(
+                return_value={"final_answer": "Follow-up answer", "citations": []}
+            )
+            mock_synth.return_value = mock_synth_graph
+
+            graph = create_orchestrator_graph(mock_config, mock_driver, mock_retriever)
+
+            # Multi-turn: user question, assistant answer, then follow-up
+            state: OrchestratorState = {
+                "messages": [
+                    HumanMessage(content="What is traceability?"),
+                    AIMessage(content="Traceability is the ability to track..."),
+                    HumanMessage(content="How does Jama implement it?"),
+                ],
+                "query": "How does Jama implement it?",
+            }
+
+            await graph.ainvoke(state)
+
+            # Verify synthesis was called with previous_context
+            synth_call = mock_synth_graph.ainvoke.call_args[0][0]
+            assert "previous_context" in synth_call
+            assert "Q: What is traceability?" in synth_call["previous_context"]
+            assert "A: Traceability is the ability to track..." in synth_call["previous_context"]
+
+    @pytest.mark.asyncio
+    async def test_no_previous_context_for_single_message(
+        self, mock_config: AppConfig, mock_driver, mock_retriever
+    ):
+        """Test that single-message queries have empty previous_context."""
+        with (
+            patch(
+                "requirements_graphrag_api.core.agentic.orchestrator.create_rag_subgraph"
+            ) as mock_rag,
+            patch("requirements_graphrag_api.core.agentic.orchestrator.create_research_subgraph"),
+            patch(
+                "requirements_graphrag_api.core.agentic.orchestrator.create_synthesis_subgraph"
+            ) as mock_synth,
+        ):
+            mock_rag_graph = MagicMock()
+            mock_rag_graph.ainvoke = AsyncMock(
+                return_value={"ranked_results": [], "expanded_queries": []}
+            )
+            mock_rag.return_value = mock_rag_graph
+
+            mock_synth_graph = MagicMock()
+            mock_synth_graph.ainvoke = AsyncMock(
+                return_value={"final_answer": "Answer", "citations": []}
+            )
+            mock_synth.return_value = mock_synth_graph
+
+            graph = create_orchestrator_graph(mock_config, mock_driver, mock_retriever)
+
+            state: OrchestratorState = {
+                "messages": [HumanMessage(content="What is traceability?")],
+                "query": "What is traceability?",
+            }
+
+            await graph.ainvoke(state)
+
+            # Verify synthesis was called with empty previous_context
+            synth_call = mock_synth_graph.ainvoke.call_args[0][0]
+            assert synth_call.get("previous_context", "") == ""
