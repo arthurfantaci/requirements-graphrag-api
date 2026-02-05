@@ -55,7 +55,6 @@ from requirements_graphrag_api.auth.api_key import (
     generate_api_key,
     hash_api_key,
     validate_api_key_format,
-    verify_api_key,
 )
 from requirements_graphrag_api.auth.audit import (
     AuditEvent,
@@ -128,5 +127,4 @@ __all__ = [
     "require_scope",
     "require_scopes",
     "validate_api_key_format",
-    "verify_api_key",
 ]

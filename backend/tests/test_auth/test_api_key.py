@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 import pytest
 
@@ -16,7 +16,6 @@ from requirements_graphrag_api.auth.api_key import (
     generate_api_key,
     hash_api_key,
     validate_api_key_format,
-    verify_api_key,
 )
 
 
@@ -318,128 +317,3 @@ class TestInMemoryAPIKeyStore:
 
         assert len(org_a_keys) == 2
         assert len(org_b_keys) == 1
-
-
-class TestVerifyAPIKey:
-    """Tests for the verify_api_key function."""
-
-    @pytest.fixture
-    def store(self) -> InMemoryAPIKeyStore:
-        """Create a fresh store for each test."""
-        return InMemoryAPIKeyStore()
-
-    @pytest.fixture
-    async def valid_key_and_store(
-        self, store: InMemoryAPIKeyStore
-    ) -> tuple[str, InMemoryAPIKeyStore]:
-        """Create a store with a valid key."""
-        raw_key = generate_api_key()
-        info = APIKeyInfo(
-            key_id="valid-key-id",
-            name="Valid Key",
-            tier=APIKeyTier.STANDARD,
-            organization="Test Org",
-            created_at=datetime.now(UTC),
-            expires_at=None,
-            rate_limit="50/minute",
-            is_active=True,
-            scopes=("chat", "search"),
-            metadata={},
-        )
-        await store.create(raw_key, info)
-        return raw_key, store
-
-    @pytest.mark.asyncio
-    async def test_valid_key_returns_info(
-        self, valid_key_and_store: tuple[str, InMemoryAPIKeyStore]
-    ):
-        """Valid key should return APIKeyInfo."""
-        raw_key, store = valid_key_and_store
-        info = await verify_api_key(raw_key, key_store=store, require_auth=True)
-        assert info.key_id == "valid-key-id"
-        assert info.tier == APIKeyTier.STANDARD
-
-    @pytest.mark.asyncio
-    async def test_no_key_when_auth_not_required_returns_anonymous(
-        self, store: InMemoryAPIKeyStore
-    ):
-        """No key when auth not required should return anonymous."""
-        info = await verify_api_key(None, key_store=store, require_auth=False)
-        assert info.key_id == "anonymous"
-
-    @pytest.mark.asyncio
-    async def test_no_key_when_auth_required_raises_401(self, store: InMemoryAPIKeyStore):
-        """No key when auth required should raise 401."""
-        from fastapi import HTTPException
-
-        with pytest.raises(HTTPException) as exc_info:
-            await verify_api_key(None, key_store=store, require_auth=True)
-        assert exc_info.value.status_code == 401
-        assert exc_info.value.detail["error"] == "missing_api_key"
-
-    @pytest.mark.asyncio
-    async def test_invalid_format_when_auth_required_raises_401(self, store: InMemoryAPIKeyStore):
-        """Invalid format when auth required should raise 401."""
-        from fastapi import HTTPException
-
-        with pytest.raises(HTTPException) as exc_info:
-            await verify_api_key("invalid_key", key_store=store, require_auth=True)
-        assert exc_info.value.status_code == 401
-        assert exc_info.value.detail["error"] == "invalid_api_key_format"
-
-    @pytest.mark.asyncio
-    async def test_unknown_key_raises_403(self, store: InMemoryAPIKeyStore):
-        """Unknown key should raise 403."""
-        from fastapi import HTTPException
-
-        unknown_key = generate_api_key()
-        with pytest.raises(HTTPException) as exc_info:
-            await verify_api_key(unknown_key, key_store=store, require_auth=True)
-        assert exc_info.value.status_code == 403
-        assert exc_info.value.detail["error"] == "invalid_api_key"
-
-    @pytest.mark.asyncio
-    async def test_revoked_key_raises_403(
-        self, valid_key_and_store: tuple[str, InMemoryAPIKeyStore]
-    ):
-        """Revoked key should raise 403."""
-        from fastapi import HTTPException
-
-        raw_key, store = valid_key_and_store
-        await store.revoke("valid-key-id")
-
-        with pytest.raises(HTTPException) as exc_info:
-            await verify_api_key(raw_key, key_store=store, require_auth=True)
-        assert exc_info.value.status_code == 403
-        assert exc_info.value.detail["error"] == "api_key_revoked"
-
-    @pytest.mark.asyncio
-    async def test_expired_key_raises_403(self, store: InMemoryAPIKeyStore):
-        """Expired key should raise 403."""
-        from fastapi import HTTPException
-
-        raw_key = generate_api_key()
-        info = APIKeyInfo(
-            key_id="expired-key-id",
-            name="Expired Key",
-            tier=APIKeyTier.STANDARD,
-            organization=None,
-            created_at=datetime.now(UTC) - timedelta(days=30),
-            expires_at=datetime.now(UTC) - timedelta(days=1),  # Expired yesterday
-            rate_limit="50/minute",
-            is_active=True,
-            scopes=("chat",),
-            metadata={},
-        )
-        await store.create(raw_key, info)
-
-        with pytest.raises(HTTPException) as exc_info:
-            await verify_api_key(raw_key, key_store=store, require_auth=True)
-        assert exc_info.value.status_code == 403
-        assert exc_info.value.detail["error"] == "api_key_expired"
-
-    @pytest.mark.asyncio
-    async def test_no_store_returns_anonymous(self):
-        """No store configured should return anonymous."""
-        info = await verify_api_key("any_key", key_store=None, require_auth=False)
-        assert info.key_id == "anonymous"

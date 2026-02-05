@@ -23,16 +23,13 @@ class PromptName(StrEnum):
     For local development, the simple name is used as the key.
     """
 
-    # Existing prompts
     INTENT_CLASSIFIER = "graphrag-intent-classifier"
     CRITIC = "graphrag-critic"
-    STEPBACK = "graphrag-stepback"
     QUERY_UPDATER = "graphrag-query-updater"
     RAG_GENERATION = "graphrag-rag-generation"
     TEXT2CYPHER = "graphrag-text2cypher"
 
-    # Agentic prompts (Phase 2)
-    AGENT_REASONING = "graphrag-agent-reasoning"
+    # Agentic prompts
     QUERY_EXPANSION = "graphrag-query-expansion"
     SYNTHESIS = "graphrag-synthesis"
     ENTITY_SELECTOR = "graphrag-entity-selector"
@@ -777,7 +774,6 @@ ENTITY_SELECTOR_METADATA = PromptMetadata(
 # =============================================================================
 
 PROMPT_DEFINITIONS: Final[dict[PromptName, PromptDefinition]] = {
-    # Existing prompts
     PromptName.INTENT_CLASSIFIER: PromptDefinition(
         name=PromptName.INTENT_CLASSIFIER,
         template=INTENT_CLASSIFIER_TEMPLATE,
@@ -787,11 +783,6 @@ PROMPT_DEFINITIONS: Final[dict[PromptName, PromptDefinition]] = {
         name=PromptName.CRITIC,
         template=CRITIC_TEMPLATE,
         metadata=CRITIC_METADATA,
-    ),
-    PromptName.STEPBACK: PromptDefinition(
-        name=PromptName.STEPBACK,
-        template=STEPBACK_TEMPLATE,
-        metadata=STEPBACK_METADATA,
     ),
     PromptName.QUERY_UPDATER: PromptDefinition(
         name=PromptName.QUERY_UPDATER,
@@ -807,12 +798,6 @@ PROMPT_DEFINITIONS: Final[dict[PromptName, PromptDefinition]] = {
         name=PromptName.TEXT2CYPHER,
         template=TEXT2CYPHER_TEMPLATE,
         metadata=TEXT2CYPHER_METADATA,
-    ),
-    # Agentic prompts (Phase 2)
-    PromptName.AGENT_REASONING: PromptDefinition(
-        name=PromptName.AGENT_REASONING,
-        template=AGENT_REASONING_TEMPLATE,
-        metadata=AGENT_REASONING_METADATA,
     ),
     PromptName.QUERY_EXPANSION: PromptDefinition(
         name=PromptName.QUERY_EXPANSION,
