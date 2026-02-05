@@ -109,7 +109,7 @@ class SizeLimitMiddleware(BaseHTTPMiddleware):
                     # Return JSONResponse directly instead of raising exception
                     # (BaseHTTPMiddleware doesn't handle HTTPException properly)
                     return JSONResponse(
-                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                         content={
                             "detail": {
                                 "error": "request_too_large",
@@ -173,7 +173,7 @@ def check_request_size(content_length: int | None, max_size: int = MAX_REQUEST_S
     """
     if content_length is not None and content_length > max_size:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail={
                 "error": "request_too_large",
                 "message": f"Request body exceeds maximum size of {_format_size(max_size)}",
