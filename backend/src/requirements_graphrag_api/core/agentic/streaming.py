@@ -26,6 +26,7 @@ so we maintain the same JSON structure for backward compatibility.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
@@ -399,11 +400,14 @@ async def stream_agentic_events(
 
         # Stream the parsed answer in small chunks for smooth visual effect
         if final_answer:
-            # Use small chunks for smooth streaming appearance
+            # Use small chunks with delay for visible streaming appearance
+            # Without delay, TCP buffering combines chunks into single packet
             chunk_size = 8
             for i in range(0, len(final_answer), chunk_size):
                 chunk = final_answer[i : i + chunk_size]
                 yield create_token_event(chunk).to_sse()
+                # Small delay forces event loop to flush each chunk separately
+                await asyncio.sleep(0.015)  # 15ms between chunks
 
         # Emit done event (source_count tracked when sources were emitted)
         yield create_done_event(
