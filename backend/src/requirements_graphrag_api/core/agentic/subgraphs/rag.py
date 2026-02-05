@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 # Constants
 DEFAULT_RETRIEVAL_LIMIT = 6
-MAX_RESULTS_PER_QUERY = 4
+MAX_RESULTS_PER_QUERY = 6  # Increased from 4 to get more coverage per query
 MAX_TOTAL_RESULTS = 10
 
 
@@ -171,11 +171,18 @@ def create_rag_subgraph(
 
         for result in raw_results:
             # Use chunk_id or hash of text as dedup key
-            chunk_id = result.get("chunk_id") or result.get("id")
+            # chunk_id may be at top level or nested in metadata
+            metadata = result.get("metadata", {})
+            chunk_id = (
+                result.get("chunk_id")
+                or metadata.get("chunk_id")
+                or result.get("id")
+                or metadata.get("id")
+            )
             if not chunk_id:
-                # Fallback to text hash
-                text = result.get("text", "")
-                chunk_id = str(hash(text))
+                # Fallback to content hash
+                text = result.get("content") or result.get("text", "")
+                chunk_id = str(hash(text)) if text else str(id(result))
 
             if chunk_id not in seen:
                 seen.add(chunk_id)
