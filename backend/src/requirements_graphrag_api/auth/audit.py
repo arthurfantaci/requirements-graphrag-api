@@ -206,38 +206,6 @@ class LoggingAuditHandler(AuditHandler):
         )
 
 
-class LangSmithAuditHandler(AuditHandler):
-    """Handler that sends audit events to LangSmith as feedback.
-
-    Integrates audit events with LangSmith for correlation with
-    LLM traces and performance analysis.
-    """
-
-    def __init__(self, enabled: bool = False) -> None:
-        """Initialize the LangSmith handler.
-
-        Args:
-            enabled: Whether to actually send events to LangSmith.
-        """
-        self.enabled = enabled
-
-    async def handle(self, event: AuditEvent) -> None:
-        """Send audit event to LangSmith.
-
-        Currently a placeholder - implement integration with LangSmith
-        feedback API when needed.
-
-        Args:
-            event: The audit event to send.
-        """
-        if not self.enabled:
-            return
-
-        # TODO: Implement LangSmith integration
-        # Could use langsmith.Client().create_feedback() to correlate
-        # audit events with LLM traces
-
-
 class AuditLogger:
     """Audit logger with configurable handlers.
 
@@ -312,7 +280,6 @@ audit_logger = AuditLogger()
 
 def configure_audit_logging(
     enable_logging: bool = True,
-    enable_langsmith: bool = False,
 ) -> None:
     """Configure the global audit logger with default handlers.
 
@@ -320,12 +287,9 @@ def configure_audit_logging(
 
     Args:
         enable_logging: Whether to enable Python logging handler.
-        enable_langsmith: Whether to enable LangSmith handler.
     """
     if enable_logging:
         audit_logger.add_handler(LoggingAuditHandler())
-    if enable_langsmith:
-        audit_logger.add_handler(LangSmithAuditHandler(enabled=True))
 
 
 # Convenience functions for common audit events

@@ -36,6 +36,10 @@ from requirements_graphrag_api.auth.api_key import (
     hash_api_key,
     validate_api_key_format,
 )
+from requirements_graphrag_api.auth.audit import (
+    log_api_request,
+    log_api_response,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -201,9 +205,19 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Set context variable for access anywhere in the request
         _current_client.set(client_info)
 
+        # Audit log: request received
+        await log_api_request(request, client_info, request_id)
+
         try:
             response = await call_next(request)
             response.headers["X-Request-ID"] = request_id
+
+            # Audit log: response sent
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            await log_api_response(
+                request, client_info, request_id, response.status_code, duration_ms
+            )
+
             return response
         finally:
             self._cleanup_context()

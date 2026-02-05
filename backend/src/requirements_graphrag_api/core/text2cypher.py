@@ -36,6 +36,19 @@ logger = logging.getLogger(__name__)
 # Constants
 LOG_TRUNCATE_LENGTH: Final[int] = 100
 
+# Valid Cypher query starters (read-only operations)
+CYPHER_STARTERS: Final[tuple[str, ...]] = (
+    "MATCH",
+    "OPTIONAL",
+    "RETURN",
+    "WITH",
+    "UNWIND",
+    "CALL",
+    "EXPLAIN",
+    "PROFILE",
+    "USE",
+)
+
 
 @traceable_safe(name="generate_cypher", run_type="llm")
 async def generate_cypher(
@@ -153,8 +166,24 @@ async def text2cypher_query(
     }
 
     if execute:
-        # Validate query is read-only (before trying to execute)
         cypher_upper = cypher.upper()
+
+        # Validate the output looks like Cypher (not a natural language refusal)
+        first_word = cypher.strip().split()[0].upper() if cypher.strip() else ""
+        if first_word not in CYPHER_STARTERS:
+            logger.warning(
+                "LLM returned non-Cypher response: %s",
+                cypher[:LOG_TRUNCATE_LENGTH],
+            )
+            response["error"] = (
+                "This question cannot be answered with a database query. "
+                "Try rephrasing as a requirements management question."
+            )
+            response["results"] = []
+            response["row_count"] = 0
+            return response
+
+        # Validate query is read-only (before trying to execute)
         forbidden = ["DELETE", "MERGE", "CREATE", "SET", "REMOVE", "DROP"]
         forbidden_found = next((keyword for keyword in forbidden if keyword in cypher_upper), None)
 
