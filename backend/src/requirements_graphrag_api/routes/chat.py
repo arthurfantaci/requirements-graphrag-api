@@ -63,6 +63,7 @@ from requirements_graphrag_api.guardrails.events import (
 from requirements_graphrag_api.middleware.rate_limit import CHAT_RATE_LIMIT, get_rate_limiter
 from requirements_graphrag_api.middleware.timeout import TIMEOUTS, with_timeout
 from requirements_graphrag_api.observability import create_thread_metadata
+from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -336,6 +337,38 @@ async def _generate_explanatory_events(
         # Create the orchestrator graph with persistence
         graph = create_orchestrator_graph(config, driver, retriever, checkpointer=checkpointer)
 
+        # Refine query for multi-turn context (resolve pronouns, add context)
+        refined_query = safe_message
+        if request.conversation_history:
+            try:
+                from langchain_core.output_parsers import StrOutputParser
+                from langchain_openai import ChatOpenAI
+
+                previous_answers = "\n".join(
+                    f"Q: {msg.content}" if msg.role == "user" else f"A: {msg.content}"
+                    for msg in request.conversation_history
+                )
+                updater_template = get_prompt_sync(PromptName.QUERY_UPDATER)
+                llm = ChatOpenAI(
+                    model=config.chat_model,
+                    temperature=0.1,
+                    api_key=config.openai_api_key,
+                )
+                chain = updater_template | llm | StrOutputParser()
+                refined_query = await chain.ainvoke(
+                    {"previous_answers": previous_answers, "question": safe_message}
+                )
+                if refined_query and refined_query.strip():
+                    refined_query = refined_query.strip()
+                    logger.info(
+                        "Query refined for multi-turn: '%s' -> '%s'", safe_message, refined_query
+                    )
+                else:
+                    refined_query = safe_message
+            except Exception:
+                logger.exception("Query refinement failed, using original query")
+                refined_query = safe_message
+
         # Build conversation history as LangChain messages
         messages: list[HumanMessage] = []
         if request.conversation_history:
@@ -343,13 +376,13 @@ async def _generate_explanatory_events(
                 if msg.role == "user":
                     messages.append(HumanMessage(content=msg.content))
 
-        # Add the current query as the final message
-        messages.append(HumanMessage(content=safe_message))
+        # Add the current (potentially refined) query as the final message
+        messages.append(HumanMessage(content=refined_query))
 
         # Build initial state
         initial_state: OrchestratorState = {
             "messages": messages,
-            "query": safe_message,
+            "query": refined_query,
         }
 
         # Get thread configuration for persistence (uses conversation_id as thread_id)
