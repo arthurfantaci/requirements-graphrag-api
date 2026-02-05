@@ -137,6 +137,9 @@ convention = "google"
     "ANN",     # Don't require annotations in tests
     "D",       # Don't require docstrings in tests
 ]
+"scripts/create_*_dataset*.py" = [
+    "E501",    # Allow long lines in dataset creation scripts (test data strings)
+]
 
 [tool.ruff.format]
 quote-style = "double"
