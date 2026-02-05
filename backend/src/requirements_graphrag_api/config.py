@@ -208,10 +208,20 @@ class GuardrailConfig:
         rate_limit_default: Default rate limit for other endpoints.
     """
 
-    # Feature flags
+    # Feature flags — Phase 1 (Critical Security)
     prompt_injection_enabled: bool = True
     pii_detection_enabled: bool = True
     rate_limiting_enabled: bool = True
+
+    # Feature flags — Phase 2 (Content Safety)
+    toxicity_enabled: bool = True
+    toxicity_use_full_check: bool = False  # OpenAI Moderation API (~500ms extra)
+    topic_guard_enabled: bool = True
+    topic_guard_use_llm: bool = False  # LLM classification (~1s extra)
+    topic_guard_allow_borderline: bool = True
+    output_filter_enabled: bool = True
+    output_filter_confidence_threshold: float = 0.6
+    hallucination_enabled: bool = True
 
     # Prompt injection settings
     injection_block_threshold: str = "high"  # low, medium, high, critical
@@ -254,6 +264,22 @@ def get_guardrail_config() -> GuardrailConfig:
         ),
         pii_detection_enabled=str_to_bool(os.getenv("GUARDRAIL_PII_DETECTION_ENABLED", "true")),
         rate_limiting_enabled=str_to_bool(os.getenv("GUARDRAIL_RATE_LIMITING_ENABLED", "true")),
+        toxicity_enabled=str_to_bool(os.getenv("GUARDRAIL_TOXICITY_ENABLED", "true")),
+        toxicity_use_full_check=str_to_bool(
+            os.getenv("GUARDRAIL_TOXICITY_FULL_CHECK", "false"), default=False
+        ),
+        topic_guard_enabled=str_to_bool(os.getenv("GUARDRAIL_TOPIC_GUARD_ENABLED", "true")),
+        topic_guard_use_llm=str_to_bool(
+            os.getenv("GUARDRAIL_TOPIC_GUARD_USE_LLM", "false"), default=False
+        ),
+        topic_guard_allow_borderline=str_to_bool(
+            os.getenv("GUARDRAIL_TOPIC_GUARD_ALLOW_BORDERLINE", "true")
+        ),
+        output_filter_enabled=str_to_bool(os.getenv("GUARDRAIL_OUTPUT_FILTER_ENABLED", "true")),
+        output_filter_confidence_threshold=float(
+            os.getenv("GUARDRAIL_OUTPUT_FILTER_CONFIDENCE_THRESHOLD", "0.6")
+        ),
+        hallucination_enabled=str_to_bool(os.getenv("GUARDRAIL_HALLUCINATION_ENABLED", "true")),
         injection_block_threshold=os.getenv("GUARDRAIL_PROMPT_INJECTION_THRESHOLD", "high"),
         pii_entities=pii_entities,
         pii_score_threshold=float(os.getenv("GUARDRAIL_PII_SCORE_THRESHOLD", "0.7")),

@@ -21,7 +21,10 @@ from requirements_graphrag_api.core import (
 )
 from requirements_graphrag_api.guardrails import (
     InjectionRisk,
+    TopicClassification,
     check_prompt_injection,
+    check_topic_relevance,
+    check_toxicity,
     detect_and_redact_pii,
     log_guardrail_event,
     metrics,
@@ -29,6 +32,8 @@ from requirements_graphrag_api.guardrails import (
 from requirements_graphrag_api.guardrails.events import (
     create_injection_event,
     create_pii_event,
+    create_topic_event,
+    create_toxicity_event,
 )
 from requirements_graphrag_api.middleware.timeout import TIMEOUTS, with_timeout
 
@@ -163,11 +168,13 @@ class SearchResponse(BaseModel):
     total: int
 
 
-def _apply_search_guardrails(
+async def _apply_search_guardrails(
     query: str,
     guardrail_config: GuardrailConfig,
 ) -> str:
-    """Apply prompt injection and PII guardrails to a search query.
+    """Apply input guardrails to a search query.
+
+    Checks: prompt injection, PII redaction, toxicity, and topic relevance.
 
     Args:
         query: Raw user query.
@@ -177,7 +184,7 @@ def _apply_search_guardrails(
         Sanitized query safe for processing.
 
     Raises:
-        HTTPException: 400 if query is blocked by injection detection.
+        HTTPException: 400 if query is blocked by any guardrail.
     """
     request_id = str(uuid.uuid4())[:8]
     safe_query = query
@@ -233,6 +240,67 @@ def _apply_search_guardrails(
                 pii_result.entity_count,
             )
 
+    # 3. Toxicity check
+    if guardrail_config.toxicity_enabled:
+        toxicity_result = await check_toxicity(
+            safe_query,
+            use_full_check=guardrail_config.toxicity_use_full_check,
+        )
+        if toxicity_result.should_block:
+            metrics.record_toxicity(blocked=True)
+            event = create_toxicity_event(
+                request_id=request_id,
+                categories=tuple(c.value for c in toxicity_result.categories),
+                confidence=toxicity_result.confidence,
+                blocked=True,
+                check_type=toxicity_result.check_type,
+                input_text=query,
+            )
+            log_guardrail_event(event)
+            metrics.record_request(blocked=True)
+            raise HTTPException(
+                status_code=400,
+                detail="Request blocked by content safety filter",
+            )
+        if toxicity_result.should_warn:
+            metrics.record_toxicity(blocked=False)
+            event = create_toxicity_event(
+                request_id=request_id,
+                categories=tuple(c.value for c in toxicity_result.categories),
+                confidence=toxicity_result.confidence,
+                blocked=False,
+                check_type=toxicity_result.check_type,
+                input_text=query,
+            )
+            log_guardrail_event(event)
+
+    # 4. Topic guard
+    if guardrail_config.topic_guard_enabled:
+        from requirements_graphrag_api.guardrails.topic_guard import TopicGuardConfig
+
+        topic_config = TopicGuardConfig(
+            enabled=True,
+            use_llm_classification=guardrail_config.topic_guard_use_llm,
+            allow_borderline=guardrail_config.topic_guard_allow_borderline,
+        )
+        topic_result = await check_topic_relevance(safe_query, config=topic_config)
+        if topic_result.classification == TopicClassification.OUT_OF_SCOPE:
+            metrics.record_topic_out_of_scope()
+            event = create_topic_event(
+                request_id=request_id,
+                classification=topic_result.classification.value,
+                confidence=topic_result.confidence,
+                reasoning=topic_result.reasoning,
+                check_type=topic_result.check_type,
+                input_text=query,
+            )
+            log_guardrail_event(event)
+            metrics.record_request(blocked=True)
+            raise HTTPException(
+                status_code=400,
+                detail="Query is outside the scope of this service",
+            )
+
     metrics.record_request(blocked=False)
     return safe_query
 
@@ -259,7 +327,7 @@ async def vector_search_endpoint(
     driver: Driver = request.app.state.driver
     guardrail_config: GuardrailConfig = request.app.state.guardrail_config
 
-    safe_query = _apply_search_guardrails(body.query, guardrail_config)
+    safe_query = await _apply_search_guardrails(body.query, guardrail_config)
     results = await vector_search(retriever, driver, safe_query, limit=body.limit)
 
     return {
@@ -290,7 +358,7 @@ async def hybrid_search_endpoint(
     driver: Driver = request.app.state.driver
     guardrail_config: GuardrailConfig = request.app.state.guardrail_config
 
-    safe_query = _apply_search_guardrails(body.query, guardrail_config)
+    safe_query = await _apply_search_guardrails(body.query, guardrail_config)
     results = await hybrid_search(
         retriever,
         driver,
@@ -331,7 +399,7 @@ async def graph_search_endpoint(
     driver: Driver = request.app.state.driver
     guardrail_config: GuardrailConfig = request.app.state.guardrail_config
 
-    safe_query = _apply_search_guardrails(body.query, guardrail_config)
+    safe_query = await _apply_search_guardrails(body.query, guardrail_config)
     results = await graph_enriched_search(
         retriever,
         driver,

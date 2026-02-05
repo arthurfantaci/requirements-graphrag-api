@@ -50,7 +50,10 @@ from requirements_graphrag_api.core.agentic import (
 )
 from requirements_graphrag_api.guardrails import (
     InjectionRisk,
+    TopicClassification,
     check_prompt_injection,
+    check_topic_relevance,
+    check_toxicity,
     detect_and_redact_pii,
     log_guardrail_event,
     metrics,
@@ -59,6 +62,8 @@ from requirements_graphrag_api.guardrails import (
 from requirements_graphrag_api.guardrails.events import (
     create_injection_event,
     create_pii_event,
+    create_topic_event,
+    create_toxicity_event,
 )
 from requirements_graphrag_api.middleware.rate_limit import CHAT_RATE_LIMIT, get_rate_limiter
 from requirements_graphrag_api.middleware.timeout import TIMEOUTS, with_timeout
@@ -234,7 +239,78 @@ async def _generate_sse_events(
                     entity_types,
                 )
 
-        # 3. Validate conversation history
+        # 3. Toxicity check (fast keyword check on input)
+        if guardrail_config.toxicity_enabled:
+            toxicity_result = await check_toxicity(
+                safe_message,
+                use_full_check=guardrail_config.toxicity_use_full_check,
+            )
+            if toxicity_result.should_block:
+                metrics.record_toxicity(blocked=True)
+                event = create_toxicity_event(
+                    request_id=request_id,
+                    categories=tuple(c.value for c in toxicity_result.categories),
+                    confidence=toxicity_result.confidence,
+                    blocked=True,
+                    check_type=toxicity_result.check_type,
+                    user_ip=user_ip,
+                    input_text=request.message,
+                )
+                log_guardrail_event(event)
+                metrics.record_request(blocked=True)
+                yield f"event: {StreamEventType.ERROR.value}\n"
+                err = {"error": "Request blocked by content safety filter"}
+                yield f"data: {json.dumps(err)}\n\n"
+                return
+            if toxicity_result.should_warn:
+                metrics.record_toxicity(blocked=False)
+                event = create_toxicity_event(
+                    request_id=request_id,
+                    categories=tuple(c.value for c in toxicity_result.categories),
+                    confidence=toxicity_result.confidence,
+                    blocked=False,
+                    check_type=toxicity_result.check_type,
+                    user_ip=user_ip,
+                    input_text=request.message,
+                )
+                log_guardrail_event(event)
+
+        # 4. Topic guard (keyword-based relevance check)
+        if guardrail_config.topic_guard_enabled:
+            from requirements_graphrag_api.guardrails.topic_guard import TopicGuardConfig
+
+            topic_config = TopicGuardConfig(
+                enabled=True,
+                use_llm_classification=guardrail_config.topic_guard_use_llm,
+                allow_borderline=guardrail_config.topic_guard_allow_borderline,
+            )
+            topic_result = await check_topic_relevance(safe_message, config=topic_config)
+            if topic_result.classification == TopicClassification.OUT_OF_SCOPE:
+                metrics.record_topic_out_of_scope()
+                event = create_topic_event(
+                    request_id=request_id,
+                    classification=topic_result.classification.value,
+                    confidence=topic_result.confidence,
+                    reasoning=topic_result.reasoning,
+                    check_type=topic_result.check_type,
+                    user_ip=user_ip,
+                    input_text=request.message,
+                )
+                log_guardrail_event(event)
+                # Return a polite redirect instead of processing the query
+                redirect = (
+                    topic_result.suggested_response
+                    or "This question is outside my area of expertise."
+                )
+                yield f"event: {StreamEventType.ROUTING.value}\n"
+                yield f"data: {json.dumps({'intent': 'out_of_scope'})}\n\n"
+                yield f"event: {StreamEventType.TOKEN.value}\n"
+                yield f"data: {json.dumps({'token': redirect})}\n\n"
+                yield f"event: {StreamEventType.DONE.value}\n"
+                yield f"data: {json.dumps({'full_answer': redirect, 'source_count': 0})}\n\n"
+                return
+
+        # 5. Validate conversation history
         if request.conversation_history:
             history_dicts = [
                 {"role": msg.role, "content": msg.content} for msg in request.conversation_history
@@ -292,7 +368,12 @@ async def _generate_sse_events(
         else:
             # Use RAG for explanatory queries
             async for event_str in _generate_explanatory_events(
-                config, retriever, driver, request, safe_message
+                config,
+                retriever,
+                driver,
+                request,
+                safe_message,
+                guardrail_config=guardrail_config,
             ):
                 yield event_str
 
@@ -302,12 +383,125 @@ async def _generate_sse_events(
         yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
 
+async def _run_output_guardrails(
+    full_response: str,
+    original_query: str,
+    retrieved_sources: list[dict],
+    config: AppConfig,
+    guardrail_config: GuardrailConfig,
+) -> AsyncIterator[str]:
+    """Run output guardrails on accumulated response and yield warning events.
+
+    Checks the complete LLM response for:
+    1. Output safety (toxicity, confidence scoring, disclaimers)
+    2. Hallucination detection (factual grounding against sources)
+
+    Args:
+        full_response: The complete accumulated LLM response.
+        original_query: The original user query.
+        retrieved_sources: Sources retrieved during RAG.
+        config: Application configuration.
+        guardrail_config: Guardrail configuration.
+
+    Yields:
+        SSE guardrail_warning events if issues are detected.
+    """
+    warnings: list[str] = []
+
+    try:
+        # 1. Output filter (toxicity + confidence scoring)
+        if guardrail_config.output_filter_enabled:
+            from requirements_graphrag_api.guardrails import (
+                OutputFilterConfig,
+                filter_output,
+            )
+            from requirements_graphrag_api.guardrails.events import (
+                create_output_filter_event,
+            )
+
+            output_config = OutputFilterConfig(
+                enabled=True,
+                confidence_threshold=guardrail_config.output_filter_confidence_threshold,
+            )
+            filter_result = await filter_output(
+                full_response,
+                original_query,
+                retrieved_sources=retrieved_sources or None,
+                config=output_config,
+            )
+            if not filter_result.is_safe:
+                warnings.append(filter_result.filtered_content)
+                event = create_output_filter_event(
+                    request_id="output",
+                    is_safe=False,
+                    confidence_score=filter_result.confidence_score,
+                    warnings=filter_result.warnings,
+                    modifications=filter_result.modifications,
+                    blocked_reason=filter_result.blocked_reason,
+                )
+                log_guardrail_event(event)
+            elif filter_result.should_add_disclaimer:
+                warnings.append(
+                    filter_result.filtered_content.replace(
+                        filter_result.original_content, ""
+                    ).strip()
+                )
+                event = create_output_filter_event(
+                    request_id="output",
+                    is_safe=True,
+                    confidence_score=filter_result.confidence_score,
+                    warnings=filter_result.warnings,
+                    modifications=filter_result.modifications,
+                )
+                log_guardrail_event(event)
+
+        # 2. Hallucination check (grounding against sources)
+        if guardrail_config.hallucination_enabled and retrieved_sources:
+            from langchain_openai import ChatOpenAI
+
+            from requirements_graphrag_api.guardrails import (
+                check_hallucination,
+            )
+
+            llm = ChatOpenAI(
+                model=config.chat_model,
+                temperature=0.0,
+                api_key=config.openai_api_key,
+            )
+            hal_result = await check_hallucination(
+                response=full_response,
+                sources=retrieved_sources,
+                llm=llm,
+            )
+            if hal_result.should_add_warning:
+                metrics.record_hallucination_warning()
+                from requirements_graphrag_api.guardrails import (
+                    HALLUCINATION_WARNING_SHORT,
+                )
+
+                warnings.append(HALLUCINATION_WARNING_SHORT.strip())
+                logger.info(
+                    "Hallucination check: level=%s, unsupported=%d",
+                    hal_result.grounding_level.value,
+                    len(hal_result.unsupported_claims),
+                )
+
+    except Exception:
+        logger.exception("Output guardrail check failed")
+
+    # Emit warning events
+    for warning in warnings:
+        yield f"event: {StreamEventType.GUARDRAIL_WARNING.value}\n"
+        yield f"data: {json.dumps({'warning': warning})}\n\n"
+
+
 async def _generate_explanatory_events(
     config: AppConfig,
     retriever: VectorRetriever,
     driver: Driver,
     request: ChatRequest,
     safe_message: str,
+    guardrail_config: GuardrailConfig | None = None,
 ) -> AsyncIterator[str]:
     """Generate SSE events for explanatory (RAG) queries using agentic orchestrator.
 
@@ -316,12 +510,16 @@ async def _generate_explanatory_events(
     - Research subgraph: Entity identification + conditional exploration
     - Synthesis subgraph: Draft + critique + revision loop
 
+    After streaming completes, output guardrails (output_filter, hallucination)
+    run on the accumulated response and emit warning events if needed.
+
     Args:
         config: Application configuration.
         retriever: VectorRetriever for semantic search.
         driver: Neo4j driver for graph queries.
         request: Chat request with message and options.
         safe_message: Sanitized message with PII redacted.
+        guardrail_config: Guardrail configuration for output checks.
 
     Yields:
         Formatted SSE event strings.
@@ -389,14 +587,42 @@ async def _generate_explanatory_events(
         thread_id = request.conversation_id or str(uuid.uuid4())
         runnable_config = get_thread_config(thread_id)
 
-        # Stream events from the agentic orchestrator
+        # Stream events from the agentic orchestrator, accumulating for output guardrails
+        accumulated_tokens: list[str] = []
+        retrieved_sources: list[dict] = []
+        last_event_type: str | None = None
+
         async for sse_event in stream_agentic_events(
             graph,
             initial_state,
             runnable_config,
             app_config=config,
         ):
+            # Track event data for output guardrails
+            if sse_event.startswith("event: "):
+                last_event_type = sse_event.strip().removeprefix("event: ")
+            elif sse_event.startswith("data: ") and last_event_type:
+                try:
+                    data = json.loads(sse_event[6:].strip())
+                    if last_event_type == StreamEventType.TOKEN.value and "token" in data:
+                        accumulated_tokens.append(data["token"])
+                    elif last_event_type == StreamEventType.SOURCES.value and "sources" in data:
+                        retrieved_sources = data["sources"]
+                except (json.JSONDecodeError, TypeError):
+                    pass
             yield sse_event
+
+        # === OUTPUT GUARDRAILS (post-stream) ===
+        full_response = "".join(accumulated_tokens)
+        if full_response and guardrail_config:
+            async for warning_event in _run_output_guardrails(
+                full_response,
+                refined_query,
+                retrieved_sources,
+                config,
+                guardrail_config,
+            ):
+                yield warning_event
 
 
 async def _generate_structured_events(

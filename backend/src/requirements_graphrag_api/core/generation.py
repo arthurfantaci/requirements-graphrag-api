@@ -63,6 +63,9 @@ class StreamEventType(StrEnum):
     CYPHER = "cypher"  # Generated Cypher query
     RESULTS = "results"  # Query results
 
+    # Guardrail events
+    GUARDRAIL_WARNING = "guardrail_warning"  # Post-stream safety warning
+
 
 @dataclass(frozen=True, slots=True)
 class StreamEvent:
