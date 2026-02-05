@@ -243,29 +243,122 @@ async def stream_agentic_events(
 
                 if ranked_results and not sources_emitted:
                     sources = []
+                    entities: dict[str, dict[str, Any]] = {}
+                    all_webinars: list[dict[str, Any]] = []
+                    all_images: list[dict[str, Any]] = []
+                    all_videos: list[dict[str, Any]] = []
+                    seen_urls: set[str] = set()
+
                     for doc in ranked_results[:10]:
+                        # Extract source info
                         if hasattr(doc, "source"):
                             content = doc.content
                             if len(content) > 200:
                                 content = content[:200] + "..."
+                            metadata = doc.metadata if hasattr(doc, "metadata") else {}
                             sources.append(
                                 {
                                     "title": doc.source,
                                     "content": content,
-                                    "score": doc.score,
+                                    "url": metadata.get("url", ""),
+                                    "chunk_id": metadata.get("chunk_id"),
+                                    "relevance_score": doc.score,
                                 }
                             )
+
+                            # Extract entities
+                            for entity in metadata.get("entities", []):
+                                if isinstance(entity, dict) and entity.get("name"):
+                                    name = entity["name"]
+                                    if name not in entities:
+                                        entities[name] = {
+                                            "definition": entity.get("definition"),
+                                            "label": entity.get("type", "Entity"),
+                                        }
+
+                            # Extract glossary definitions as entities
+                            for defn in metadata.get("glossary_definitions", []):
+                                if isinstance(defn, dict) and defn.get("term"):
+                                    term = defn["term"]
+                                    if term not in entities:
+                                        entities[term] = {
+                                            "definition": defn.get("definition"),
+                                            "label": "Definition",
+                                        }
+
+                            # Extract media (webinars, images, videos)
+                            media = metadata.get("media", {})
+                            for webinar in media.get("webinars", []):
+                                url = webinar.get("url")
+                                if url and url not in seen_urls:
+                                    seen_urls.add(url)
+                                    all_webinars.append(
+                                        {
+                                            "title": webinar.get("title", "Webinar"),
+                                            "url": url,
+                                            "thumbnail_url": webinar.get("thumbnail_url"),
+                                        }
+                                    )
+
+                            for img in media.get("images", []):
+                                url = img.get("url")
+                                if url and url not in seen_urls:
+                                    seen_urls.add(url)
+                                    all_images.append(
+                                        {
+                                            "title": img.get("alt_text", "Image"),
+                                            "url": url,
+                                            "alt_text": img.get("alt_text"),
+                                        }
+                                    )
+
+                            for video in media.get("videos", []):
+                                url = video.get("url")
+                                if url and url not in seen_urls:
+                                    seen_urls.add(url)
+                                    all_videos.append(
+                                        {
+                                            "title": video.get("title", "Video"),
+                                            "url": url,
+                                        }
+                                    )
+
                         elif isinstance(doc, dict):
                             content = doc.get("content", "")[:200]
                             sources.append(
                                 {
                                     "title": doc.get("source", "Unknown"),
                                     "content": content,
-                                    "score": doc.get("score", 0),
+                                    "url": doc.get("url", ""),
+                                    "relevance_score": doc.get("score", 0),
                                 }
                             )
+
                     if sources:
-                        yield create_sources_event(sources).to_sse()
+                        # Build entities list for frontend
+                        entities_list = [
+                            {
+                                "name": name,
+                                "definition": info.get("definition"),
+                                "label": info.get("label"),
+                            }
+                            for name, info in entities.items()
+                        ]
+
+                        # Build resources dict for frontend
+                        resources = {}
+                        if all_webinars:
+                            resources["webinars"] = all_webinars[:5]
+                        if all_images:
+                            resources["images"] = all_images[:5]
+                        if all_videos:
+                            resources["videos"] = all_videos[:5]
+
+                        yield create_sources_event(
+                            sources,
+                            entities=entities_list if entities_list else None,
+                            resources=resources if resources else None,
+                        ).to_sse()
                         source_count = len(sources)
                     sources_emitted = True
 
