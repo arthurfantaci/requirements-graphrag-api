@@ -24,11 +24,13 @@ from requirements_graphrag_api.guardrails import (
     check_prompt_injection,
     detect_and_redact_pii,
     log_guardrail_event,
+    metrics,
 )
 from requirements_graphrag_api.guardrails.events import (
     create_injection_event,
     create_pii_event,
 )
+from requirements_graphrag_api.middleware.timeout import TIMEOUTS, with_timeout
 
 if TYPE_CHECKING:
     from neo4j import Driver
@@ -187,6 +189,7 @@ def _apply_search_guardrails(
             block_threshold=InjectionRisk(guardrail_config.injection_block_threshold),
         )
         if injection_result.should_warn or injection_result.should_block:
+            metrics.record_prompt_injection(blocked=injection_result.should_block)
             event = create_injection_event(
                 request_id=request_id,
                 risk_level=injection_result.risk_level.value,
@@ -197,6 +200,7 @@ def _apply_search_guardrails(
             log_guardrail_event(event)
 
         if injection_result.should_block:
+            metrics.record_request(blocked=True)
             raise HTTPException(
                 status_code=400,
                 detail="Request blocked by safety filter",
@@ -213,6 +217,7 @@ def _apply_search_guardrails(
         if pii_result.check_failed:
             logger.warning("PII detection failed — processing search with unchecked input")
         if pii_result.contains_pii:
+            metrics.record_pii(redacted=True)
             entity_types = tuple(e.entity_type for e in pii_result.detected_entities)
             event = create_pii_event(
                 request_id=request_id,
@@ -228,10 +233,12 @@ def _apply_search_guardrails(
                 pii_result.entity_count,
             )
 
+    metrics.record_request(blocked=False)
     return safe_query
 
 
 @router.post("/search/vector", response_model=SearchResponse)
+@with_timeout(TIMEOUTS["search"])
 async def vector_search_endpoint(
     request: Request,
     body: SearchRequest,
@@ -262,6 +269,7 @@ async def vector_search_endpoint(
 
 
 @router.post("/search/hybrid", response_model=SearchResponse)
+@with_timeout(TIMEOUTS["search"])
 async def hybrid_search_endpoint(
     request: Request,
     body: HybridSearchRequest,
@@ -298,6 +306,7 @@ async def hybrid_search_endpoint(
 
 
 @router.post("/search/graph", response_model=SearchResponse)
+@with_timeout(TIMEOUTS["search"])
 async def graph_search_endpoint(
     request: Request,
     body: SearchRequest,

@@ -53,6 +53,7 @@ from requirements_graphrag_api.guardrails import (
     check_prompt_injection,
     detect_and_redact_pii,
     log_guardrail_event,
+    metrics,
     validate_conversation_history,
 )
 from requirements_graphrag_api.guardrails.events import (
@@ -60,6 +61,7 @@ from requirements_graphrag_api.guardrails.events import (
     create_pii_event,
 )
 from requirements_graphrag_api.middleware.rate_limit import CHAT_RATE_LIMIT, get_rate_limiter
+from requirements_graphrag_api.middleware.timeout import TIMEOUTS, with_timeout
 from requirements_graphrag_api.observability import create_thread_metadata
 
 if TYPE_CHECKING:
@@ -189,7 +191,11 @@ async def _generate_sse_events(
                 )
                 log_guardrail_event(event)
 
+            if injection_result.should_warn or injection_result.should_block:
+                metrics.record_prompt_injection(blocked=injection_result.should_block)
+
             if injection_result.should_block:
+                metrics.record_request(blocked=True)
                 yield f"event: {StreamEventType.ERROR.value}\n"
                 yield f"data: {json.dumps({'error': 'Request blocked by safety filter'})}\n\n"
                 return
@@ -207,6 +213,7 @@ async def _generate_sse_events(
                 logger.warning("PII detection failed — processing request with unchecked input")
 
             if pii_result.contains_pii:
+                metrics.record_pii(redacted=True)
                 entity_types = tuple(e.entity_type for e in pii_result.detected_entities)
                 event = create_pii_event(
                     request_id=request_id,
@@ -233,6 +240,7 @@ async def _generate_sse_events(
             ]
             validation = validate_conversation_history(history_dicts)
             if validation.issues:
+                metrics.record_conversation_validation_issue()
                 logger.info(
                     "Conversation history validation: %d issues: %s",
                     len(validation.issues),
@@ -251,6 +259,9 @@ async def _generate_sse_events(
             elif not validation.is_valid:
                 # All messages were removed (e.g., all contained injection)
                 request = request.model_copy(update={"conversation_history": None})
+
+        # Record successful guardrail pass
+        metrics.record_request(blocked=False)
 
         # === QUERY PROCESSING ===
 
@@ -578,6 +589,7 @@ class ContinueChatRequest(BaseModel):
 
 
 @router.get("/chat/{thread_id}")
+@with_timeout(TIMEOUTS["default"])
 async def get_conversation_state(
     request: Request,
     thread_id: str,
