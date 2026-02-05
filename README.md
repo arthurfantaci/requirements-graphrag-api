@@ -6,7 +6,7 @@
 
 # Requirements GraphRAG API
 
-A **Graph-Enriched Retrieval-Augmented Generation** (GraphRAG) system with a chat interface for the [Jama Software "Essential Guide to Requirements Management and Traceability"](https://www.jamasoftware.com/requirements-management-guide) knowledge base. Features a 4-level graph enrichment pipeline, automatic query routing between explanatory (RAG) and structured (Text2Cypher) intents, SSE streaming with progressive metadata, and end-to-end LangSmith observability with tiered evaluation.
+A **Graph-Enriched Retrieval-Augmented Generation** (GraphRAG) system with a chat interface for the [Jama Software "Essential Guide to Requirements Management and Traceability"](https://www.jamasoftware.com/requirements-management-guide) knowledge base. Features an **agentic RAG architecture** built on LangGraph with autonomous tool selection, multi-hop reasoning, and self-critique capabilities. Includes a 4-level graph enrichment pipeline, automatic query routing, SSE streaming with progressive metadata, conversation persistence, and end-to-end LangSmith observability with comprehensive evaluation.
 
 ## Live Demo
 
@@ -55,8 +55,39 @@ A two-stage classifier routes each query to the appropriate handler:
 
 | Intent | Handler | Output |
 |--------|---------|--------|
-| **Explanatory** | RAG pipeline with hybrid search + 4-level graph enrichment | Streamed prose with citations, entities, media |
+| **Explanatory** | Agentic RAG with autonomous tool selection + graph enrichment | Streamed prose with citations, entities, media |
 | **Structured** | Text2Cypher — natural language translated to a Cypher query | Generated query + tabular results |
+
+### Agentic RAG Architecture
+
+Built on **LangGraph**, the agentic system autonomously orchestrates retrieval and synthesis:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      AGENTIC ORCHESTRATOR                        │
+│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐  │
+│  │   RAG    │───▶│ Research │───▶│Synthesis │───▶│  Output  │  │
+│  │ Subgraph │    │ Subgraph │    │ Subgraph │    │          │  │
+│  └──────────┘    └──────────┘    └──────────┘    └──────────┘  │
+│       │               │               │                         │
+│       ▼               ▼               ▼                         │
+│  Query Expansion  Entity        Self-Critique                   │
+│  Parallel Search  Exploration   Revision Loop                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+| Subgraph | Nodes | Capability |
+|----------|-------|------------|
+| **RAG** | expand_queries → parallel_retrieve → dedupe_rank | Multi-query expansion with step-back reasoning |
+| **Research** | identify_entities → explore_entity (loop) | Deep entity exploration with conditional iteration |
+| **Synthesis** | draft_answer → critique → revise → format | Self-critique with automatic revision |
+
+**Key Features:**
+- **7 Agent Tools**: graph_search, text2cypher, explore_entity, lookup_standard, search_definitions, lookup_term, get_webinars
+- **Conversation Persistence**: PostgresSaver for multi-turn conversations with thread isolation
+- **Self-Critique**: CRITIC prompt evaluates answer completeness and triggers revision if needed
+- **Performance Tracking**: Built-in metrics for subgraph execution times and optimization hints
+- **Cost Analysis**: LLM token tracking with per-model cost estimation
 
 ### SSE Streaming Chat
 
@@ -88,26 +119,28 @@ Each event carries typed JSON payloads (`StreamEventType` StrEnum with 7 values:
 └──────────┬───────────┘
            │ SSE / REST
            ▼
-┌──────────────────────┐
-│   FastAPI            │
-│   Query Router       │──── LangSmith Tracing
-│   (Railway)          │
-└──────┬───────┬───────┘
-       │       │
-       ▼       ▼
-  ┌────────┐ ┌────────────┐
-  │  RAG   │ │ Text2Cypher│
-  │Pipeline│ │  (LLM →    │
-  │(4-level│ │   Cypher)  │
-  │enrich) │ └──────┬─────┘
-  └───┬────┘        │
-      │             │
-      ▼             ▼
+┌──────────────────────────────────────┐
+│   FastAPI + Agentic Orchestrator     │
+│   (LangGraph StateGraph)             │
+│   ├─ Query Router                    │──── LangSmith Tracing
+│   ├─ Tool Selection                  │
+│   └─ Self-Critique Loop              │
+│   (Railway)                          │
+└──────┬───────┬───────────────────────┘
+       │       │              │
+       ▼       ▼              ▼
+  ┌─────────┐ ┌────────────┐ ┌──────────────┐
+  │ Agentic │ │ Text2Cypher│ │  PostgreSQL  │
+  │   RAG   │ │  (LLM →    │ │  Checkpoints │
+  │Subgraphs│ │   Cypher)  │ │ (Persistence)│
+  └────┬────┘ └──────┬─────┘ └──────────────┘
+       │             │
+       ▼             ▼
 ┌──────────────────────┐
 │   Neo4j AuraDB       │
-│   Knowledge Graph     │
-│   (Chunks, Entities,  │
-│    Media, Standards)  │
+│   Knowledge Graph    │
+│   (Chunks, Entities, │
+│    Media, Standards) │
 └──────────────────────┘
 ```
 
@@ -119,7 +152,8 @@ Each event carries typed JSON payloads (`StreamEventType` StrEnum with 7 values:
 | Backend | FastAPI, Python 3.12+, uv | REST API with SSE endpoints, async I/O |
 | Graph Database | Neo4j AuraDB, neo4j-graphrag | Knowledge graph storage, vector index, Cypher queries |
 | LLM | OpenAI GPT-4o, text-embedding-3-small | Answer generation, intent classification, embeddings |
-| Orchestration | LangChain Core, langchain-openai | RAG chain composition, prompt management |
+| Agentic Orchestration | LangGraph, langgraph-checkpoint-postgres | Stateful agent graphs, subgraph composition, conversation persistence |
+| Chain Composition | LangChain Core, langchain-openai | RAG chain building, prompt management |
 | Observability | LangSmith | Tracing, feedback, prompt versioning, evaluation |
 | CI/CD | GitHub Actions, Codecov | Lint, test, coverage, evaluation, prompt sync |
 | Deployment | Railway (backend), Vercel (frontend) | Docker containers, edge CDN |
@@ -129,6 +163,8 @@ Each event carries typed JSON payloads (`StreamEventType` StrEnum with 7 values:
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/chat` | SSE streaming chat with automatic intent routing |
+| `GET` | `/chat/{thread_id}` | Retrieve conversation state by thread ID |
+| `POST` | `/chat/{thread_id}/continue` | Continue an existing conversation thread |
 | `GET` | `/chat/routing-guide` | User-facing documentation for query routing |
 | `POST` | `/search/vector` | Semantic vector similarity search |
 | `POST` | `/search/hybrid` | Vector + keyword search with adjustable weights |
@@ -249,6 +285,7 @@ See [`backend/.env.example`](backend/.env.example) for the full template with in
 | `LANGSMITH_TRACING` | No | `false` | Enable LangSmith tracing |
 | `LANGSMITH_API_KEY` | No | — | LangSmith API key |
 | `LANGSMITH_PROJECT` | No | `graphrag-api-dev` | LangSmith project name |
+| `CHECKPOINT_DATABASE_URL` | No | — | PostgreSQL URL for conversation persistence (LangGraph checkpoints) |
 | `CORS_ORIGINS` | No | `localhost:3000,5173` | Allowed CORS origins (comma-separated) |
 | `VITE_API_URL` | Yes (frontend) | — | Backend API URL for the frontend |
 
@@ -275,7 +312,14 @@ requirements-graphrag-api/
 │   │   │   ├── routing.py              # Intent classification (keyword + LLM)
 │   │   │   ├── text2cypher.py          # Natural language → Cypher translation
 │   │   │   ├── definitions.py          # Glossary/definition lookup
-│   │   │   └── standards.py            # Industry standards queries
+│   │   │   ├── standards.py            # Industry standards queries
+│   │   │   └── agentic/                # LangGraph agentic orchestration
+│   │   │       ├── state.py            # TypedDict state definitions
+│   │   │       ├── tools.py            # Agent tool definitions (7 tools)
+│   │   │       ├── orchestrator.py     # Main composed graph with routing
+│   │   │       ├── checkpoints.py      # PostgresSaver configuration
+│   │   │       ├── streaming.py        # SSE streaming utilities
+│   │   │       └── subgraphs/          # RAG, Research, Synthesis subgraphs
 │   │   ├── routes/
 │   │   │   ├── chat.py                 # /chat SSE endpoint
 │   │   │   ├── search.py              # /search/vector|hybrid|graph
@@ -288,7 +332,11 @@ requirements-graphrag-api/
 │   │   │   ├── catalog.py              # PromptCatalog with Hub caching
 │   │   │   └── definitions.py          # Prompt text + Text2Cypher examples
 │   │   └── evaluation/
-│   │       ├── metrics.py              # Evaluation metrics
+│   │       ├── __init__.py             # Exports all evaluation utilities
+│   │       ├── agentic_evaluators.py   # LangSmith evaluators for agentic RAG
+│   │       ├── performance.py          # Subgraph performance tracking
+│   │       ├── cost_analysis.py        # LLM cost tracking and estimation
+│   │       ├── metrics.py              # Standard RAG evaluation metrics
 │   │       └── domain_metrics.py       # Domain-specific metrics
 │   ├── tests/                          # pytest suite (unit + integration)
 │   ├── Dockerfile                      # Production container (Python 3.12)
