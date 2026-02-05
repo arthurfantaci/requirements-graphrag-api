@@ -288,7 +288,7 @@ async def _generate_sse_events(
             topic_llm = None
             if guardrail_config.topic_guard_use_llm and config.openai_api_key:
                 topic_llm = ChatOpenAI(
-                    model=config.chat_model,
+                    model="gpt-4o-mini",
                     temperature=0,
                     api_key=config.openai_api_key,
                     max_tokens=20,
@@ -477,7 +477,7 @@ async def _run_output_guardrails(
             )
 
             llm = ChatOpenAI(
-                model=config.chat_model,
+                model="gpt-4o-mini",
                 temperature=0.0,
                 api_key=config.openai_api_key,
             )
