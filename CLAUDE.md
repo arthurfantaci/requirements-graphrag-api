@@ -126,6 +126,15 @@ uv run langsmith-fetch traces --limit 5 --format json
 - Scripts: `scripts/create_agentic_dataset.py`, `scripts/run_agentic_evaluation.py`
 - Tests: `tests/test_evaluation/` (75+ tests across 3 files)
 
+## Agentic Data Flow Gotchas (Critical)
+
+- `graph_enriched_search` returns nested structure: `result["metadata"]["title"]`, NOT `result["article_title"]`
+- `chunk_id` is at `metadata.chunk_id`, not top-level - check both paths in deduplication
+- Hash fallback danger: `hash("")` collides - use `id(result)` as final fallback
+- Content key varies: check `result.get("content") or result.get("text")`
+- Rich metadata to preserve: `media`, `glossary_definitions`, `entities`, `industry_standards`
+- Streaming must re-extract metadata from `RetrievedDocument.metadata` dict for frontend
+
 ## Neo4j Best Practices (CRITICAL)
 
 - Always use `neo4j+s://` for production URIs
@@ -151,11 +160,16 @@ uv run langsmith-fetch traces --limit 5 --format json
 
 ---
 
-## Agentic RAG Implementation (Complete)
+## Agentic RAG Implementation (Complete + Hotfixes)
 
-**Status**: ✅ All 6 phases completed (2026-02-04)
+**Status**: ✅ All 6 phases + 3 production hotfixes (2026-02-04)
 
 **Implementation Plan**: `docs/AGENTIC_IMPLEMENTATION_PLAN.md`
+
+**Hotfixes Applied:**
+- PR #112: Source title extraction path (`metadata.title` not `article_title`)
+- PR #113: Rich metadata preservation (entities, webinars, images)
+- PR #114: Deduplication hash collision fix (`metadata.chunk_id` + `id()` fallback)
 
 | Phase | Description | Key Files |
 |-------|-------------|-----------|
