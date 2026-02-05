@@ -105,6 +105,27 @@ uv run langsmith-fetch traces --limit 5 --format json
 - Env var: `CHECKPOINT_DATABASE_URL` for PostgreSQL connection
 - Tests: `tests/test_core/test_agentic/test_orchestrator.py` (17 tests)
 
+## Agentic Streaming Patterns (Phase 5)
+
+- Event types: `AgenticEventType` enum (ROUTING, SOURCES, TOKEN, PHASE, PROGRESS, ENTITIES, DONE, ERROR)
+- SSE streaming: `stream_agentic_events(graph, input, config)` async generator using `graph.astream_events()`
+- Routing event: Emitted by API handler (not streaming.py) to avoid duplication
+- Frontend compatibility: Uses shape-based event detection (payload structure, not event type field)
+- Checkpointer cleanup: `async_checkpointer_context()` for proper async cleanup in endpoints
+- Tests: `tests/test_core/test_agentic/test_integration.py` (10 tests), `tests/test_routes/test_chat.py` (21 tests)
+
+## Evaluation Framework (Phase 6)
+
+- Agentic evaluators: `tool_selection`, `iteration_efficiency`, `critic_calibration`, `multi_hop_reasoning`
+- LLM-as-judge: Use JSON output with `score` (0.0-1.0) and `reasoning` fields
+- Sync wrappers: Required for LangSmith `evaluate()` - create `*_evaluator_sync` functions
+- Cost tracking: `CostTracker.record_llm_call(model, input_tokens, output_tokens, operation)`
+- Model pricing: Sort keys by length descending to match `gpt-4o-mini` before `gpt-4o`
+- Performance hints: Auto-generated for high variance, repeated operations, slow subgraphs
+- Dataset: `graphrag-agentic-eval` (16 examples across 5 categories)
+- Scripts: `scripts/create_agentic_dataset.py`, `scripts/run_agentic_evaluation.py`
+- Tests: `tests/test_evaluation/` (75+ tests across 3 files)
+
 ## Neo4j Best Practices (CRITICAL)
 
 - Always use `neo4j+s://` for production URIs
@@ -130,29 +151,31 @@ uv run langsmith-fetch traces --limit 5 --format json
 
 ---
 
-## Agentic Implementation Tracking
+## Agentic RAG Implementation (Complete)
 
-**Current Initiative**: Replacing routed RAG with full agentic system
+**Status**: ✅ All 6 phases completed (2026-02-04)
 
 **Implementation Plan**: `docs/AGENTIC_IMPLEMENTATION_PLAN.md`
 
-### Phase Completion Protocol
+| Phase | Description | Key Files |
+|-------|-------------|-----------|
+| 0 | Setup | `core/agentic/__init__.py`, dependencies |
+| 1 | State & Tools | `state.py`, `tools.py` (7 agent tools) |
+| 2 | Prompts | 4 new prompts in `prompts/definitions.py` |
+| 3 | Subgraphs | `subgraphs/rag.py`, `research.py`, `synthesis.py` |
+| 4 | Orchestrator | `orchestrator.py`, `checkpoints.py` |
+| 5 | Streaming | `streaming.py`, updated `routes/chat.py` |
+| 6 | Evaluation | `evaluation/agentic_evaluators.py`, `performance.py`, `cost_analysis.py` |
 
-After completing any phase, invoke `/claude-md-management:revise-claude-md` to capture:
+### Agentic Commands
 
-| Phase | Learnings to Capture |
-|-------|---------------------|
-| Phase 0 | LangGraph setup, module structure |
-| Phase 1 | State definitions, tool patterns |
-| Phase 2 | Prompt orchestration patterns |
-| Phase 3 | Subgraph composition patterns |
-| Phase 4 | Checkpoint persistence patterns |
-| Phase 5 | Streaming event patterns |
-| Phase 6 | Evaluation metrics and results |
+```bash
+# Run agentic evaluation
+cd backend && uv run python scripts/run_agentic_evaluation.py
 
-### Trigger Phrases
-When I say any of these, invoke the skill automatically:
-- "Phase X complete"
-- "capture learnings"
-- "update project memory"
-- "ready to commit this phase"
+# Compare experiments
+uv run python scripts/compare_experiments.py -d graphrag-agentic-eval
+
+# Create/update dataset
+uv run python scripts/create_agentic_dataset.py
+```
