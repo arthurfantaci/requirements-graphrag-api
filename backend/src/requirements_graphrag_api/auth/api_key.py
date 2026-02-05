@@ -30,15 +30,9 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from fastapi import HTTPException, Security, status
-from fastapi.security import APIKeyHeader
-
 # API key header configuration
 API_KEY_HEADER_NAME = "X-API-Key"
 API_KEY_PREFIX = "rgapi_"  # Requirements GraphRAG API
-
-# Security header for FastAPI dependency injection
-api_key_header = APIKeyHeader(name=API_KEY_HEADER_NAME, auto_error=False)
 
 
 class APIKeyTier(StrEnum):
@@ -307,92 +301,3 @@ def create_anonymous_key_info() -> APIKeyInfo:
         scopes=("chat", "search"),
         metadata={},
     )
-
-
-async def verify_api_key(
-    api_key: str | None = Security(api_key_header),
-    *,
-    key_store: APIKeyStore | None = None,
-    require_auth: bool = False,
-) -> APIKeyInfo:
-    """Verify API key and return associated info.
-
-    This function serves as a FastAPI dependency for authentication.
-    It validates the API key format, checks it against the store,
-    and verifies it's active and not expired.
-
-    Args:
-        api_key: The API key from the request header (injected by FastAPI).
-        key_store: The API key store to check against.
-        require_auth: Whether authentication is required.
-
-    Returns:
-        APIKeyInfo for the authenticated client.
-
-    Raises:
-        HTTPException: 401 if key is missing/invalid, 403 if revoked/expired.
-    """
-    # If auth not required and no key provided, return anonymous
-    if not require_auth and not api_key:
-        return create_anonymous_key_info()
-
-    # If auth not required but key provided, validate it
-    if key_store is None:
-        # No store configured, return anonymous
-        return create_anonymous_key_info()
-
-    # Validate key presence when auth is required
-    if not api_key:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={
-                "error": "missing_api_key",
-                "message": f"API key required. Include '{API_KEY_HEADER_NAME}' header.",
-            },
-            headers={"WWW-Authenticate": "ApiKey"},
-        )
-
-    # Validate key format
-    if not validate_api_key_format(api_key):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={
-                "error": "invalid_api_key_format",
-                "message": "Invalid API key format. Keys must start with 'rgapi_'.",
-            },
-        )
-
-    # Look up key in store
-    key_hash = hash_api_key(api_key)
-    key_info = await key_store.get_by_hash(key_hash)
-
-    if key_info is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "invalid_api_key",
-                "message": "API key not found or invalid.",
-            },
-        )
-
-    # Check if active
-    if not key_info.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "api_key_revoked",
-                "message": "API key has been revoked.",
-            },
-        )
-
-    # Check expiration
-    if key_info.expires_at and datetime.now(UTC) > key_info.expires_at:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "api_key_expired",
-                "message": "API key has expired.",
-            },
-        )
-
-    return key_info
