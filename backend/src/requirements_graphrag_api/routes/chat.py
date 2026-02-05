@@ -23,7 +23,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import uuid
+from contextlib import AsyncExitStack
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Request
@@ -282,38 +284,45 @@ async def _generate_explanatory_events(
     Yields:
         Formatted SSE event strings.
     """
-    # Create the orchestrator graph
-    graph = create_orchestrator_graph(config, driver, retriever)
+    # Create checkpointer for conversation persistence (graceful fallback)
+    async with AsyncExitStack() as stack:
+        checkpointer = None
+        if os.getenv("CHECKPOINT_DATABASE_URL"):
+            checkpointer = await stack.enter_async_context(async_checkpointer_context())
+        else:
+            logger.warning("CHECKPOINT_DATABASE_URL not set — chat memory disabled")
 
-    # Build conversation history as LangChain messages
-    messages: list[HumanMessage] = []
-    if request.conversation_history:
-        for msg in request.conversation_history:
-            if msg.role == "user":
-                messages.append(HumanMessage(content=msg.content))
-            # Note: AIMessage could be added for assistant messages if needed
+        # Create the orchestrator graph with persistence
+        graph = create_orchestrator_graph(config, driver, retriever, checkpointer=checkpointer)
 
-    # Add the current query as the final message
-    messages.append(HumanMessage(content=safe_message))
+        # Build conversation history as LangChain messages
+        messages: list[HumanMessage] = []
+        if request.conversation_history:
+            for msg in request.conversation_history:
+                if msg.role == "user":
+                    messages.append(HumanMessage(content=msg.content))
 
-    # Build initial state
-    initial_state: OrchestratorState = {
-        "messages": messages,
-        "query": safe_message,
-    }
+        # Add the current query as the final message
+        messages.append(HumanMessage(content=safe_message))
 
-    # Get thread configuration for persistence (uses conversation_id as thread_id)
-    thread_id = request.conversation_id or str(uuid.uuid4())
-    runnable_config = get_thread_config(thread_id)
+        # Build initial state
+        initial_state: OrchestratorState = {
+            "messages": messages,
+            "query": safe_message,
+        }
 
-    # Stream events from the agentic orchestrator
-    async for sse_event in stream_agentic_events(
-        graph,
-        initial_state,
-        runnable_config,
-        app_config=config,
-    ):
-        yield sse_event
+        # Get thread configuration for persistence (uses conversation_id as thread_id)
+        thread_id = request.conversation_id or str(uuid.uuid4())
+        runnable_config = get_thread_config(thread_id)
+
+        # Stream events from the agentic orchestrator
+        async for sse_event in stream_agentic_events(
+            graph,
+            initial_state,
+            runnable_config,
+            app_config=config,
+        ):
+            yield sse_event
 
 
 async def _generate_structured_events(
@@ -561,8 +570,6 @@ async def get_conversation_state(
     Raises:
         HTTPException: 404 if conversation not found, 503 if checkpointing unavailable.
     """
-    import os
-
     from fastapi import HTTPException
 
     config: AppConfig = request.app.state.config
