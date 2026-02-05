@@ -49,6 +49,10 @@ def mock_guardrail_config() -> MagicMock:
     config.prompt_injection_enabled = False
     config.pii_detection_enabled = False
     config.rate_limiting_enabled = False
+    config.toxicity_enabled = False
+    config.topic_guard_enabled = False
+    config.output_filter_enabled = False
+    config.hallucination_enabled = False
     config.injection_block_threshold = "high"
     config.pii_entities = ("EMAIL_ADDRESS", "PHONE_NUMBER")
     config.pii_score_threshold = 0.7

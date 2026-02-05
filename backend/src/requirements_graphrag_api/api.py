@@ -141,7 +141,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Configure audit logging if enabled
     if auth_config.audit_enabled:
-        configure_audit_logging(enable_logging=True, enable_langsmith=False)
+        configure_audit_logging(enable_logging=True)
         logger.info("Audit logging enabled")
 
     # Store in app state for route handlers

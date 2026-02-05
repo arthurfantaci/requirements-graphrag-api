@@ -83,6 +83,7 @@ class PIICheckResult:
         anonymized_text: Text with PII redacted/replaced.
         original_text: Original input text.
         entity_count: Number of PII entities detected.
+        check_failed: True if the PII check itself errored (fail-closed signal).
     """
 
     contains_pii: bool
@@ -90,6 +91,7 @@ class PIICheckResult:
     anonymized_text: str
     original_text: str
     entity_count: int
+    check_failed: bool = False
 
     def get_entities_by_type(self, entity_type: str) -> tuple[DetectedEntity, ...]:
         """Get all detected entities of a specific type.
@@ -258,16 +260,17 @@ def detect_and_redact_pii(
             anonymized_text=text,
             original_text=text,
             entity_count=0,
+            check_failed=True,
         )
     except Exception:
         logger.exception("Error during PII detection")
-        # On error, return original text but flag that PII detection failed
         return PIICheckResult(
             contains_pii=False,
             detected_entities=(),
             anonymized_text=text,
             original_text=text,
             entity_count=0,
+            check_failed=True,
         )
 
 
