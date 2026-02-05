@@ -18,6 +18,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from requirements_graphrag_api.guardrails import detect_and_redact_pii
+from requirements_graphrag_api.middleware.timeout import TIMEOUTS, with_timeout
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,7 @@ class FeedbackResponse(BaseModel):
 
 
 @router.post("/feedback", response_model=FeedbackResponse)
+@with_timeout(TIMEOUTS["feedback"])
 async def submit_feedback(
     request: Request,
     body: FeedbackRequest,
