@@ -21,6 +21,7 @@ Agentic RAG (2026-02):
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -274,56 +275,11 @@ async def _generate_sse_events(
                 )
                 log_guardrail_event(event)
 
-        # 4. Topic guard (keyword + LLM classification for borderline)
-        if guardrail_config.topic_guard_enabled:
-            from langchain_openai import ChatOpenAI
+        # 4. Topic guard + intent classification (parallel when both need LLM)
+        # Run topic guard and intent classification concurrently to reduce TTFT.
+        # If topic guard blocks (OUT_OF_SCOPE), the intent result is discarded.
 
-            from requirements_graphrag_api.guardrails.topic_guard import TopicGuardConfig
-
-            topic_config = TopicGuardConfig(
-                enabled=True,
-                use_llm_classification=guardrail_config.topic_guard_use_llm,
-                allow_borderline=guardrail_config.topic_guard_allow_borderline,
-            )
-            topic_llm = None
-            if guardrail_config.topic_guard_use_llm and config.openai_api_key:
-                topic_llm = ChatOpenAI(
-                    model="gpt-4o-mini",
-                    temperature=0,
-                    api_key=config.openai_api_key,
-                    max_tokens=20,
-                )
-            topic_result = await check_topic_relevance(
-                safe_message,
-                llm=topic_llm,
-                config=topic_config,
-            )
-            if topic_result.classification == TopicClassification.OUT_OF_SCOPE:
-                metrics.record_topic_out_of_scope()
-                event = create_topic_event(
-                    request_id=request_id,
-                    classification=topic_result.classification.value,
-                    confidence=topic_result.confidence,
-                    reasoning=topic_result.reasoning,
-                    check_type=topic_result.check_type,
-                    user_ip=user_ip,
-                    input_text=request.message,
-                )
-                log_guardrail_event(event)
-                # Return a polite redirect instead of processing the query
-                redirect = (
-                    topic_result.suggested_response
-                    or "This question is outside my area of expertise."
-                )
-                yield f"event: {StreamEventType.ROUTING.value}\n"
-                yield f"data: {json.dumps({'intent': 'explanatory'})}\n\n"
-                yield f"event: {StreamEventType.TOKEN.value}\n"
-                yield f"data: {json.dumps({'token': redirect})}\n\n"
-                yield f"event: {StreamEventType.DONE.value}\n"
-                yield f"data: {json.dumps({'full_answer': redirect, 'source_count': 0})}\n\n"
-                return
-
-        # 5. Validate conversation history
+        # 4a. Validate conversation history (doesn't need LLM, run inline)
         if request.conversation_history:
             history_dicts = [
                 {"role": msg.role, "content": msg.content} for msg in request.conversation_history
@@ -350,23 +306,84 @@ async def _generate_sse_events(
                 # All messages were removed (e.g., all contained injection)
                 request = request.model_copy(update={"conversation_history": None})
 
-        # Record successful guardrail pass
-        metrics.record_request(blocked=False)
+        # 4b. Build topic guard coroutine (if enabled)
+        topic_guard_coro = None
+        if guardrail_config.topic_guard_enabled:
+            from langchain_openai import ChatOpenAI
 
-        # === QUERY PROCESSING ===
+            from requirements_graphrag_api.guardrails.topic_guard import TopicGuardConfig
 
-        # Determine query intent (use safe_message for classification)
+            topic_config = TopicGuardConfig(
+                enabled=True,
+                use_llm_classification=guardrail_config.topic_guard_use_llm,
+                allow_borderline=guardrail_config.topic_guard_allow_borderline,
+            )
+            topic_llm = None
+            if guardrail_config.topic_guard_use_llm and config.openai_api_key:
+                topic_llm = ChatOpenAI(
+                    model="gpt-4o-mini",
+                    temperature=0,
+                    api_key=config.openai_api_key,
+                    max_tokens=20,
+                )
+            topic_guard_coro = check_topic_relevance(
+                safe_message,
+                llm=topic_llm,
+                config=topic_config,
+            )
+
+        # 4c. Determine intent resolution strategy
+        topic_result = None
         intent: QueryIntent
+
         if request.options.force_intent:
             intent = QueryIntent(request.options.force_intent)
             logger.info("Using forced intent: %s", intent)
+            # Still need to run topic guard if enabled
+            if topic_guard_coro:
+                topic_result = await topic_guard_coro
         elif request.options.auto_route:
-            intent = await classify_intent(config, safe_message)
+            # Both topic guard and intent may need LLM — run concurrently
+            intent_coro = classify_intent(config, safe_message)
+            if topic_guard_coro:
+                topic_result, intent = await asyncio.gather(topic_guard_coro, intent_coro)
+                logger.info("Parallel topic guard + intent classification complete")
+            else:
+                intent = await intent_coro
             logger.info("Auto-classified intent: %s", intent)
         else:
-            # Default to explanatory if auto_route is disabled
             intent = QueryIntent.EXPLANATORY
             logger.info("Auto-route disabled, using default: %s", intent)
+            if topic_guard_coro:
+                topic_result = await topic_guard_coro
+
+        # 4e. Check topic guard result (may short-circuit)
+        if topic_result and topic_result.classification == TopicClassification.OUT_OF_SCOPE:
+            metrics.record_topic_out_of_scope()
+            event = create_topic_event(
+                request_id=request_id,
+                classification=topic_result.classification.value,
+                confidence=topic_result.confidence,
+                reasoning=topic_result.reasoning,
+                check_type=topic_result.check_type,
+                user_ip=user_ip,
+                input_text=request.message,
+            )
+            log_guardrail_event(event)
+            # Return a polite redirect instead of processing the query
+            redirect = (
+                topic_result.suggested_response or "This question is outside my area of expertise."
+            )
+            yield f"event: {StreamEventType.ROUTING.value}\n"
+            yield f"data: {json.dumps({'intent': 'explanatory'})}\n\n"
+            yield f"event: {StreamEventType.TOKEN.value}\n"
+            yield f"data: {json.dumps({'token': redirect})}\n\n"
+            yield f"event: {StreamEventType.DONE.value}\n"
+            yield f"data: {json.dumps({'full_answer': redirect, 'source_count': 0})}\n\n"
+            return
+
+        # Record successful guardrail pass
+        metrics.record_request(blocked=False)
 
         # Emit routing event so frontend knows which handler is being used
         yield f"event: {StreamEventType.ROUTING.value}\n"
