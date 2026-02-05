@@ -17,6 +17,8 @@ import os
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from requirements_graphrag_api.guardrails import detect_and_redact_pii
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -113,6 +115,24 @@ async def submit_feedback(
 
         client = Client()
 
+        # Redact PII from free-text fields before sending to LangSmith
+        safe_comment = body.comment
+        safe_correction = body.correction
+        if body.comment:
+            pii_result = detect_and_redact_pii(body.comment)
+            if pii_result.contains_pii:
+                safe_comment = pii_result.anonymized_text
+                logger.info(
+                    "PII redacted from feedback comment: %d entities", pii_result.entity_count
+                )
+        if body.correction:
+            pii_result = detect_and_redact_pii(body.correction)
+            if pii_result.contains_pii:
+                safe_correction = pii_result.anonymized_text
+                logger.info(
+                    "PII redacted from feedback correction: %d entities", pii_result.entity_count
+                )
+
         # Determine feedback value as a simple string for charting/filtering
         # LangSmith UI cannot display dict values in charts (shows as [object Object])
         feedback_value = (
@@ -121,12 +141,12 @@ async def submit_feedback(
 
         # Build comment string with all metadata for human review
         comment_parts: list[str] = []
-        if body.comment:
-            comment_parts.append(body.comment)
+        if safe_comment:
+            comment_parts.append(safe_comment)
         if body.category:
             comment_parts.append(f"Category: {body.category}")
-        if body.correction:
-            comment_parts.append(f"Correction: {body.correction}")
+        if safe_correction:
+            comment_parts.append(f"Correction: {safe_correction}")
         if body.message_id:
             comment_parts.append(f"Message ID: {body.message_id}")
         if body.conversation_id:
@@ -145,7 +165,7 @@ async def submit_feedback(
             score=body.score,
             comment=comment,
             value=feedback_value,
-            correction={"text": body.correction} if body.correction else None,
+            correction={"text": safe_correction} if safe_correction else None,
         )
 
         feedback_id = str(feedback.id) if feedback else None

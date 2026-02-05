@@ -53,6 +53,7 @@ from requirements_graphrag_api.guardrails import (
     check_prompt_injection,
     detect_and_redact_pii,
     log_guardrail_event,
+    validate_conversation_history,
 )
 from requirements_graphrag_api.guardrails.events import (
     create_injection_event,
@@ -202,6 +203,9 @@ async def _generate_sse_events(
                 anonymize_type=guardrail_config.pii_anonymize_type,
             )
 
+            if pii_result.check_failed:
+                logger.warning("PII detection failed — processing request with unchecked input")
+
             if pii_result.contains_pii:
                 entity_types = tuple(e.entity_type for e in pii_result.detected_entities)
                 event = create_pii_event(
@@ -221,6 +225,32 @@ async def _generate_sse_events(
                     pii_result.entity_count,
                     entity_types,
                 )
+
+        # 3. Validate conversation history
+        if request.conversation_history:
+            history_dicts = [
+                {"role": msg.role, "content": msg.content} for msg in request.conversation_history
+            ]
+            validation = validate_conversation_history(history_dicts)
+            if validation.issues:
+                logger.info(
+                    "Conversation history validation: %d issues: %s",
+                    len(validation.issues),
+                    validation.issues,
+                )
+            if validation.sanitized_history is not None:
+                # Replace with sanitized history
+                request = request.model_copy(
+                    update={
+                        "conversation_history": [
+                            ChatMessage(role=m["role"], content=m["content"])
+                            for m in validation.sanitized_history
+                        ]
+                    }
+                )
+            elif not validation.is_valid:
+                # All messages were removed (e.g., all contained injection)
+                request = request.model_copy(update={"conversation_history": None})
 
         # === QUERY PROCESSING ===
 

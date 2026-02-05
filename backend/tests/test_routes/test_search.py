@@ -12,6 +12,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from requirements_graphrag_api.config import GuardrailConfig
 from requirements_graphrag_api.routes.search import router
 
 
@@ -36,10 +37,26 @@ def mock_retriever() -> MagicMock:
 
 
 @pytest.fixture
-def client(mock_app: FastAPI, mock_driver: MagicMock, mock_retriever: MagicMock) -> TestClient:
+def mock_guardrail_config() -> GuardrailConfig:
+    """Create a guardrail config with all checks disabled for unit tests."""
+    return GuardrailConfig(
+        prompt_injection_enabled=False,
+        pii_detection_enabled=False,
+        rate_limiting_enabled=False,
+    )
+
+
+@pytest.fixture
+def client(
+    mock_app: FastAPI,
+    mock_driver: MagicMock,
+    mock_retriever: MagicMock,
+    mock_guardrail_config: GuardrailConfig,
+) -> TestClient:
     """Create a test client with mocked dependencies."""
     mock_app.state.driver = mock_driver
     mock_app.state.retriever = mock_retriever
+    mock_app.state.guardrail_config = mock_guardrail_config
     return TestClient(mock_app)
 
 

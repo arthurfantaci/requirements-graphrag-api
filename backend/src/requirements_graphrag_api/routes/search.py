@@ -7,9 +7,11 @@ Updated Data Model (2026-01):
 
 from __future__ import annotations
 
+import logging
+import uuid
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from requirements_graphrag_api.core import (
@@ -17,10 +19,24 @@ from requirements_graphrag_api.core import (
     hybrid_search,
     vector_search,
 )
+from requirements_graphrag_api.guardrails import (
+    InjectionRisk,
+    check_prompt_injection,
+    detect_and_redact_pii,
+    log_guardrail_event,
+)
+from requirements_graphrag_api.guardrails.events import (
+    create_injection_event,
+    create_pii_event,
+)
 
 if TYPE_CHECKING:
     from neo4j import Driver
     from neo4j_graphrag.retrievers import VectorRetriever
+
+    from requirements_graphrag_api.config import GuardrailConfig
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -145,6 +161,76 @@ class SearchResponse(BaseModel):
     total: int
 
 
+def _apply_search_guardrails(
+    query: str,
+    guardrail_config: GuardrailConfig,
+) -> str:
+    """Apply prompt injection and PII guardrails to a search query.
+
+    Args:
+        query: Raw user query.
+        guardrail_config: Guardrail configuration from app state.
+
+    Returns:
+        Sanitized query safe for processing.
+
+    Raises:
+        HTTPException: 400 if query is blocked by injection detection.
+    """
+    request_id = str(uuid.uuid4())[:8]
+    safe_query = query
+
+    # 1. Check for prompt injection
+    if guardrail_config.prompt_injection_enabled:
+        injection_result = check_prompt_injection(
+            query,
+            block_threshold=InjectionRisk(guardrail_config.injection_block_threshold),
+        )
+        if injection_result.should_warn or injection_result.should_block:
+            event = create_injection_event(
+                request_id=request_id,
+                risk_level=injection_result.risk_level.value,
+                patterns=injection_result.detected_patterns,
+                blocked=injection_result.should_block,
+                input_text=query,
+            )
+            log_guardrail_event(event)
+
+        if injection_result.should_block:
+            raise HTTPException(
+                status_code=400,
+                detail="Request blocked by safety filter",
+            )
+
+    # 2. Detect and redact PII
+    if guardrail_config.pii_detection_enabled:
+        pii_result = detect_and_redact_pii(
+            safe_query,
+            entities=guardrail_config.pii_entities,
+            score_threshold=guardrail_config.pii_score_threshold,
+            anonymize_type=guardrail_config.pii_anonymize_type,
+        )
+        if pii_result.check_failed:
+            logger.warning("PII detection failed — processing search with unchecked input")
+        if pii_result.contains_pii:
+            entity_types = tuple(e.entity_type for e in pii_result.detected_entities)
+            event = create_pii_event(
+                request_id=request_id,
+                entity_types=entity_types,
+                entity_count=pii_result.entity_count,
+                redacted=True,
+                input_text=query,
+            )
+            log_guardrail_event(event)
+            safe_query = pii_result.anonymized_text
+            logger.info(
+                "PII detected in search query: %d entities redacted",
+                pii_result.entity_count,
+            )
+
+    return safe_query
+
+
 @router.post("/search/vector", response_model=SearchResponse)
 async def vector_search_endpoint(
     request: Request,
@@ -164,8 +250,10 @@ async def vector_search_endpoint(
     """
     retriever: VectorRetriever = request.app.state.retriever
     driver: Driver = request.app.state.driver
+    guardrail_config: GuardrailConfig = request.app.state.guardrail_config
 
-    results = await vector_search(retriever, driver, body.query, limit=body.limit)
+    safe_query = _apply_search_guardrails(body.query, guardrail_config)
+    results = await vector_search(retriever, driver, safe_query, limit=body.limit)
 
     return {
         "results": [SearchResult(**r) for r in results],
@@ -192,11 +280,13 @@ async def hybrid_search_endpoint(
     """
     retriever: VectorRetriever = request.app.state.retriever
     driver: Driver = request.app.state.driver
+    guardrail_config: GuardrailConfig = request.app.state.guardrail_config
 
+    safe_query = _apply_search_guardrails(body.query, guardrail_config)
     results = await hybrid_search(
         retriever,
         driver,
-        body.query,
+        safe_query,
         limit=body.limit,
         keyword_weight=body.keyword_weight,
     )
@@ -230,11 +320,13 @@ async def graph_search_endpoint(
     """
     retriever: VectorRetriever = request.app.state.retriever
     driver: Driver = request.app.state.driver
+    guardrail_config: GuardrailConfig = request.app.state.guardrail_config
 
+    safe_query = _apply_search_guardrails(body.query, guardrail_config)
     results = await graph_enriched_search(
         retriever,
         driver,
-        body.query,
+        safe_query,
         limit=body.limit,
     )
 
