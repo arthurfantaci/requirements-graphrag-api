@@ -32,8 +32,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Constants
-MAX_REVISIONS = 2
-CONFIDENCE_THRESHOLD = 0.7
+MAX_REVISIONS = 1
+CONFIDENCE_THRESHOLD = 0.5
 
 
 def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
@@ -321,7 +321,6 @@ Focus on improving completeness and addressing the gaps identified above."""
             needs_work = (
                 critique.confidence < CONFIDENCE_THRESHOLD
                 or critique.completeness == "insufficient"
-                or (critique.completeness == "partial" and revision_count == 0)
             )
             if needs_work:
                 logger.info(
