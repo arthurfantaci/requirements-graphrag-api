@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel, Field
 from slowapi.util import get_remote_address
 
@@ -581,11 +581,13 @@ async def _generate_explanatory_events(
                 refined_query = safe_message
 
         # Build conversation history as LangChain messages
-        messages: list[HumanMessage] = []
+        messages: list[HumanMessage | AIMessage] = []
         if request.conversation_history:
             for msg in request.conversation_history:
                 if msg.role == "user":
                     messages.append(HumanMessage(content=msg.content))
+                elif msg.role == "assistant":
+                    messages.append(AIMessage(content=msg.content))
 
         # Add the current (potentially refined) query as the final message
         messages.append(HumanMessage(content=refined_query))
