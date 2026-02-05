@@ -388,18 +388,20 @@ async def stream_agentic_events(
                             )
                     yield create_entities_event(entities).to_sse()
 
-            # Capture final answer
+            # Stream LLM tokens in real-time during synthesis
+            if event_kind == "on_chat_model_stream" and last_phase == "synthesis":
+                chunk = event_data.get("chunk")
+                if chunk and hasattr(chunk, "content") and chunk.content:
+                    yield create_token_event(chunk.content).to_sse()
+                    final_answer += chunk.content
+
+            # Capture final answer if not streamed (fallback)
             if event_kind == "on_chain_end" and "run_synthesis" in event_name:
                 output = event_data.get("output", {})
-                final_answer = output.get("final_answer", "")
-
-        # Emit final answer as tokens (for streaming effect) then done
-        if final_answer:
-            # Stream the answer in chunks for visual effect
-            chunk_size = 20
-            for i in range(0, len(final_answer), chunk_size):
-                chunk = final_answer[i : i + chunk_size]
-                yield create_token_event(chunk).to_sse()
+                synthesis_answer = output.get("final_answer", "")
+                # Only use this if we didn't get streaming tokens
+                if synthesis_answer and not final_answer:
+                    final_answer = synthesis_answer
 
         # Emit done event (source_count tracked when sources were emitted)
         yield create_done_event(
