@@ -1,17 +1,11 @@
 """Query intent classification and routing.
 
 Classifies user queries to route them to the appropriate handler:
-- EXPLANATORY: Uses RAG_GENERATION with hybrid search and graph enrichment
-- STRUCTURED: Uses TEXT2CYPHER for direct graph queries
+- EXPLANATORY: Uses the agentic RAG orchestrator (LangGraph subgraphs)
+- STRUCTURED: Uses Text2Cypher for direct graph queries
 
-This module is used in TWO contexts:
-1. **Non-Agentic Mode**: Routes to generation.stream_chat() or text2cypher_query()
-2. **Agentic Mode**: Initial classification determines if agentic orchestrator is needed
-
-When agentic mode is enabled, EXPLANATORY queries use the agentic orchestrator
-(subgraphs/orchestrator.py) instead of direct stream_chat().
-
-This module uses the INTENT_CLASSIFIER prompt from the centralized catalog.
+Uses a two-stage approach: fast keyword matching for obvious cases,
+then LLM-based classification (INTENT_CLASSIFIER prompt) for ambiguous queries.
 """
 
 from __future__ import annotations

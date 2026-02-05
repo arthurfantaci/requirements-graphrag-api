@@ -99,7 +99,7 @@ def _build_context_from_results(
 ) -> ContextBuildResult:
     """Build context from retrieval results.
 
-    Shared logic between generate_answer and stream_chat to avoid duplication.
+    Shared logic used by the evaluation pipeline and agentic orchestrator.
     Extracts and formats all resources (images, webinars, videos) for both
     LLM context and frontend display.
 
