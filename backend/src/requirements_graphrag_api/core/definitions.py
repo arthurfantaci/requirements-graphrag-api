@@ -255,9 +255,3 @@ async def list_all_terms(
 
     logger.info("Listed %d definition terms", len(terms))
     return terms
-
-
-# Aliases for backward compatibility (glossary -> definitions)
-lookup_definition = lookup_term
-search_definitions = search_terms
-list_all_definitions = list_all_terms

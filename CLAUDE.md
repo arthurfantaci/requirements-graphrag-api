@@ -157,6 +157,8 @@ uv run langsmith-fetch traces --limit 5 --format json
 - Create new driver instances per request
 - Use string concatenation in Cypher queries
 - Commit sensitive credentials
+- Modify `generation.stream_chat()` thinking it's the production path (use agentic/streaming.py)
+- Add functionality to `tools.py` without wiring it into the orchestrator
 
 ---
 
@@ -170,6 +172,17 @@ uv run langsmith-fetch traces --limit 5 --format json
 - PR #112: Source title extraction path (`metadata.title` not `article_title`)
 - PR #113: Rich metadata preservation (entities, webinars, images)
 - PR #114: Deduplication hash collision fix (`metadata.chunk_id` + `id()` fallback)
+
+**Architecture (Hybrid: Intent Classification + Agentic):**
+- `classify_intent()` routes: EXPLANATORY → Agentic Orchestrator, STRUCTURED → Text2Cypher
+- EXPLANATORY uses LangGraph subgraphs (RAG → Research → Synthesis)
+- Old `stream_chat()` is NOT used - agentic is the only active EXPLANATORY path
+
+**Dead Code (candidates for removal):**
+- `core/agentic/tools.py` - Tool wrappers never wired to orchestrator
+- `core/generation.py` functions - `stream_chat()`, `generate_answer()` replaced by agentic
+- `core/agentic/nodes.py`, `prompts.py` - Empty stubs
+- `core/definitions.py:260-263` - Unused backwards-compat aliases
 
 | Phase | Description | Key Files |
 |-------|-------------|-----------|

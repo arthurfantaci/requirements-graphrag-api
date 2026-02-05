@@ -1,6 +1,6 @@
 {
   // Python Configuration (backend monorepo)
-  "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/bin/python",
+  "python.defaultInterpreterPath": "/Users/arthurfantaci/Projects/requirements-graphrag-api/backend/.venv/bin/python",
   "python.terminal.activateEnvironment": true,
 
   // Ruff - Use as primary linter and formatter (replaces Black, isort, Flake8)
@@ -14,7 +14,7 @@
   },
 
   // Ruff extension settings
-  "ruff.path": ["${workspaceFolder}/backend/.venv/bin/ruff"],
+  "ruff.path": ["/Users/arthurfantaci/Projects/requirements-graphrag-api/backend/.venv/bin/ruff"],
   "ruff.importStrategy": "fromEnvironment",
   "ruff.lint.enable": true,
 
@@ -80,6 +80,5 @@
   // Markdown
   "[markdown]": {
     "editor.wordWrap": "on"
-  },
-  "python-envs.pythonProjects": []
+  }
 }

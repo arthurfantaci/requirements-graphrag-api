@@ -1,4 +1,9 @@
-"""Answer generation with RAG for conversational Q&A.
+"""Answer generation with RAG for conversational Q&A (Non-Agentic Path).
+
+This module provides the **non-agentic** RAG streaming path. For the agentic
+path with subgraphs, self-critique, and entity exploration, see:
+- agentic/orchestrator.py - Main graph composition
+- agentic/streaming.py - Agentic SSE streaming
 
 Combines retrieval results with LLM generation to produce
 grounded answers with citations.

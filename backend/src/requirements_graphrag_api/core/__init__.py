@@ -1,9 +1,26 @@
 """Core GraphRAG logic shared between MCP tools and REST API routes.
 
+This module provides two execution paths:
+
+1. **Non-Agentic Path** (generation.py, routing.py):
+   - Intent classification routes to RAG or Text2Cypher
+   - Direct streaming via stream_chat()
+   - Used when agentic mode is disabled
+
+2. **Agentic Path** (agentic/ subpackage):
+   - LangGraph orchestrator with RAG, Research, Synthesis subgraphs
+   - PostgreSQL checkpointing for conversation persistence
+   - SSE streaming via stream_agentic_events()
+
 Updated Data Model (2026-01):
 - Uses neo4j-graphrag VectorRetriever for vector search
 - Uses neo4j Driver directly instead of LangChain Neo4jGraph
 - Definitions module replaces Glossary module
+
+Agentic RAG (2026-02):
+- Subgraph-based orchestration (rag.py, research.py, synthesis.py)
+- Self-critique and revision loop in synthesis
+- Entity exploration for complex queries
 """
 
 from __future__ import annotations
@@ -16,8 +33,6 @@ from requirements_graphrag_api.core.definitions import (
 from requirements_graphrag_api.core.generation import (
     StreamEvent,
     StreamEventType,
-    generate_answer,
-    stream_chat,
 )
 from requirements_graphrag_api.core.retrieval import (
     DEFAULT_ENRICHMENT_OPTIONS,
@@ -53,7 +68,6 @@ __all__ = [
     "classify_intent",
     "create_vector_retriever",
     "explore_entity",
-    "generate_answer",
     "generate_cypher",
     "get_entities_from_chunks",
     "get_related_entities",
@@ -68,7 +82,6 @@ __all__ = [
     "search_entities_by_name",
     "search_standards",
     "search_terms",
-    "stream_chat",
     "text2cypher_query",
     "vector_search",
 ]
