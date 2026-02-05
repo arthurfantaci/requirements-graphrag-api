@@ -275,8 +275,10 @@ async def _generate_sse_events(
                 )
                 log_guardrail_event(event)
 
-        # 4. Topic guard (keyword-based relevance check)
+        # 4. Topic guard (keyword + LLM classification for borderline)
         if guardrail_config.topic_guard_enabled:
+            from langchain_openai import ChatOpenAI
+
             from requirements_graphrag_api.guardrails.topic_guard import TopicGuardConfig
 
             topic_config = TopicGuardConfig(
@@ -284,7 +286,19 @@ async def _generate_sse_events(
                 use_llm_classification=guardrail_config.topic_guard_use_llm,
                 allow_borderline=guardrail_config.topic_guard_allow_borderline,
             )
-            topic_result = await check_topic_relevance(safe_message, config=topic_config)
+            topic_llm = None
+            if guardrail_config.topic_guard_use_llm and config.openai_api_key:
+                topic_llm = ChatOpenAI(
+                    model=config.chat_model,
+                    temperature=0,
+                    api_key=config.openai_api_key,
+                    max_tokens=20,
+                )
+            topic_result = await check_topic_relevance(
+                safe_message,
+                llm=topic_llm,
+                config=topic_config,
+            )
             if topic_result.classification == TopicClassification.OUT_OF_SCOPE:
                 metrics.record_topic_out_of_scope()
                 event = create_topic_event(
@@ -303,7 +317,7 @@ async def _generate_sse_events(
                     or "This question is outside my area of expertise."
                 )
                 yield f"event: {StreamEventType.ROUTING.value}\n"
-                yield f"data: {json.dumps({'intent': 'out_of_scope'})}\n\n"
+                yield f"data: {json.dumps({'intent': 'explanatory'})}\n\n"
                 yield f"event: {StreamEventType.TOKEN.value}\n"
                 yield f"data: {json.dumps({'token': redirect})}\n\n"
                 yield f"event: {StreamEventType.DONE.value}\n"

@@ -43,6 +43,10 @@ def mock_guardrail_config() -> GuardrailConfig:
         prompt_injection_enabled=False,
         pii_detection_enabled=False,
         rate_limiting_enabled=False,
+        toxicity_enabled=False,
+        topic_guard_enabled=False,
+        output_filter_enabled=False,
+        hallucination_enabled=False,
     )
 
 
@@ -57,6 +61,7 @@ def client(
     mock_app.state.driver = mock_driver
     mock_app.state.retriever = mock_retriever
     mock_app.state.guardrail_config = mock_guardrail_config
+    mock_app.state.config = MagicMock()
     return TestClient(mock_app)
 
 

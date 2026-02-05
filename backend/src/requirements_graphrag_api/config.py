@@ -217,7 +217,7 @@ class GuardrailConfig:
     toxicity_enabled: bool = True
     toxicity_use_full_check: bool = False  # OpenAI Moderation API (~500ms extra)
     topic_guard_enabled: bool = True
-    topic_guard_use_llm: bool = False  # LLM classification (~1s extra)
+    topic_guard_use_llm: bool = True  # LLM classification for borderline queries
     topic_guard_allow_borderline: bool = True
     output_filter_enabled: bool = True
     output_filter_confidence_threshold: float = 0.6
@@ -269,9 +269,7 @@ def get_guardrail_config() -> GuardrailConfig:
             os.getenv("GUARDRAIL_TOXICITY_FULL_CHECK", "false"), default=False
         ),
         topic_guard_enabled=str_to_bool(os.getenv("GUARDRAIL_TOPIC_GUARD_ENABLED", "true")),
-        topic_guard_use_llm=str_to_bool(
-            os.getenv("GUARDRAIL_TOPIC_GUARD_USE_LLM", "false"), default=False
-        ),
+        topic_guard_use_llm=str_to_bool(os.getenv("GUARDRAIL_TOPIC_GUARD_USE_LLM", "true")),
         topic_guard_allow_borderline=str_to_bool(
             os.getenv("GUARDRAIL_TOPIC_GUARD_ALLOW_BORDERLINE", "true")
         ),

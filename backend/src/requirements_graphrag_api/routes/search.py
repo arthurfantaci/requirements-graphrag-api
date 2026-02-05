@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     from neo4j import Driver
     from neo4j_graphrag.retrievers import VectorRetriever
 
-    from requirements_graphrag_api.config import GuardrailConfig
+    from requirements_graphrag_api.config import AppConfig, GuardrailConfig
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +171,7 @@ class SearchResponse(BaseModel):
 async def _apply_search_guardrails(
     query: str,
     guardrail_config: GuardrailConfig,
+    config: AppConfig | None = None,
 ) -> str:
     """Apply input guardrails to a search query.
 
@@ -179,6 +180,7 @@ async def _apply_search_guardrails(
     Args:
         query: Raw user query.
         guardrail_config: Guardrail configuration from app state.
+        config: Application config (needed for LLM-based topic guard).
 
     Returns:
         Sanitized query safe for processing.
@@ -274,8 +276,10 @@ async def _apply_search_guardrails(
             )
             log_guardrail_event(event)
 
-    # 4. Topic guard
+    # 4. Topic guard (keyword + LLM classification for borderline)
     if guardrail_config.topic_guard_enabled:
+        from langchain_openai import ChatOpenAI
+
         from requirements_graphrag_api.guardrails.topic_guard import TopicGuardConfig
 
         topic_config = TopicGuardConfig(
@@ -283,7 +287,19 @@ async def _apply_search_guardrails(
             use_llm_classification=guardrail_config.topic_guard_use_llm,
             allow_borderline=guardrail_config.topic_guard_allow_borderline,
         )
-        topic_result = await check_topic_relevance(safe_query, config=topic_config)
+        topic_llm = None
+        if guardrail_config.topic_guard_use_llm and config and config.openai_api_key:
+            topic_llm = ChatOpenAI(
+                model=config.chat_model,
+                temperature=0,
+                api_key=config.openai_api_key,
+                max_tokens=20,
+            )
+        topic_result = await check_topic_relevance(
+            safe_query,
+            llm=topic_llm,
+            config=topic_config,
+        )
         if topic_result.classification == TopicClassification.OUT_OF_SCOPE:
             metrics.record_topic_out_of_scope()
             event = create_topic_event(
@@ -326,8 +342,9 @@ async def vector_search_endpoint(
     retriever: VectorRetriever = request.app.state.retriever
     driver: Driver = request.app.state.driver
     guardrail_config: GuardrailConfig = request.app.state.guardrail_config
+    config: AppConfig = request.app.state.config
 
-    safe_query = await _apply_search_guardrails(body.query, guardrail_config)
+    safe_query = await _apply_search_guardrails(body.query, guardrail_config, config)
     results = await vector_search(retriever, driver, safe_query, limit=body.limit)
 
     return {
@@ -357,8 +374,9 @@ async def hybrid_search_endpoint(
     retriever: VectorRetriever = request.app.state.retriever
     driver: Driver = request.app.state.driver
     guardrail_config: GuardrailConfig = request.app.state.guardrail_config
+    config: AppConfig = request.app.state.config
 
-    safe_query = await _apply_search_guardrails(body.query, guardrail_config)
+    safe_query = await _apply_search_guardrails(body.query, guardrail_config, config)
     results = await hybrid_search(
         retriever,
         driver,
@@ -398,8 +416,9 @@ async def graph_search_endpoint(
     retriever: VectorRetriever = request.app.state.retriever
     driver: Driver = request.app.state.driver
     guardrail_config: GuardrailConfig = request.app.state.guardrail_config
+    config: AppConfig = request.app.state.config
 
-    safe_query = await _apply_search_guardrails(body.query, guardrail_config)
+    safe_query = await _apply_search_guardrails(body.query, guardrail_config, config)
     results = await graph_enriched_search(
         retriever,
         driver,
