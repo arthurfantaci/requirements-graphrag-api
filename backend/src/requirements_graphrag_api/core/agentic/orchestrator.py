@@ -237,10 +237,21 @@ def create_orchestrator_graph(
 
         logger.info("Running Synthesis subgraph")
 
+        # Build previous_context from conversation history (all messages before current)
+        previous_context = ""
+        messages = state.get("messages", [])
+        if len(messages) > 1:
+            parts = []
+            for msg in messages[:-1]:
+                role = "Q" if isinstance(msg, HumanMessage) else "A"
+                parts.append(f"{role}: {msg.content}")
+            previous_context = "\n".join(parts)
+
         # Prepare Synthesis state
         synthesis_input: SynthesisState = {
             "query": query,
             "context": context,
+            "previous_context": previous_context,
         }
 
         try:

@@ -86,7 +86,7 @@ def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
                 {
                     "context": context,
                     "entities": "",  # Will be populated by orchestrator if available
-                    "previous_context": "",  # Will be populated for multi-turn
+                    "previous_context": state.get("previous_context", ""),
                     "question": query,
                 }
             )
@@ -215,7 +215,7 @@ Focus on improving completeness and addressing the gaps identified above."""
                 {
                     "context": augmented_context,
                     "entities": "",
-                    "previous_context": "",
+                    "previous_context": state.get("previous_context", ""),
                     "question": query,
                 }
             )
