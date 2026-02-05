@@ -190,8 +190,9 @@ CRITIC_METADATA = PromptMetadata(
 
 
 # =============================================================================
-# STEPBACK PROMPT
-# Generates broader queries for better context retrieval
+# STEPBACK PROMPT (DEPRECATED — superseded by QUERY_EXPANSION)
+# Kept for potential A/B testing of single-strategy vs multi-strategy expansion.
+# QUERY_EXPANSION includes step-back as one of three built-in strategies.
 # =============================================================================
 
 STEPBACK_SYSTEM: Final[
@@ -491,8 +492,10 @@ RETURN webinar_count, count(v) AS video_count
 
 
 # =============================================================================
-# AGENT REASONING PROMPT
-# Main agent loop for tool selection and reasoning
+# AGENT REASONING PROMPT (ROADMAP — future ReAct-style agent migration)
+# This prompt enables a dynamic tool-calling agent loop, replacing the current
+# fixed LangGraph DAG (RAG→Research→Synthesis) with LLM-driven tool selection.
+# Wire when migrating from fixed orchestrator to ReAct agent architecture.
 # =============================================================================
 
 AGENT_REASONING_SYSTEM: Final[str] = """You are an intelligent Requirements Management assistant \
