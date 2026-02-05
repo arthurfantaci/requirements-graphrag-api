@@ -214,6 +214,11 @@ def create_rag_subgraph(
                     "chapter": metadata.get("chapter"),
                     "entities": result.get("entities", []),
                     "source_query": result.get("_source_query"),
+                    # Preserve enriched data for frontend display
+                    "media": result.get("media", {}),
+                    "glossary_definitions": result.get("glossary_definitions", []),
+                    "industry_standards": result.get("industry_standards", []),
+                    "semantic_relationships": result.get("semantic_relationships", {}),
                 },
             )
             ranked_results.append(doc)
