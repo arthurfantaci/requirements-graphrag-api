@@ -190,13 +190,28 @@ def create_rag_subgraph(
         # Convert to RetrievedDocument format
         ranked_results = []
         for result in unique_results:
+            # Get metadata dict (graph_enriched_search returns nested metadata)
+            metadata = result.get("metadata", {})
+
+            # Extract content - may be at 'text' or 'content' depending on source
+            content = result.get("text") or result.get("content", "")
+
+            # Extract source title from metadata (title) or top-level (article_title)
+            source_title = (
+                metadata.get("title")
+                or metadata.get("article_title")
+                or result.get("article_title")
+                or "Unknown"
+            )
+
             doc = RetrievedDocument(
-                content=result.get("text", ""),
-                source=result.get("article_title", "Unknown"),
+                content=content,
+                source=source_title,
                 score=result.get("score", 0.0),
                 metadata={
-                    "chunk_id": result.get("chunk_id"),
-                    "url": result.get("url"),
+                    "chunk_id": metadata.get("chunk_id") or result.get("chunk_id"),
+                    "url": metadata.get("url") or result.get("url"),
+                    "chapter": metadata.get("chapter"),
                     "entities": result.get("entities", []),
                     "source_query": result.get("_source_query"),
                 },

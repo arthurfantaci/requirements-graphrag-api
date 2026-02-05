@@ -212,6 +212,7 @@ async def stream_agentic_events(
         # Stream graph execution
         last_phase = None
         sources_emitted = False
+        source_count = 0
         final_answer = ""
 
         async for event in graph.astream_events(
@@ -263,7 +264,9 @@ async def stream_agentic_events(
                                     "score": doc.get("score", 0),
                                 }
                             )
-                    yield create_sources_event(sources).to_sse()
+                    if sources:
+                        yield create_sources_event(sources).to_sse()
+                        source_count = len(sources)
                     sources_emitted = True
 
             # Emit entities when research completes
@@ -305,8 +308,7 @@ async def stream_agentic_events(
                 chunk = final_answer[i : i + chunk_size]
                 yield create_token_event(chunk).to_sse()
 
-        # Emit done event
-        source_count = len(initial_state.get("ranked_results", []))
+        # Emit done event (source_count tracked when sources were emitted)
         yield create_done_event(
             full_answer=final_answer,
             source_count=source_count,
