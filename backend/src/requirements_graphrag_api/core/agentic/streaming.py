@@ -398,16 +398,14 @@ async def stream_agentic_events(
                 output = event_data.get("output", {})
                 final_answer = output.get("final_answer", "")
 
-        # Stream the parsed answer in small chunks for smooth visual effect
+        # Stream the parsed answer in chunks for smooth visual effect
         if final_answer:
-            # Use small chunks with delay for visible streaming appearance
-            # Without delay, TCP buffering combines chunks into single packet
-            chunk_size = 8
+            # Larger chunks + shorter delay: ~200ms vs ~3.75s for 2000-char answer
+            chunk_size = 50
             for i in range(0, len(final_answer), chunk_size):
                 chunk = final_answer[i : i + chunk_size]
                 yield create_token_event(chunk).to_sse()
-                # Small delay forces event loop to flush each chunk separately
-                await asyncio.sleep(0.015)  # 15ms between chunks
+                await asyncio.sleep(0.005)  # 5ms between chunks
 
         # Emit done event (source_count tracked when sources were emitted)
         yield create_done_event(
