@@ -17,12 +17,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Any, Final
+import re
+from typing import TYPE_CHECKING, Any, Final, TypedDict
 
 from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
 from langsmith import get_current_run_tree
 from neo4j import Query
+from neo4j.exceptions import ClientError, CypherSyntaxError, DatabaseError, ServiceUnavailable
 
 from requirements_graphrag_api.observability import traceable_safe
 from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
@@ -50,6 +52,35 @@ CYPHER_STARTERS: Final[tuple[str, ...]] = (
     "PROFILE",
     "USE",
 )
+
+# Forbidden write keywords — word-boundary regex to avoid false positives
+# e.g. "SET" must not match inside "OFFSET", "RESET", "DATASET"
+_FORBIDDEN_KEYWORD_NAMES: Final[tuple[str, ...]] = (
+    "DELETE",
+    "MERGE",
+    "CREATE",
+    "SET",
+    "REMOVE",
+    "DROP",
+)
+FORBIDDEN_KEYWORDS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = tuple(
+    (kw, re.compile(rf"\b{kw}\b", re.IGNORECASE)) for kw in _FORBIDDEN_KEYWORD_NAMES
+)
+
+
+class Text2CypherResult(TypedDict, total=False):
+    """Typed result from text2cypher_query.
+
+    Required keys are always present; optional keys depend on execution path.
+    """
+
+    question: str
+    cypher: str
+    results: list[dict[str, Any]]
+    row_count: int
+    error: str
+    message: str
+    run_id: str
 
 
 @traceable_safe(name="generate_cypher", run_type="llm")
@@ -79,19 +110,22 @@ async def generate_cypher(
     schema_info = ""
     try:
         with driver.session() as session:
-            # Get node labels and counts
+            # Get node labels and counts (5s timeout for schema introspection)
             labels_result = session.run(
-                """
-                CALL db.labels() YIELD label
-                CALL {
-                    WITH label
-                    MATCH (n)
-                    WHERE label IN labels(n)
-                    RETURN count(n) AS count
-                }
-                RETURN label, count
-                ORDER BY count DESC
-                """
+                Query(
+                    """
+                    CALL db.labels() YIELD label
+                    CALL {
+                        WITH label
+                        MATCH (n)
+                        WHERE label IN labels(n)
+                        RETURN count(n) AS count
+                    }
+                    RETURN label, count
+                    ORDER BY count DESC
+                    """,
+                    timeout=5.0,
+                )
             )
             labels = [(r["label"], r["count"]) for r in labels_result]
             schema_info = "Node counts: " + ", ".join(f"{lbl}({cnt})" for lbl, cnt in labels[:15])
@@ -143,9 +177,11 @@ def _validate_cypher(cypher: str) -> str | None:
             "Try rephrasing as a requirements management question."
         )
 
-    cypher_upper = cypher.upper()
-    forbidden = ["DELETE", "MERGE", "CREATE", "SET", "REMOVE", "DROP"]
-    forbidden_found = next((k for k in forbidden if k in cypher_upper), None)
+    # Word-boundary regex prevents false positives (e.g. "SET" inside "OFFSET")
+    forbidden_found = next(
+        (name for name, pat in FORBIDDEN_KEYWORDS if pat.search(cypher)),
+        None,
+    )
     if forbidden_found:
         return f"Query contains forbidden keyword: {forbidden_found}"
 
@@ -163,7 +199,7 @@ def _execute_cypher(
         with driver.session() as session:
             result = session.run(Query(cypher, timeout=timeout))
             return [dict(record) for record in result], None
-    except Exception as e:
+    except (ClientError, CypherSyntaxError, DatabaseError, ServiceUnavailable) as e:
         return [], str(e)
 
 
@@ -178,7 +214,7 @@ async def text2cypher_query(
     llm_timeout: float = 20.0,
     neo4j_timeout: float = 15.0,
     max_retries: int = 1,
-) -> dict[str, Any]:
+) -> Text2CypherResult:
     """Generate and optionally execute a Cypher query from natural language.
 
     Args:
@@ -192,8 +228,16 @@ async def text2cypher_query(
         max_retries: Number of retries on LLM timeout (default 1).
 
     Returns:
-        Dictionary with generated query and optional results.
+        Text2CypherResult with generated query and optional results.
+
+    Raises:
+        ValueError: If timeout parameters are not positive.
     """
+    if llm_timeout <= 0:
+        raise ValueError(f"llm_timeout must be positive, got {llm_timeout}")
+    if neo4j_timeout <= 0:
+        raise ValueError(f"neo4j_timeout must be positive, got {neo4j_timeout}")
+
     _ = langsmith_extra
     logger.info("Text2Cypher: question='%s', execute=%s", question, execute)
 
@@ -222,6 +266,20 @@ async def text2cypher_query(
             except Exception:
                 logger.warning("Could not get run_id for timeout error", exc_info=True)
             return error_response
+        except Exception as e:
+            # Non-timeout LLM failure (API error, auth error, etc.)
+            logger.error(
+                "Text2Cypher LLM error (attempt %d/%d): %s", attempt + 1, max_retries + 1, e
+            )
+            if attempt < max_retries:
+                continue
+            return Text2CypherResult(
+                question=question,
+                cypher="",
+                results=[],
+                row_count=0,
+                error=f"Query generation failed after {max_retries + 1} attempts: {e}",
+            )
 
         # LLM succeeded — no retry for validation/execution errors
         response: dict[str, Any] = {"question": question, "cypher": cypher}
@@ -268,4 +326,10 @@ async def text2cypher_query(
     return response
 
 
-__all__ = ["_execute_cypher", "_validate_cypher", "generate_cypher", "text2cypher_query"]
+__all__ = [
+    "Text2CypherResult",
+    "_execute_cypher",
+    "_validate_cypher",
+    "generate_cypher",
+    "text2cypher_query",
+]

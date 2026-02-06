@@ -11,8 +11,10 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from neo4j.exceptions import ServiceUnavailable
 
 from requirements_graphrag_api.core.text2cypher import (
+    Text2CypherResult,
     _execute_cypher,
     _validate_cypher,
     generate_cypher,
@@ -201,10 +203,10 @@ class TestText2CypherQuery:
     @pytest.mark.asyncio
     async def test_text2cypher_query_handles_execution_error(self, mock_config: MagicMock) -> None:
         """Test handling of query execution errors."""
-        # Create a driver that raises an exception when run is called
+        # Create a driver that raises a Neo4j exception when run is called
         mock_driver = MagicMock()
         mock_session = MagicMock()
-        mock_session.run = MagicMock(side_effect=Exception("Query failed"))
+        mock_session.run = MagicMock(side_effect=ServiceUnavailable("Query failed"))
         mock_session.__enter__ = MagicMock(return_value=mock_session)
         mock_session.__exit__ = MagicMock(return_value=False)
         mock_driver.session.return_value = mock_session
@@ -270,6 +272,40 @@ class TestValidateCypher:
         assert result is not None
         assert "forbidden keyword" in result.lower()
 
+    @pytest.mark.parametrize(
+        "cypher",
+        [
+            "MATCH (n) RETURN n OFFSET 10",
+            "MATCH (n) WHERE n.name = 'RESET' RETURN n",
+            "MATCH (n) WHERE n.type = 'DATASET' RETURN n",
+            "MATCH (n) WHERE n.name CONTAINS 'CREATIVE' RETURN n",
+            "MATCH (n) WHERE n.action = 'REMOVED_BY' RETURN n",
+            "MATCH (n) WHERE n.desc = 'DROPDOWN_MENU' RETURN n",
+        ],
+    )
+    def test_word_boundary_prevents_false_positives(self, cypher: str) -> None:
+        """Words containing forbidden substrings should not be rejected."""
+        assert _validate_cypher(cypher) is None
+
+    @pytest.mark.parametrize(
+        ("cypher", "keyword"),
+        [
+            ("MATCH (n) DELETE n", "DELETE"),
+            ("MATCH (n) MERGE (m:Test)", "MERGE"),
+            ("MATCH (n) SET n.x = 1", "SET"),
+            ("MATCH (n) REMOVE n.x", "REMOVE"),
+            # CREATE/DROP don't start with valid starters, so they fail at the
+            # CYPHER_STARTERS check first. Test them in valid contexts:
+            ("MATCH (n) WITH n CREATE (m:Test)", "CREATE"),
+            ("CALL { DROP INDEX test }", "DROP"),
+        ],
+    )
+    def test_word_boundary_catches_real_keywords(self, cypher: str, keyword: str) -> None:
+        """Actual forbidden keywords should still be rejected."""
+        result = _validate_cypher(cypher)
+        assert result is not None
+        assert keyword in result
+
 
 # =============================================================================
 # Execute Cypher Tests
@@ -290,7 +326,7 @@ class TestExecuteCypher:
         """Execution error returns empty list and error string."""
         mock_driver = MagicMock()
         mock_session = MagicMock()
-        mock_session.run = MagicMock(side_effect=Exception("Connection lost"))
+        mock_session.run = MagicMock(side_effect=ServiceUnavailable("Connection lost"))
         mock_session.__enter__ = MagicMock(return_value=mock_session)
         mock_session.__exit__ = MagicMock(return_value=False)
         mock_driver.session.return_value = mock_session
@@ -427,3 +463,95 @@ class TestText2CypherTimeout:
             )
 
             assert "timed out" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_non_timeout_llm_error_retries(self, mock_config: MagicMock) -> None:
+        """Non-timeout LLM errors (API errors) should also trigger retry."""
+        call_count = 0
+
+        async def error_then_success(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise RuntimeError("API rate limited")
+            return "MATCH (n) RETURN count(n) AS count"
+
+        driver = create_mock_driver_with_results([[{"count": 10}]])
+
+        with patch(
+            "requirements_graphrag_api.core.text2cypher.generate_cypher",
+            side_effect=error_then_success,
+        ):
+            result = await text2cypher_query(mock_config, driver, "Count nodes", max_retries=1)
+
+            assert call_count == 2
+            assert "error" not in result
+
+    @pytest.mark.asyncio
+    async def test_non_timeout_llm_error_exhausted(self, mock_config: MagicMock) -> None:
+        """All retries exhausted for non-timeout LLM errors should return error."""
+        mock_gen = AsyncMock(side_effect=RuntimeError("API is down"))
+
+        with patch(
+            "requirements_graphrag_api.core.text2cypher.generate_cypher",
+            mock_gen,
+        ):
+            result = await text2cypher_query(mock_config, MagicMock(), "test", max_retries=1)
+
+            assert mock_gen.call_count == 2
+            assert "failed" in result["error"]
+            assert result["row_count"] == 0
+
+
+# =============================================================================
+# Timeout Param Validation Tests
+# =============================================================================
+
+
+class TestTimeoutParamValidation:
+    """Tests for timeout parameter validation guards."""
+
+    @pytest.mark.asyncio
+    async def test_negative_llm_timeout_raises(self, mock_config: MagicMock) -> None:
+        """Negative llm_timeout should raise ValueError."""
+        with pytest.raises(ValueError, match="llm_timeout must be positive"):
+            await text2cypher_query(mock_config, MagicMock(), "test", llm_timeout=-1.0)
+
+    @pytest.mark.asyncio
+    async def test_zero_llm_timeout_raises(self, mock_config: MagicMock) -> None:
+        """Zero llm_timeout should raise ValueError."""
+        with pytest.raises(ValueError, match="llm_timeout must be positive"):
+            await text2cypher_query(mock_config, MagicMock(), "test", llm_timeout=0)
+
+    @pytest.mark.asyncio
+    async def test_negative_neo4j_timeout_raises(self, mock_config: MagicMock) -> None:
+        """Negative neo4j_timeout should raise ValueError."""
+        with pytest.raises(ValueError, match="neo4j_timeout must be positive"):
+            await text2cypher_query(mock_config, MagicMock(), "test", neo4j_timeout=-5.0)
+
+    @pytest.mark.asyncio
+    async def test_zero_neo4j_timeout_raises(self, mock_config: MagicMock) -> None:
+        """Zero neo4j_timeout should raise ValueError."""
+        with pytest.raises(ValueError, match="neo4j_timeout must be positive"):
+            await text2cypher_query(mock_config, MagicMock(), "test", neo4j_timeout=0)
+
+
+# =============================================================================
+# Text2CypherResult TypedDict Tests
+# =============================================================================
+
+
+class TestText2CypherResult:
+    """Tests for Text2CypherResult TypedDict."""
+
+    def test_typeddict_has_expected_keys(self) -> None:
+        """TypedDict should have all expected annotation keys."""
+        annotations = Text2CypherResult.__annotations__
+        expected = {"question", "cypher", "results", "row_count", "error", "message", "run_id"}
+        assert set(annotations.keys()) == expected
+
+    def test_result_is_dict_compatible(self) -> None:
+        """TypedDict instances should be regular dicts at runtime."""
+        result = Text2CypherResult(question="test", cypher="MATCH (n) RETURN n")
+        assert isinstance(result, dict)
+        assert result["question"] == "test"
