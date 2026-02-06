@@ -27,6 +27,7 @@ from __future__ import annotations
 from requirements_graphrag_api.core.agentic.checkpoints import (
     async_checkpointer_context,
     create_async_checkpointer,
+    get_conversation_history_from_checkpoint,
     get_thread_config,
     get_thread_id_from_config,
 )
@@ -63,6 +64,7 @@ __all__ = [
     "async_checkpointer_context",
     "create_async_checkpointer",
     "create_orchestrator_graph",
+    "get_conversation_history_from_checkpoint",
     "get_thread_config",
     "get_thread_id_from_config",
     "stream_agentic_events",

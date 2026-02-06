@@ -111,6 +111,8 @@ class AppConfig:
     prompt_environment: str = "development"
     prompt_cache_ttl: int = 300
     prompt_hub_enabled: bool = True
+    # Conversational model (lightweight, for meta-conversation queries)
+    conversational_model: str = "gpt-4o-mini"
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
@@ -368,4 +370,5 @@ def get_config() -> AppConfig:
         prompt_environment=os.getenv("PROMPT_ENVIRONMENT", "development"),
         prompt_cache_ttl=int(os.getenv("PROMPT_CACHE_TTL", "300")),
         prompt_hub_enabled=prompt_hub_enabled,
+        conversational_model=os.getenv("CONVERSATIONAL_MODEL", "gpt-4o-mini"),
     )

@@ -171,6 +171,56 @@ def get_thread_config(
     return config
 
 
+async def get_conversation_history_from_checkpoint(
+    checkpointer: AsyncPostgresSaver,
+    thread_id: str,
+) -> list[dict[str, str]]:
+    """Read conversation history from a checkpoint for a given thread.
+
+    We use aget_tuple() (low-level API) because this function is called
+    before the graph is instantiated. graph.aget_state() would require
+    creating a compiled graph just to read state.
+
+    Args:
+        checkpointer: Async PostgreSQL checkpointer.
+        thread_id: Thread ID to look up.
+
+    Returns:
+        List of {"role": "user"|"assistant", "content": "..."} dicts.
+        Returns empty list on any error (graceful fallback).
+    """
+    try:
+        config = get_thread_config(thread_id)
+        tuple_result = await checkpointer.aget_tuple(config)
+
+        # aget_tuple() returns None when no checkpoint exists
+        if tuple_result is None:
+            return []
+
+        checkpoint = tuple_result.checkpoint
+        messages = checkpoint.get("channel_values", {}).get("messages", [])
+
+        history: list[dict[str, str]] = []
+        for msg in messages:
+            # Handle both LangChain message objects and raw dicts
+            if hasattr(msg, "content") and hasattr(msg, "type"):
+                role = "user" if msg.type == "human" else "assistant"
+                history.append({"role": role, "content": msg.content})
+            elif isinstance(msg, dict):
+                role = msg.get("role", msg.get("type", "user"))
+                if role == "human":
+                    role = "user"
+                elif role == "ai":
+                    role = "assistant"
+                history.append({"role": role, "content": msg.get("content", "")})
+
+        return history
+
+    except Exception:
+        logger.warning("Failed to read checkpoint for thread %s", thread_id, exc_info=True)
+        return []
+
+
 def get_thread_id_from_config(config: RunnableConfig) -> str | None:
     """Extract thread_id from a RunnableConfig.
 
@@ -187,6 +237,7 @@ def get_thread_id_from_config(config: RunnableConfig) -> str | None:
 __all__ = [
     "async_checkpointer_context",
     "create_async_checkpointer",
+    "get_conversation_history_from_checkpoint",
     "get_thread_config",
     "get_thread_id_from_config",
 ]
