@@ -25,6 +25,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import uuid
 from contextlib import AsyncExitStack
 from typing import TYPE_CHECKING
@@ -46,9 +47,11 @@ from requirements_graphrag_api.core.agentic import (
     OrchestratorState,
     async_checkpointer_context,
     create_orchestrator_graph,
+    get_conversation_history_from_checkpoint,
     get_thread_config,
     stream_agentic_events,
 )
+from requirements_graphrag_api.core.conversation import stream_conversational_events
 from requirements_graphrag_api.guardrails import (
     InjectionRisk,
     TopicClassification,
@@ -104,9 +107,8 @@ class ChatOptions(BaseModel):
         default=True,
         description="Automatically route queries based on intent classification",
     )
-    force_intent: str | None = Field(
+    force_intent: QueryIntent | None = Field(
         default=None,
-        pattern="^(explanatory|structured)$",
         description="Force a specific intent (overrides auto_route)",
     )
 
@@ -337,7 +339,7 @@ async def _generate_sse_events(
         intent: QueryIntent
 
         if request.options.force_intent:
-            intent = QueryIntent(request.options.force_intent)
+            intent = request.options.force_intent
             logger.info("Using forced intent: %s", intent)
             # Still need to run topic guard if enabled
             if topic_guard_coro:
@@ -357,7 +359,21 @@ async def _generate_sse_events(
             if topic_guard_coro:
                 topic_result = await topic_guard_coro
 
-        # 4e. Check topic guard result (may short-circuit)
+        # 4e. Conditional topic guard bypass for conversational intent
+        # Cross-check: if query also contains out-of-scope topics, don't bypass.
+        # Uses word-boundary regex (not substring) to avoid false positives
+        # like "stock" matching "stockpile" or "news" matching "newness".
+        if intent == QueryIntent.CONVERSATIONAL and topic_result:
+            from requirements_graphrag_api.guardrails.topic_guard import OUT_OF_SCOPE_TOPICS
+
+            has_out_of_scope = any(
+                re.search(rf"\b{re.escape(topic)}\b", safe_message, re.IGNORECASE)
+                for topic in OUT_OF_SCOPE_TOPICS
+            )
+            if not has_out_of_scope:
+                topic_result = None  # Safe to bypass — pure meta-conversation
+
+        # 4f. Check topic guard result (may short-circuit)
         if topic_result and topic_result.classification == TopicClassification.OUT_OF_SCOPE:
             metrics.record_topic_out_of_scope()
             event = create_topic_event(
@@ -389,7 +405,13 @@ async def _generate_sse_events(
         yield f"event: {StreamEventType.ROUTING.value}\n"
         yield f"data: {json.dumps({'intent': intent.value})}\n\n"
 
-        if intent == QueryIntent.STRUCTURED:
+        if intent == QueryIntent.CONVERSATIONAL:
+            # Use lightweight conversation handler for meta-conversation queries
+            async for event_str in _generate_conversational_events(
+                config, request, safe_message, guardrail_config
+            ):
+                yield event_str
+        elif intent == QueryIntent.STRUCTURED:
             # Use Text2Cypher for structured queries
             async for event_str in _generate_structured_events(
                 config, driver, request, safe_message
@@ -523,6 +545,109 @@ async def _run_output_guardrails(
     for warning in warnings:
         yield f"event: {StreamEventType.GUARDRAIL_WARNING.value}\n"
         yield f"data: {json.dumps({'warning': warning})}\n\n"
+
+
+async def _generate_conversational_events(
+    config: AppConfig,
+    request: ChatRequest,
+    safe_message: str,
+    guardrail_config: GuardrailConfig,
+) -> AsyncIterator[str]:
+    """Generate SSE events for conversational (meta-conversation) queries.
+
+    Uses conversation_history from the request as primary data source.
+    Falls back to checkpoint read if history is empty but conversation_id
+    exists and CHECKPOINT_DATABASE_URL is configured.
+
+    Runs output_filter (toxicity only, no disclaimers) on the response.
+
+    Args:
+        config: Application configuration.
+        request: Chat request with message, conversation_history, and options.
+        safe_message: Sanitized message with PII redacted.
+        guardrail_config: Guardrail configuration for output checks.
+
+    Yields:
+        Formatted SSE event strings.
+    """
+    # Build conversation history from request (primary source)
+    history: list[dict[str, str]] = []
+    if request.conversation_history:
+        history = [
+            {"role": msg.role, "content": msg.content} for msg in request.conversation_history
+        ]
+
+    # Checkpoint fallback: if history is empty but we have a conversation_id
+    if not history and request.conversation_id and os.getenv("CHECKPOINT_DATABASE_URL"):
+        try:
+            async with async_checkpointer_context() as checkpointer:
+                history = await get_conversation_history_from_checkpoint(
+                    checkpointer, request.conversation_id
+                )
+                if history:
+                    logger.info(
+                        "Loaded %d messages from checkpoint for thread %s",
+                        len(history),
+                        request.conversation_id,
+                    )
+        except Exception:
+            logger.warning("Checkpoint fallback failed", exc_info=True)
+
+    # Create LangSmith metadata for thread grouping + intent tracking
+    langsmith_extra = create_thread_metadata(request.conversation_id) or {}
+    langsmith_extra.setdefault("metadata", {})["intent"] = "conversational"
+
+    # Stream tokens from the conversational handler and accumulate for output filter
+    accumulated_tokens: list[str] = []
+    async for sse_event in stream_conversational_events(
+        config, safe_message, history, langsmith_extra=langsmith_extra
+    ):
+        # Track accumulated tokens for output guardrails
+        if sse_event.startswith("data: ") and '"token"' in sse_event:
+            try:
+                data = json.loads(sse_event[6:].strip())
+                if "token" in data:
+                    accumulated_tokens.append(data["token"])
+            except (json.JSONDecodeError, TypeError):
+                pass
+        yield sse_event
+
+    # Run toxicity-only output filter (no disclaimers — sourceless responses
+    # get penalized -0.3 confidence, producing misleading disclaimers)
+    full_response = "".join(accumulated_tokens)
+    if full_response and guardrail_config.output_filter_enabled:
+        from requirements_graphrag_api.guardrails import (
+            OutputFilterConfig,
+            filter_output,
+        )
+
+        output_config = OutputFilterConfig(
+            enabled=True,
+            add_disclaimers=False,
+            confidence_threshold=guardrail_config.output_filter_confidence_threshold,
+        )
+        filter_result = await filter_output(
+            full_response,
+            safe_message,
+            retrieved_sources=None,
+            config=output_config,
+        )
+        if not filter_result.is_safe:
+            from requirements_graphrag_api.guardrails.events import (
+                create_output_filter_event,
+            )
+
+            event = create_output_filter_event(
+                request_id="output",
+                is_safe=False,
+                confidence_score=filter_result.confidence_score,
+                warnings=filter_result.warnings,
+                modifications=filter_result.modifications,
+                blocked_reason=filter_result.blocked_reason,
+            )
+            log_guardrail_event(event)
+            yield f"event: {StreamEventType.GUARDRAIL_WARNING.value}\n"
+            yield f"data: {json.dumps({'warning': filter_result.filtered_content})}\n\n"
 
 
 async def _generate_explanatory_events(
@@ -786,9 +911,15 @@ async def chat_endpoint(
     data: {"query": "...", "row_count": 5}
     ```
 
+    **SSE Event Sequence (Conversational - Recall):**
+    1. `routing` - Intent classification result (`{"intent": "conversational"}`)
+    2. `token` - Individual tokens as they're generated (true streaming)
+    3. `done` - Complete answer with `run_id` for feedback
+
     **Routing Tips:**
     - Use "list all", "show me all", "how many" for structured queries
     - Use "what is", "how do I", "explain" for explanatory queries
+    - Use "what was my first question", "summarize our conversation" for recall
     - Set `options.force_intent` to override automatic classification
 
     Args:

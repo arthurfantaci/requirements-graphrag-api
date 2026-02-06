@@ -10,7 +10,7 @@ Execution:
   Intent classifier routes list/count queries to Cypher generation.
 
 Supporting modules:
-- routing.py: Intent classification (EXPLANATORY vs STRUCTURED)
+- routing.py: Intent classification (EXPLANATORY vs STRUCTURED vs CONVERSATIONAL)
 - generation.py: Shared types and context-building for RAG
 - definitions.py: Glossary term lookup
 - retrieval.py: Vector + graph-enriched search
