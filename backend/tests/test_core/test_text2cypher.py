@@ -6,12 +6,18 @@ Updated Data Model (2026-01):
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from requirements_graphrag_api.core.text2cypher import generate_cypher, text2cypher_query
+from requirements_graphrag_api.core.text2cypher import (
+    _execute_cypher,
+    _validate_cypher,
+    generate_cypher,
+    text2cypher_query,
+)
 from tests.conftest import create_llm_mock
 
 # =============================================================================
@@ -211,3 +217,213 @@ class TestText2CypherQuery:
             assert "error" in result
             assert "Query failed" in result["error"]
             assert result["row_count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_empty_results_include_message(self, mock_config: MagicMock) -> None:
+        """Test that empty query results include a user-friendly message."""
+        driver = create_mock_driver_with_results([[]])
+
+        with patch("requirements_graphrag_api.core.text2cypher.generate_cypher") as mock_gen:
+            mock_gen.return_value = "MATCH (n:Entity) RETURN n LIMIT 10"
+
+            result = await text2cypher_query(mock_config, driver, "Find entities", execute=True)
+
+            assert result["row_count"] == 0
+            assert "message" in result
+            assert "No results found" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_non_empty_results_no_message(self, mock_config: MagicMock) -> None:
+        """Test that non-empty results do not include a message field."""
+        driver = create_mock_driver_with_results([[{"name": "Entity1"}]])
+
+        with patch("requirements_graphrag_api.core.text2cypher.generate_cypher") as mock_gen:
+            mock_gen.return_value = "MATCH (n:Entity) RETURN n LIMIT 10"
+
+            result = await text2cypher_query(mock_config, driver, "Find entities", execute=True)
+
+            assert result["row_count"] == 1
+            assert "message" not in result
+
+
+# =============================================================================
+# Validate Cypher Tests
+# =============================================================================
+
+
+class TestValidateCypher:
+    """Tests for _validate_cypher helper."""
+
+    def test_valid_cypher_returns_none(self) -> None:
+        """Valid MATCH query should pass validation."""
+        assert _validate_cypher("MATCH (n) RETURN n") is None
+
+    def test_non_cypher_returns_error(self) -> None:
+        """Natural language response should fail validation."""
+        result = _validate_cypher("I cannot generate a query for that")
+        assert result is not None
+        assert "cannot be answered" in result
+
+    def test_forbidden_keyword_returns_error(self) -> None:
+        """DELETE keyword should be rejected."""
+        result = _validate_cypher("MATCH (n) DELETE n")
+        assert result is not None
+        assert "forbidden keyword" in result.lower()
+
+
+# =============================================================================
+# Execute Cypher Tests
+# =============================================================================
+
+
+class TestExecuteCypher:
+    """Tests for _execute_cypher helper."""
+
+    def test_successful_execution(self) -> None:
+        """Successful execution returns results and no error."""
+        driver = create_mock_driver_with_results([[{"name": "Test"}]])
+        results, error = _execute_cypher(driver, "MATCH (n) RETURN n", timeout=15.0)
+        assert len(results) == 1
+        assert error is None
+
+    def test_execution_error(self) -> None:
+        """Execution error returns empty list and error string."""
+        mock_driver = MagicMock()
+        mock_session = MagicMock()
+        mock_session.run = MagicMock(side_effect=Exception("Connection lost"))
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_driver.session.return_value = mock_session
+
+        results, error = _execute_cypher(mock_driver, "MATCH (n) RETURN n", timeout=15.0)
+        assert results == []
+        assert error is not None
+        assert "Connection lost" in error
+
+
+# =============================================================================
+# Text2Cypher Timeout Tests
+# =============================================================================
+
+
+class TestText2CypherTimeout:
+    """Tests for timeout and retry behavior in text2cypher_query."""
+
+    @pytest.mark.asyncio
+    async def test_llm_timeout_triggers_retry(self, mock_config: MagicMock) -> None:
+        """Timeout on first attempt should retry, succeed on second."""
+        driver = create_mock_driver_with_results([[{"count": 10}]])
+
+        call_count = 0
+
+        async def generate_side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise TimeoutError("LLM timed out")
+            return "MATCH (n) RETURN count(n) AS count"
+
+        with patch(
+            "requirements_graphrag_api.core.text2cypher.generate_cypher",
+            side_effect=generate_side_effect,
+        ):
+            result = await text2cypher_query(mock_config, driver, "Count nodes", max_retries=1)
+
+            assert call_count == 2
+            assert "error" not in result
+            assert result["row_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_neo4j_timeout_uses_query_object(self, mock_config: MagicMock) -> None:
+        """Neo4j execution should use Query object with timeout."""
+        from neo4j import Query
+
+        mock_driver = MagicMock()
+        mock_session = MagicMock()
+        mock_result = MagicMock()
+        mock_result.__iter__ = lambda self: iter([])
+        mock_session.run = MagicMock(return_value=mock_result)
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_driver.session.return_value = mock_session
+
+        with patch(
+            "requirements_graphrag_api.core.text2cypher.generate_cypher",
+            new_callable=AsyncMock,
+            return_value="MATCH (n) RETURN n",
+        ):
+            await text2cypher_query(mock_config, mock_driver, "test", neo4j_timeout=15.0)
+
+            # Verify Query object was passed (not raw string)
+            call_args = mock_session.run.call_args
+            query_arg = call_args[0][0]
+            assert isinstance(query_arg, Query)
+            assert query_arg.timeout == 15.0
+
+    @pytest.mark.asyncio
+    async def test_validation_error_no_retry(self, mock_config: MagicMock) -> None:
+        """Validation errors (forbidden keyword) should not trigger retry."""
+        mock_gen = AsyncMock(return_value="MATCH (n) DELETE n")
+
+        with patch(
+            "requirements_graphrag_api.core.text2cypher.generate_cypher",
+            mock_gen,
+        ):
+            result = await text2cypher_query(mock_config, MagicMock(), "test", max_retries=2)
+
+            assert mock_gen.call_count == 1
+            assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_max_retries_exhausted(self, mock_config: MagicMock) -> None:
+        """All retries exhausted should return timeout error."""
+        mock_gen = AsyncMock(side_effect=TimeoutError("LLM timed out"))
+
+        with patch(
+            "requirements_graphrag_api.core.text2cypher.generate_cypher",
+            mock_gen,
+        ):
+            result = await text2cypher_query(mock_config, MagicMock(), "test", max_retries=2)
+
+            assert mock_gen.call_count == 3  # 1 initial + 2 retries
+            assert "timed out" in result["error"]
+            assert result["row_count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_timeout_error_includes_run_id(self, mock_config: MagicMock) -> None:
+        """Timeout error response should include run_id when available."""
+        mock_gen = AsyncMock(side_effect=TimeoutError("LLM timed out"))
+        mock_run_tree = MagicMock()
+        mock_run_tree.id = "test-run-id-123"
+
+        with (
+            patch(
+                "requirements_graphrag_api.core.text2cypher.generate_cypher",
+                mock_gen,
+            ),
+            patch(
+                "requirements_graphrag_api.core.text2cypher.get_current_run_tree",
+                return_value=mock_run_tree,
+            ),
+        ):
+            result = await text2cypher_query(mock_config, MagicMock(), "test", max_retries=0)
+
+            assert result["run_id"] == "test-run-id-123"
+
+    @pytest.mark.asyncio
+    async def test_actual_timeout_behavior(self, mock_config: MagicMock) -> None:
+        """Verify asyncio.timeout actually cancels a slow LLM call."""
+
+        async def slow_generate(*args, **kwargs):
+            await asyncio.sleep(100)
+            return "MATCH (n) RETURN n"
+
+        with patch(
+            "requirements_graphrag_api.core.text2cypher.generate_cypher",
+            side_effect=slow_generate,
+        ):
+            result = await text2cypher_query(
+                mock_config, MagicMock(), "test", llm_timeout=0.1, max_retries=0
+            )
+
+            assert "timed out" in result["error"]
