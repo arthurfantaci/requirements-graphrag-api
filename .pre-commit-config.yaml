@@ -22,6 +22,14 @@ repos:
         files: ^backend/
         pass_filenames: false
 
+      - id: validate-docs-placement
+        name: validate docs placement
+        entry: .claude/hooks/validate-docs-placement.sh
+        language: script
+        files: ^docs/.*\.md$
+        exclude: ^docs/internal/
+        pass_filenames: false
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:

@@ -298,7 +298,53 @@ gh pr create --title "Phase A: readiness fixes" --body "..."
 
 ---
 
-## 7. Tool Quick Reference Card
+## 7. Documentation Workflow
+
+### Public vs Internal
+
+This repo is public on GitHub. Documentation is split into two categories:
+
+| Category | Location | Git Status | Purpose |
+|----------|----------|------------|---------|
+| **Public** | `docs/` | Tracked | Portfolio — demonstrates expertise to hiring managers |
+| **Internal** | `docs/internal/` | Gitignored | Working artifacts — plans, session notes, training materials |
+
+### Decision Tree
+
+When creating a new document, ask: **"Would a hiring manager see this as expertise or learning in progress?"**
+
+| If the doc contains... | Destination |
+|------------------------|-------------|
+| Architecture decisions and rationale | `docs/` (public) |
+| Workflow or methodology guides | `docs/` (public) |
+| Monitoring/evaluation setup | `docs/` (public) |
+| Step-by-step implementation plan | `docs/internal/plans/` |
+| Session notes or debugging logs | `docs/internal/sessions/` |
+| Training rubrics or practice exercises | `docs/internal/performance/` |
+| Gap analysis or "open questions" | `docs/internal/readiness/` |
+| Phase scope with unknowns | `docs/internal/scoping/` |
+| Large reference materials (118KB+) | `docs/internal/references/` |
+
+### Internal Directory Structure
+
+```
+docs/internal/
+├── plans/          # Implementation plans, roadmaps
+├── sessions/       # Session notes, debugging logs
+├── readiness/      # Gap analysis, assessments
+├── performance/    # Training rubrics, profiling data
+├── guardrails/     # Guardrail implementation notes
+├── scoping/        # Phase scope docs with open questions
+└── references/     # Large reference materials
+```
+
+### Validation
+
+A pre-commit hook (`validate-docs-placement.sh`) warns when committing docs that contain internal markers like `TODO:`, `Open Questions`, or `Practice Exercises`. If the warning fires, move the doc to `docs/internal/`.
+
+---
+
+## 8. Tool Quick Reference Card
 
 | Task | Command | Frequency |
 |------|---------|-----------|

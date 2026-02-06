@@ -90,5 +90,10 @@ frontend/.cache/
 .benchmarks/
 .vercel
 
-# Learning
-agentic-rag-architecture-guide.md
+# Internal documentation (working docs, plans, session notes)
+# Public docs live in docs/ root; internal docs in docs/internal/
+docs/internal/
+
+# Raw performance data
+backend/scripts/profile_results_*.json
+browser-performance-traces/
