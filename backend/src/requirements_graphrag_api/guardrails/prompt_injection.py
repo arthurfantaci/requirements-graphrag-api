@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
+from requirements_graphrag_api.observability import traceable_safe
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -285,6 +287,7 @@ def _calculate_risk_level(total_weight: int, pattern_count: int) -> InjectionRis
     return InjectionRisk.LOW
 
 
+@traceable_safe(name="check_prompt_injection", run_type="chain")
 def check_prompt_injection(
     text: str,
     block_threshold: InjectionRisk = InjectionRisk.HIGH,

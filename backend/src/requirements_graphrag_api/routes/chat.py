@@ -713,6 +713,8 @@ async def _generate_structured_events(
                 "row_count": result.get("row_count", 0),
                 "run_id": run_id,
             }
+            if result.get("message"):
+                done_data["message"] = result["message"]
             yield f"data: {json.dumps(done_data)}\n\n"
 
     except Exception as e:

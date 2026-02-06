@@ -24,6 +24,7 @@ from requirements_graphrag_api.guardrails.toxicity import (
     ToxicityConfig,
     check_toxicity,
 )
+from requirements_graphrag_api.observability import traceable_safe
 
 if TYPE_CHECKING:
     from openai import AsyncOpenAI
@@ -190,6 +191,7 @@ def _calculate_confidence(
     return confidence, warnings
 
 
+@traceable_safe(name="filter_output", run_type="chain")
 async def filter_output(
     output: str,
     original_query: str,

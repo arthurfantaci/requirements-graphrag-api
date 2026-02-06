@@ -15,12 +15,14 @@ Updated Data Model (2026-01):
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING, Any, Final
 
 from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
 from langsmith import get_current_run_tree
+from neo4j import Query
 
 from requirements_graphrag_api.observability import traceable_safe
 from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
@@ -132,6 +134,39 @@ async def generate_cypher(
     return cypher
 
 
+def _validate_cypher(cypher: str) -> str | None:
+    """Validate generated Cypher is safe to execute. Returns error message or None."""
+    first_word = cypher.strip().split()[0].upper() if cypher.strip() else ""
+    if first_word not in CYPHER_STARTERS:
+        return (
+            "This question cannot be answered with a database query. "
+            "Try rephrasing as a requirements management question."
+        )
+
+    cypher_upper = cypher.upper()
+    forbidden = ["DELETE", "MERGE", "CREATE", "SET", "REMOVE", "DROP"]
+    forbidden_found = next((k for k in forbidden if k in cypher_upper), None)
+    if forbidden_found:
+        return f"Query contains forbidden keyword: {forbidden_found}"
+
+    return None
+
+
+def _execute_cypher(
+    driver: Driver,
+    cypher: str,
+    *,
+    timeout: float,
+) -> tuple[list[dict[str, Any]], str | None]:
+    """Execute Cypher query with timeout via Query object. Returns (results, error_or_none)."""
+    try:
+        with driver.session() as session:
+            result = session.run(Query(cypher, timeout=timeout))
+            return [dict(record) for record in result], None
+    except Exception as e:
+        return [], str(e)
+
+
 @traceable_safe(name="text2cypher_query", run_type="chain")
 async def text2cypher_query(
     config: AppConfig,
@@ -140,6 +175,9 @@ async def text2cypher_query(
     *,
     execute: bool = True,
     langsmith_extra: dict[str, Any] | None = None,
+    llm_timeout: float = 20.0,
+    neo4j_timeout: float = 15.0,
+    max_retries: int = 1,
 ) -> dict[str, Any]:
     """Generate and optionally execute a Cypher query from natural language.
 
@@ -149,73 +187,85 @@ async def text2cypher_query(
         question: Natural language question.
         execute: Whether to execute the query (default True).
         langsmith_extra: Optional LangSmith metadata for thread grouping.
+        llm_timeout: Timeout in seconds for the LLM call (default 20s).
+        neo4j_timeout: Timeout in seconds for Neo4j query execution (default 15s).
+        max_retries: Number of retries on LLM timeout (default 1).
 
     Returns:
         Dictionary with generated query and optional results.
     """
-    # Note: langsmith_extra is consumed by the @traceable decorator for thread grouping
-    _ = langsmith_extra  # Suppress unused variable warning
+    _ = langsmith_extra
     logger.info("Text2Cypher: question='%s', execute=%s", question, execute)
 
-    # Generate the Cypher query
-    cypher = await generate_cypher(config, driver, question)
-
-    response: dict[str, Any] = {
-        "question": question,
-        "cypher": cypher,
-    }
-
-    if execute:
-        cypher_upper = cypher.upper()
-
-        # Validate the output looks like Cypher (not a natural language refusal)
-        first_word = cypher.strip().split()[0].upper() if cypher.strip() else ""
-        if first_word not in CYPHER_STARTERS:
-            logger.warning(
-                "LLM returned non-Cypher response: %s",
-                cypher[:LOG_TRUNCATE_LENGTH],
-            )
-            response["error"] = (
-                "This question cannot be answered with a database query. "
-                "Try rephrasing as a requirements management question."
-            )
-            response["results"] = []
-            response["row_count"] = 0
-            return response
-
-        # Validate query is read-only (before trying to execute)
-        forbidden = ["DELETE", "MERGE", "CREATE", "SET", "REMOVE", "DROP"]
-        forbidden_found = next((keyword for keyword in forbidden if keyword in cypher_upper), None)
-
-        if forbidden_found:
-            logger.warning("Query contains forbidden keyword: %s", forbidden_found)
-            response["error"] = f"Query contains forbidden keyword: {forbidden_found}"
-            response["results"] = []
-            response["row_count"] = 0
-        else:
+    for attempt in range(max_retries + 1):
+        try:
+            async with asyncio.timeout(llm_timeout):
+                cypher = await generate_cypher(config, driver, question)
+        except TimeoutError:
+            if attempt < max_retries:
+                logger.warning("Text2Cypher timeout (attempt %d/%d)", attempt + 1, max_retries + 1)
+                continue
+            logger.error("Text2Cypher timeout exhausted after %d attempts", max_retries + 1)
+            error_response: dict[str, Any] = {
+                "question": question,
+                "cypher": "",
+                "results": [],
+                "row_count": 0,
+                "error": (
+                    f"Query timed out after {max_retries + 1} attempts. Try a simpler question."
+                ),
+            }
             try:
-                # Execute the query using driver session
-                with driver.session() as session:
-                    result = session.run(cypher)
-                    results = [dict(record) for record in result]
-                response["results"] = results
-                response["row_count"] = len(results)
-                logger.info("Query executed successfully, %d rows returned", len(results))
-            except Exception as e:
-                logger.warning("Query execution failed: %s", e)
-                response["error"] = str(e)
+                run_tree = get_current_run_tree()
+                if run_tree:
+                    error_response["run_id"] = str(run_tree.id)
+            except Exception:
+                logger.warning("Could not get run_id for timeout error", exc_info=True)
+            return error_response
+
+        # LLM succeeded — no retry for validation/execution errors
+        response: dict[str, Any] = {"question": question, "cypher": cypher}
+
+        if execute:
+            validation_error = _validate_cypher(cypher)
+            if validation_error:
+                logger.warning(
+                    "Cypher validation failed: %s | cypher=%s",
+                    validation_error,
+                    cypher[:LOG_TRUNCATE_LENGTH],
+                )
+                response["error"] = validation_error
                 response["results"] = []
                 response["row_count"] = 0
+                break
 
-    # Capture run_id for feedback correlation (must be inside @traceable function)
+            results, exec_error = _execute_cypher(driver, cypher, timeout=neo4j_timeout)
+            if exec_error:
+                logger.warning("Query execution failed: %s", exec_error)
+                response["error"] = exec_error
+                response["results"] = []
+                response["row_count"] = 0
+            else:
+                response["results"] = results
+                response["row_count"] = len(results)
+                if len(results) == 0:
+                    response["message"] = (
+                        "No results found for this query. Try rephrasing "
+                        "or asking an explanatory question instead."
+                    )
+                logger.info("Query executed successfully, %d rows returned", len(results))
+
+        break  # Success or non-retryable error
+
+    # Capture run_id (success path)
     try:
         run_tree = get_current_run_tree()
         if run_tree:
             response["run_id"] = str(run_tree.id)
     except Exception:
-        logger.debug("Could not get run_id - tracing may be disabled")
+        logger.warning("Could not get run_id - tracing may be disabled", exc_info=True)
 
     return response
 
 
-__all__ = ["generate_cypher", "text2cypher_query"]
+__all__ = ["_execute_cypher", "_validate_cypher", "generate_cypher", "text2cypher_query"]

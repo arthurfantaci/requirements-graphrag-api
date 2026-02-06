@@ -26,6 +26,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
+from requirements_graphrag_api.observability import traceable_safe
+
 if TYPE_CHECKING:
     from langchain_openai import ChatOpenAI
 
@@ -322,6 +324,7 @@ async def check_topic_relevance_fast(
     )
 
 
+@traceable_safe(name="check_topic_relevance", run_type="llm")
 async def check_topic_relevance(
     query: str,
     llm: ChatOpenAI | None = None,
