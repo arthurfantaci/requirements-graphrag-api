@@ -33,7 +33,33 @@ class QueryIntent(StrEnum):
 
     EXPLANATORY = "explanatory"
     STRUCTURED = "structured"
+    CONVERSATIONAL = "conversational"
 
+
+# Word-boundary regex patterns for conversational intent (checked before structured)
+CONVERSATIONAL_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(rf"\b{re.escape(kw)}\b", re.IGNORECASE)
+    for kw in (
+        "what was my",
+        "summarize our conversation",
+        "my first question",
+        "you said earlier",
+        "what did I ask",
+        "our conversation",
+        "my previous question",
+        "repeat what you said",
+        "what did you say",
+        "what have we discussed",
+        "recap our discussion",
+        "my last question",
+        "what we talked about",
+        "earlier you mentioned",
+        "you told me",
+        "go back to what",
+        "remind me what",
+        "what did you tell me",
+    )
+)
 
 # Keywords that strongly suggest structured intent (case-insensitive)
 STRUCTURED_KEYWORDS: frozenset[str] = frozenset(
@@ -65,6 +91,8 @@ def _quick_classify(question: str) -> QueryIntent | None:
     """Perform fast keyword-based classification.
 
     This is a performance optimization to avoid LLM calls for obvious cases.
+    Conversational patterns are checked first because meta-conversation queries
+    can contain structured keywords (e.g. "list what you told me earlier").
 
     Args:
         question: User's question.
@@ -72,6 +100,12 @@ def _quick_classify(question: str) -> QueryIntent | None:
     Returns:
         QueryIntent if confident, None if LLM classification needed.
     """
+    # Check conversational patterns first (word-boundary regex)
+    for pattern in CONVERSATIONAL_PATTERNS:
+        if pattern.search(question):
+            logger.debug("Quick classify: CONVERSATIONAL (pattern: %s)", pattern.pattern)
+            return QueryIntent.CONVERSATIONAL
+
     question_lower = question.lower()
 
     # Check for structured keywords
@@ -143,7 +177,12 @@ async def classify_intent(
 
         result = json.loads(response)
         intent_str = result.get("intent", "explanatory").lower()
-        intent = QueryIntent.STRUCTURED if intent_str == "structured" else QueryIntent.EXPLANATORY
+        if intent_str == "structured":
+            intent = QueryIntent.STRUCTURED
+        elif intent_str == "conversational":
+            intent = QueryIntent.CONVERSATIONAL
+        else:
+            intent = QueryIntent.EXPLANATORY
 
         logger.info("Intent classified (LLM): %s", intent)
         return intent
@@ -193,10 +232,28 @@ def get_routing_guide() -> dict[str, Any]:
                 ],
                 "keywords": ["list all", "show me all", "how many", "which", "table of"],
             },
+            {
+                "type": "Conversation & Recall",
+                "intent": "conversational",
+                "description": "Reference or recall previous conversation content",
+                "examples": [
+                    "What was my first question?",
+                    "Summarize our conversation",
+                    "What did you say about traceability?",
+                    "Repeat what you told me earlier",
+                ],
+                "keywords": [
+                    "my first question",
+                    "our conversation",
+                    "you said earlier",
+                    "what did I ask",
+                ],
+            },
         ],
         "tips": [
             "For complete lists of resources, use 'list all' or 'show me all'",
             "For explanations and guidance, phrase as 'what is' or 'how do I'",
+            "For conversation recall, reference previous messages directly",
             "Ambiguous queries default to explanation mode for richer context",
         ],
     }
