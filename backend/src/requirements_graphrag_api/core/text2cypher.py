@@ -220,7 +220,7 @@ async def text2cypher_query(
                 if run_tree:
                     error_response["run_id"] = str(run_tree.id)
             except Exception:
-                logger.debug("Could not get run_id for timeout error")
+                logger.warning("Could not get run_id for timeout error", exc_info=True)
             return error_response
 
         # LLM succeeded — no retry for validation/execution errors
@@ -229,7 +229,11 @@ async def text2cypher_query(
         if execute:
             validation_error = _validate_cypher(cypher)
             if validation_error:
-                logger.warning("Cypher validation failed: %s", validation_error)
+                logger.warning(
+                    "Cypher validation failed: %s | cypher=%s",
+                    validation_error,
+                    cypher[:LOG_TRUNCATE_LENGTH],
+                )
                 response["error"] = validation_error
                 response["results"] = []
                 response["row_count"] = 0
@@ -259,7 +263,7 @@ async def text2cypher_query(
         if run_tree:
             response["run_id"] = str(run_tree.id)
     except Exception:
-        logger.debug("Could not get run_id - tracing may be disabled")
+        logger.warning("Could not get run_id - tracing may be disabled", exc_info=True)
 
     return response
 

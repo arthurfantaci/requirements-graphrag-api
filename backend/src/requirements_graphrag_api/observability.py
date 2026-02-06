@@ -168,12 +168,13 @@ def traceable_safe(
             )
 
             _sentinel = object()
-            _cfg_var: contextvars.ContextVar = contextvars.ContextVar(
-                f"_traceable_cfg_{name or func.__name__}", default=_sentinel
+            _cfg_var: contextvars.ContextVar[Any] = contextvars.ContextVar(
+                f"_traceable_cfg_{func.__module__}.{func.__qualname__}",
+                default=_sentinel,
             )
-            # Track whether config was passed as positional or keyword
-            _cfg_was_positional: contextvars.ContextVar = contextvars.ContextVar(
-                f"_traceable_cfg_pos_{name or func.__name__}", default=False
+            _cfg_was_positional: contextvars.ContextVar[bool] = contextvars.ContextVar(
+                f"_traceable_cfg_pos_{func.__module__}.{func.__qualname__}",
+                default=False,
             )
 
             if asyncio.iscoroutinefunction(func):
@@ -216,25 +217,41 @@ def traceable_safe(
 
             @wraps(func)
             async def async_wrapper(*args: Any, **func_kwargs: Any) -> Any:
-                if "config" in func_kwargs:
-                    _cfg_var.set(func_kwargs.pop("config"))
-                    _cfg_was_positional.set(False)
-                elif config_is_positional and len(args) > config_idx:
-                    _cfg_var.set(args[config_idx])
-                    _cfg_was_positional.set(True)
-                    args = args[:config_idx] + args[config_idx + 1 :]
-                return await traced_func(*args, **func_kwargs)
+                cfg_token = None
+                pos_token = None
+                try:
+                    if "config" in func_kwargs:
+                        cfg_token = _cfg_var.set(func_kwargs.pop("config"))
+                        pos_token = _cfg_was_positional.set(False)
+                    elif config_is_positional and len(args) > config_idx:
+                        cfg_token = _cfg_var.set(args[config_idx])
+                        pos_token = _cfg_was_positional.set(True)
+                        args = args[:config_idx] + args[config_idx + 1 :]
+                    return await traced_func(*args, **func_kwargs)
+                finally:
+                    if cfg_token is not None:
+                        _cfg_var.reset(cfg_token)
+                    if pos_token is not None:
+                        _cfg_was_positional.reset(pos_token)
 
             @wraps(func)
             def sync_wrapper(*args: Any, **func_kwargs: Any) -> Any:
-                if "config" in func_kwargs:
-                    _cfg_var.set(func_kwargs.pop("config"))
-                    _cfg_was_positional.set(False)
-                elif config_is_positional and len(args) > config_idx:
-                    _cfg_var.set(args[config_idx])
-                    _cfg_was_positional.set(True)
-                    args = args[:config_idx] + args[config_idx + 1 :]
-                return traced_func(*args, **func_kwargs)
+                cfg_token = None
+                pos_token = None
+                try:
+                    if "config" in func_kwargs:
+                        cfg_token = _cfg_var.set(func_kwargs.pop("config"))
+                        pos_token = _cfg_was_positional.set(False)
+                    elif config_is_positional and len(args) > config_idx:
+                        cfg_token = _cfg_var.set(args[config_idx])
+                        pos_token = _cfg_was_positional.set(True)
+                        args = args[:config_idx] + args[config_idx + 1 :]
+                    return traced_func(*args, **func_kwargs)
+                finally:
+                    if cfg_token is not None:
+                        _cfg_var.reset(cfg_token)
+                    if pos_token is not None:
+                        _cfg_was_positional.reset(pos_token)
         else:
 
             @wraps(func)
