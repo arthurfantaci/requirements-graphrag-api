@@ -1,22 +1,12 @@
-"""Answer generation with RAG for conversational Q&A (Non-Agentic Path).
+"""Shared types and context-building for RAG answer generation.
 
-This module provides the **non-agentic** RAG streaming path. For the agentic
-path with subgraphs, self-critique, and entity exploration, see:
+This module provides shared data types (StreamEventType, StreamEvent, Resource,
+ContextBuildResult) and the _build_context_from_results() function used by both
+the agentic orchestrator and the evaluation pipeline.
+
+For the agentic RAG path, see:
 - agentic/orchestrator.py - Main graph composition
 - agentic/streaming.py - Agentic SSE streaming
-
-Combines retrieval results with LLM generation to produce
-grounded answers with citations.
-
-This module uses the centralized prompt catalog for prompt management,
-enabling version control, A/B testing, and monitoring via LangSmith Hub.
-
-Updated Data Model (2026-01):
-- Uses VectorRetriever and Driver instead of Neo4jGraph/Neo4jVector
-
-Streaming Support (2026-01):
-- stream_chat() provides SSE streaming for REST API
-- Enables LangSmith TTFT and token latency metrics
 """
 
 from __future__ import annotations
@@ -24,25 +14,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Final
-
-from langchain_core.messages import AIMessage, HumanMessage
-from langchain_core.output_parsers import StrOutputParser
-from langchain_openai import ChatOpenAI
-from langsmith import get_current_run_tree
-
-from requirements_graphrag_api.core.definitions import search_terms
-from requirements_graphrag_api.core.retrieval import graph_enriched_search
-from requirements_graphrag_api.observability import traceable_safe
-from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
-
-    from neo4j import Driver
-    from neo4j_graphrag.retrievers import VectorRetriever
-
-    from requirements_graphrag_api.config import AppConfig
+from typing import Any, Final
 
 logger = logging.getLogger(__name__)
 
@@ -118,123 +90,6 @@ class ContextBuildResult:
     resources: dict[str, list[Resource]] = field(default_factory=dict)
 
 
-@traceable_safe(name="generate_answer", run_type="chain")
-async def generate_answer(
-    config: AppConfig,
-    retriever: VectorRetriever,
-    driver: Driver,
-    question: str,
-    *,
-    retrieval_limit: int = 5,
-    include_entities: bool = True,
-) -> dict[str, Any]:
-    """Generate an answer using RAG (Retrieval-Augmented Generation).
-
-    The prompt is fetched from the centralized catalog, enabling:
-    - Version control via LangSmith Hub
-    - A/B testing between prompt variants
-    - Performance monitoring and evaluation
-
-    Args:
-        config: Application configuration.
-        retriever: VectorRetriever for semantic search.
-        driver: Neo4j driver for graph queries.
-        question: User's question.
-        retrieval_limit: Number of sources to retrieve.
-        include_entities: Whether to include related entities in context.
-
-    Returns:
-        Dictionary with answer, sources, entities, and resources.
-    """
-    logger.info("Generating RAG answer for: '%s'", question)
-
-    # Search for relevant definitions/glossary terms
-    definitions = await search_terms(driver, question, limit=3)
-
-    # Retrieve relevant context from chunks
-    search_results = await graph_enriched_search(
-        retriever,
-        driver,
-        question,
-        limit=retrieval_limit,
-    )
-
-    # Build context and extract resources
-    build_result = _build_context_from_results(
-        definitions,
-        search_results,
-        include_entities=include_entities,
-    )
-
-    # Get prompt from catalog (uses cache if available)
-    prompt_template = get_prompt_sync(PromptName.RAG_GENERATION)
-
-    # Generate answer with LLM
-    llm = ChatOpenAI(
-        model=config.chat_model,
-        temperature=0.1,
-        api_key=config.openai_api_key,
-    )
-
-    # Use the prompt template from the catalog
-    chain = prompt_template | llm | StrOutputParser()
-
-    answer = await chain.ainvoke(
-        {
-            "context": build_result.context,
-            "entities": build_result.entities_str,
-            "question": question,
-        }
-    )
-
-    # Convert Resource dataclasses to dicts for JSON serialization
-    resources_dict = {
-        "images": [
-            {
-                "title": r.title,
-                "url": r.url,
-                "alt_text": r.alt_text,
-                "source_title": r.source_title,
-            }
-            for r in build_result.resources.get("images", [])
-        ],
-        "webinars": [
-            {
-                "title": r.title,
-                "url": r.url,
-                "source_title": r.source_title,
-                "thumbnail_url": r.thumbnail_url,
-            }
-            for r in build_result.resources.get("webinars", [])
-        ],
-        "videos": [
-            {
-                "title": r.title,
-                "url": r.url,
-                "source_title": r.source_title,
-            }
-            for r in build_result.resources.get("videos", [])
-        ],
-    }
-
-    response = {
-        "question": question,
-        "answer": answer,
-        "sources": build_result.sources,
-        "entities": build_result.entities,
-        "resources": resources_dict,
-        "source_count": len(build_result.sources),
-    }
-
-    logger.info(
-        "Generated answer with %d sources, %d entities, and %d resources",
-        len(build_result.sources),
-        len(build_result.entities),
-        sum(len(v) for v in resources_dict.values()),
-    )
-    return response
-
-
 def _build_context_from_results(
     definitions: list[dict[str, Any]],
     search_results: list[dict[str, Any]],
@@ -244,7 +99,7 @@ def _build_context_from_results(
 ) -> ContextBuildResult:
     """Build context from retrieval results.
 
-    Shared logic between generate_answer and stream_chat to avoid duplication.
+    Shared logic used by the evaluation pipeline and agentic orchestrator.
     Extracts and formats all resources (images, webinars, videos) for both
     LLM context and frontend display.
 
@@ -455,170 +310,10 @@ def _build_context_from_results(
     )
 
 
-@traceable_safe(name="stream_chat", run_type="chain")
-async def stream_chat(
-    config: AppConfig,
-    retriever: VectorRetriever,
-    driver: Driver,
-    message: str,
-    *,
-    conversation_history: list[dict[str, str]] | None = None,
-    conversation_id: str | None = None,
-    max_sources: int = 5,
-    langsmith_extra: dict[str, Any] | None = None,  # For thread metadata
-) -> AsyncIterator[StreamEvent]:
-    """Stream chat response with progressive events.
-
-    Emits events as retrieval and generation progress:
-    1. SOURCES event with retrieved context, entities, and resources
-    2. TOKEN events for each generated token
-    3. DONE event with complete answer
-
-    This enables LangSmith to capture streaming metrics like TTFT.
-    When conversation_id is provided, traces are grouped into LangSmith Threads.
-
-    Args:
-        config: Application configuration.
-        retriever: VectorRetriever for semantic search.
-        driver: Neo4j driver for graph queries.
-        message: User's message.
-        conversation_history: Optional list of previous messages for multi-turn.
-        conversation_id: Optional conversation ID for LangSmith thread grouping.
-        max_sources: Maximum sources to retrieve.
-        langsmith_extra: Optional LangSmith metadata (used internally for threading).
-
-    Yields:
-        StreamEvent objects for sources, tokens, and completion.
-    """
-    # Note: langsmith_extra is consumed by the @traceable decorator, not used here
-    _ = langsmith_extra  # Suppress unused variable warning
-    logger.info("Streaming chat: message='%s', conversation_id=%s", message[:50], conversation_id)
-
-    try:
-        # 1. Retrieval (non-streamed)
-        definitions = await search_terms(driver, message, limit=3)
-        search_results = await graph_enriched_search(
-            retriever,
-            driver,
-            message,
-            limit=max_sources,
-        )
-
-        # 2. Build context and collect metadata
-        build_result = _build_context_from_results(
-            definitions,
-            search_results,
-            include_entities=True,
-        )
-
-        # 3. Emit sources/entities/resources immediately
-        # Convert Resource dataclasses to dicts for JSON serialization
-        resources_dict = {
-            "images": [
-                {
-                    "title": r.title,
-                    "url": r.url,
-                    "alt_text": r.alt_text,
-                    "source_title": r.source_title,
-                }
-                for r in build_result.resources.get("images", [])
-            ],
-            "webinars": [
-                {
-                    "title": r.title,
-                    "url": r.url,
-                    "source_title": r.source_title,
-                    "thumbnail_url": r.thumbnail_url,
-                }
-                for r in build_result.resources.get("webinars", [])
-            ],
-            "videos": [
-                {
-                    "title": r.title,
-                    "url": r.url,
-                    "source_title": r.source_title,
-                }
-                for r in build_result.resources.get("videos", [])
-            ],
-        }
-        yield StreamEvent(
-            event_type=StreamEventType.SOURCES,
-            data={
-                "sources": build_result.sources,
-                "entities": build_result.entities,
-                "resources": resources_dict,
-            },
-        )
-
-        # 4. Convert conversation history to LangChain message format
-        history_messages: list[HumanMessage | AIMessage] = []
-        if conversation_history:
-            for msg in conversation_history:
-                if msg.get("role") == "user":
-                    history_messages.append(HumanMessage(content=msg.get("content", "")))
-                elif msg.get("role") == "assistant":
-                    history_messages.append(AIMessage(content=msg.get("content", "")))
-
-        # 5. Get prompt and set up streaming chain
-        prompt_template = get_prompt_sync(PromptName.RAG_GENERATION)
-        llm = ChatOpenAI(
-            model=config.chat_model,
-            temperature=0.1,
-            api_key=config.openai_api_key,
-        )
-        chain = prompt_template | llm | StrOutputParser()
-
-        # 6. Stream LLM tokens
-        full_answer = ""
-        chain_input: dict[str, Any] = {
-            "context": build_result.context,
-            "entities": build_result.entities_str,
-            "question": message,
-        }
-
-        # Add history if the prompt supports it
-        if history_messages:
-            chain_input["history"] = history_messages
-
-        async for token in chain.astream(chain_input):
-            full_answer += token
-            yield StreamEvent(
-                event_type=StreamEventType.TOKEN,
-                data={"token": token},
-            )
-
-        # 7. Emit completion event with run_id for feedback correlation
-        run_id = None
-        try:
-            run_tree = get_current_run_tree()
-            if run_tree:
-                run_id = str(run_tree.id)
-        except Exception:
-            logger.debug("Could not get run_id - tracing may be disabled")
-
-        yield StreamEvent(
-            event_type=StreamEventType.DONE,
-            data={
-                "full_answer": full_answer,
-                "source_count": len(build_result.sources),
-                "run_id": run_id,
-            },
-        )
-
-    except Exception as e:
-        logger.exception("Error in stream_chat")
-        yield StreamEvent(
-            event_type=StreamEventType.ERROR,
-            data={"error": str(e)},
-        )
-
-
 __all__ = [
     "ContextBuildResult",
     "Resource",
     "StreamEvent",
     "StreamEventType",
     "_build_context_from_results",
-    "generate_answer",
-    "stream_chat",
 ]

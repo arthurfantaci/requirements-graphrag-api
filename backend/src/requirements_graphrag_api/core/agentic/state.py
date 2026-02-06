@@ -184,6 +184,9 @@ class SynthesisState(TypedDict, total=False):
     query: str
     context: str
 
+    # Multi-turn conversation context
+    previous_context: str
+
     # Populated during subgraph execution
     draft_answer: str
     critique: CriticEvaluation

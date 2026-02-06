@@ -21,6 +21,7 @@ Agentic RAG (2026-02):
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -30,7 +31,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel, Field
 from slowapi.util import get_remote_address
 
@@ -66,7 +67,6 @@ from requirements_graphrag_api.guardrails.events import (
     create_toxicity_event,
 )
 from requirements_graphrag_api.middleware.rate_limit import CHAT_RATE_LIMIT, get_rate_limiter
-from requirements_graphrag_api.middleware.timeout import TIMEOUTS, with_timeout
 from requirements_graphrag_api.observability import create_thread_metadata
 from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
 
@@ -275,56 +275,11 @@ async def _generate_sse_events(
                 )
                 log_guardrail_event(event)
 
-        # 4. Topic guard (keyword + LLM classification for borderline)
-        if guardrail_config.topic_guard_enabled:
-            from langchain_openai import ChatOpenAI
+        # 4. Topic guard + intent classification (parallel when both need LLM)
+        # Run topic guard and intent classification concurrently to reduce TTFT.
+        # If topic guard blocks (OUT_OF_SCOPE), the intent result is discarded.
 
-            from requirements_graphrag_api.guardrails.topic_guard import TopicGuardConfig
-
-            topic_config = TopicGuardConfig(
-                enabled=True,
-                use_llm_classification=guardrail_config.topic_guard_use_llm,
-                allow_borderline=guardrail_config.topic_guard_allow_borderline,
-            )
-            topic_llm = None
-            if guardrail_config.topic_guard_use_llm and config.openai_api_key:
-                topic_llm = ChatOpenAI(
-                    model=config.chat_model,
-                    temperature=0,
-                    api_key=config.openai_api_key,
-                    max_tokens=20,
-                )
-            topic_result = await check_topic_relevance(
-                safe_message,
-                llm=topic_llm,
-                config=topic_config,
-            )
-            if topic_result.classification == TopicClassification.OUT_OF_SCOPE:
-                metrics.record_topic_out_of_scope()
-                event = create_topic_event(
-                    request_id=request_id,
-                    classification=topic_result.classification.value,
-                    confidence=topic_result.confidence,
-                    reasoning=topic_result.reasoning,
-                    check_type=topic_result.check_type,
-                    user_ip=user_ip,
-                    input_text=request.message,
-                )
-                log_guardrail_event(event)
-                # Return a polite redirect instead of processing the query
-                redirect = (
-                    topic_result.suggested_response
-                    or "This question is outside my area of expertise."
-                )
-                yield f"event: {StreamEventType.ROUTING.value}\n"
-                yield f"data: {json.dumps({'intent': 'explanatory'})}\n\n"
-                yield f"event: {StreamEventType.TOKEN.value}\n"
-                yield f"data: {json.dumps({'token': redirect})}\n\n"
-                yield f"event: {StreamEventType.DONE.value}\n"
-                yield f"data: {json.dumps({'full_answer': redirect, 'source_count': 0})}\n\n"
-                return
-
-        # 5. Validate conversation history
+        # 4a. Validate conversation history (doesn't need LLM, run inline)
         if request.conversation_history:
             history_dicts = [
                 {"role": msg.role, "content": msg.content} for msg in request.conversation_history
@@ -351,23 +306,84 @@ async def _generate_sse_events(
                 # All messages were removed (e.g., all contained injection)
                 request = request.model_copy(update={"conversation_history": None})
 
-        # Record successful guardrail pass
-        metrics.record_request(blocked=False)
+        # 4b. Build topic guard coroutine (if enabled)
+        topic_guard_coro = None
+        if guardrail_config.topic_guard_enabled:
+            from langchain_openai import ChatOpenAI
 
-        # === QUERY PROCESSING ===
+            from requirements_graphrag_api.guardrails.topic_guard import TopicGuardConfig
 
-        # Determine query intent (use safe_message for classification)
+            topic_config = TopicGuardConfig(
+                enabled=True,
+                use_llm_classification=guardrail_config.topic_guard_use_llm,
+                allow_borderline=guardrail_config.topic_guard_allow_borderline,
+            )
+            topic_llm = None
+            if guardrail_config.topic_guard_use_llm and config.openai_api_key:
+                topic_llm = ChatOpenAI(
+                    model="gpt-4o-mini",
+                    temperature=0,
+                    api_key=config.openai_api_key,
+                    max_tokens=20,
+                )
+            topic_guard_coro = check_topic_relevance(
+                safe_message,
+                llm=topic_llm,
+                config=topic_config,
+            )
+
+        # 4c. Determine intent resolution strategy
+        topic_result = None
         intent: QueryIntent
+
         if request.options.force_intent:
             intent = QueryIntent(request.options.force_intent)
             logger.info("Using forced intent: %s", intent)
+            # Still need to run topic guard if enabled
+            if topic_guard_coro:
+                topic_result = await topic_guard_coro
         elif request.options.auto_route:
-            intent = await classify_intent(config, safe_message)
+            # Both topic guard and intent may need LLM — run concurrently
+            intent_coro = classify_intent(config, safe_message)
+            if topic_guard_coro:
+                topic_result, intent = await asyncio.gather(topic_guard_coro, intent_coro)
+                logger.info("Parallel topic guard + intent classification complete")
+            else:
+                intent = await intent_coro
             logger.info("Auto-classified intent: %s", intent)
         else:
-            # Default to explanatory if auto_route is disabled
             intent = QueryIntent.EXPLANATORY
             logger.info("Auto-route disabled, using default: %s", intent)
+            if topic_guard_coro:
+                topic_result = await topic_guard_coro
+
+        # 4e. Check topic guard result (may short-circuit)
+        if topic_result and topic_result.classification == TopicClassification.OUT_OF_SCOPE:
+            metrics.record_topic_out_of_scope()
+            event = create_topic_event(
+                request_id=request_id,
+                classification=topic_result.classification.value,
+                confidence=topic_result.confidence,
+                reasoning=topic_result.reasoning,
+                check_type=topic_result.check_type,
+                user_ip=user_ip,
+                input_text=request.message,
+            )
+            log_guardrail_event(event)
+            # Return a polite redirect instead of processing the query
+            redirect = (
+                topic_result.suggested_response or "This question is outside my area of expertise."
+            )
+            yield f"event: {StreamEventType.ROUTING.value}\n"
+            yield f"data: {json.dumps({'intent': 'explanatory'})}\n\n"
+            yield f"event: {StreamEventType.TOKEN.value}\n"
+            yield f"data: {json.dumps({'token': redirect})}\n\n"
+            yield f"event: {StreamEventType.DONE.value}\n"
+            yield f"data: {json.dumps({'full_answer': redirect, 'source_count': 0})}\n\n"
+            return
+
+        # Record successful guardrail pass
+        metrics.record_request(blocked=False)
 
         # Emit routing event so frontend knows which handler is being used
         yield f"event: {StreamEventType.ROUTING.value}\n"
@@ -478,7 +494,7 @@ async def _run_output_guardrails(
             )
 
             llm = ChatOpenAI(
-                model=config.chat_model,
+                model="gpt-4o-mini",
                 temperature=0.0,
                 api_key=config.openai_api_key,
             )
@@ -582,11 +598,13 @@ async def _generate_explanatory_events(
                 refined_query = safe_message
 
         # Build conversation history as LangChain messages
-        messages: list[HumanMessage] = []
+        messages: list[HumanMessage | AIMessage] = []
         if request.conversation_history:
             for msg in request.conversation_history:
                 if msg.role == "user":
                     messages.append(HumanMessage(content=msg.content))
+                elif msg.role == "assistant":
+                    messages.append(AIMessage(content=msg.content))
 
         # Add the current (potentially refined) query as the final message
         messages.append(HumanMessage(content=refined_query))
@@ -819,192 +837,3 @@ async def routing_guide_endpoint() -> dict:
         Dictionary with routing guidance, examples, and tips.
     """
     return get_routing_guide()
-
-
-# =============================================================================
-# CONVERSATION MANAGEMENT ENDPOINTS (Phase 5.3)
-# =============================================================================
-
-
-class ConversationMessage(BaseModel):
-    """A message in conversation state."""
-
-    role: str = Field(..., description="Message role: 'user' or 'assistant'")
-    content: str = Field(..., description="Message content")
-
-
-class ConversationStateResponse(BaseModel):
-    """Response model for conversation state."""
-
-    thread_id: str = Field(..., description="Conversation thread ID")
-    messages: list[ConversationMessage] = Field(
-        default_factory=list, description="Conversation messages"
-    )
-    current_phase: str | None = Field(None, description="Current execution phase if in progress")
-    last_query: str | None = Field(None, description="Last query processed")
-    last_answer: str | None = Field(None, description="Last answer generated")
-    message_count: int = Field(0, description="Total number of messages")
-
-
-class ContinueChatRequest(BaseModel):
-    """Request body for continuing a conversation."""
-
-    message: str = Field(
-        ...,
-        min_length=1,
-        max_length=2000,
-        description="Follow-up message to continue the conversation",
-    )
-    options: ChatOptions = Field(
-        default_factory=ChatOptions,
-        description="Chat options",
-    )
-
-
-@router.get("/chat/{thread_id}")
-@with_timeout(TIMEOUTS["default"])
-async def get_conversation_state(
-    request: Request,
-    thread_id: str,
-) -> ConversationStateResponse:
-    """Get the state of an existing conversation.
-
-    Retrieves the conversation history and current state for a given thread ID.
-    This is useful for resuming conversations or displaying conversation history.
-
-    **Note:** Requires checkpoint persistence to be configured via
-    `CHECKPOINT_DATABASE_URL` environment variable.
-
-    Args:
-        request: FastAPI request object.
-        thread_id: The conversation thread ID.
-
-    Returns:
-        ConversationStateResponse with conversation details.
-
-    Raises:
-        HTTPException: 404 if conversation not found, 503 if checkpointing unavailable.
-    """
-    from fastapi import HTTPException
-
-    config: AppConfig = request.app.state.config
-    driver: Driver = request.app.state.driver
-    retriever: VectorRetriever = request.app.state.retriever
-
-    # Check if checkpoint database URL is configured (from env only to avoid mock issues)
-    checkpoint_url = os.getenv("CHECKPOINT_DATABASE_URL")
-
-    if not checkpoint_url:
-        raise HTTPException(
-            status_code=503,
-            detail="Checkpoint persistence is not configured. Set CHECKPOINT_DATABASE_URL.",
-        )
-
-    try:
-        # Use context manager for proper cleanup
-        async with async_checkpointer_context(checkpoint_url) as checkpointer:
-            # Create the orchestrator graph with checkpointer
-            graph = create_orchestrator_graph(config, driver, retriever, checkpointer=checkpointer)
-
-            # Get the thread configuration
-            thread_config = get_thread_config(thread_id)
-
-            # Get the current state
-            state = await graph.aget_state(thread_config)
-
-            if state is None or state.values is None:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Conversation with thread_id '{thread_id}' not found",
-                )
-
-            # Extract messages from state
-            messages: list[ConversationMessage] = []
-            state_values = state.values
-
-            if "messages" in state_values:
-                for msg in state_values["messages"]:
-                    if hasattr(msg, "content"):
-                        role = "user" if msg.__class__.__name__ == "HumanMessage" else "assistant"
-                        messages.append(ConversationMessage(role=role, content=msg.content))
-
-            return ConversationStateResponse(
-                thread_id=thread_id,
-                messages=messages,
-                current_phase=state_values.get("current_phase"),
-                last_query=state_values.get("query"),
-                last_answer=state_values.get("final_answer"),
-                message_count=len(messages),
-            )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("Error getting conversation state")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error retrieving conversation state: {e}",
-        ) from e
-
-
-@router.post("/chat/{thread_id}/continue")
-@limiter.limit(CHAT_RATE_LIMIT)
-async def continue_conversation(
-    request: Request,
-    thread_id: str,
-    body: ContinueChatRequest,
-) -> StreamingResponse:
-    """Continue an existing conversation with a new message.
-
-    Resumes a conversation using the stored checkpoint state and adds
-    a new message. This enables multi-turn conversations with memory.
-
-    **Note:** Requires checkpoint persistence to be configured via
-    `CHECKPOINT_DATABASE_URL` environment variable.
-
-    **SSE Event Sequence:**
-    Same as POST /chat endpoint.
-
-    Args:
-        request: FastAPI request object.
-        thread_id: The conversation thread ID to continue.
-        body: Request body with new message.
-
-    Returns:
-        StreamingResponse with SSE events.
-    """
-    config: AppConfig = request.app.state.config
-    retriever: VectorRetriever = request.app.state.retriever
-    driver: Driver = request.app.state.driver
-    guardrail_config: GuardrailConfig = request.app.state.guardrail_config
-
-    # Get client info for logging
-    user_ip = get_remote_address(request)
-    request_id = str(uuid.uuid4())[:8]
-
-    # Create a ChatRequest with the thread_id as conversation_id
-    chat_request = ChatRequest(
-        message=body.message,
-        conversation_id=thread_id,
-        options=body.options,
-    )
-
-    return StreamingResponse(
-        _generate_sse_events(
-            config,
-            retriever,
-            driver,
-            chat_request,
-            guardrail_config,
-            user_ip=user_ip,
-            request_id=request_id,
-        ),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-            "X-Request-ID": request_id,
-            "X-Thread-ID": thread_id,
-        },
-    )
