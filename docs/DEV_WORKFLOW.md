@@ -356,6 +356,10 @@ A pre-commit hook (`validate-docs-placement.sh`) warns when committing docs that
 | Mermaid render | `mmdc -i file.mmd -o file.png` | When creating diagrams |
 | D2 render | `d2 file.d2 file.svg` | When creating diagrams |
 | D2 live edit | `d2 --watch file.d2 file.svg` | While designing diagrams |
+| Commit | `/commit` (Claude skill) | Every commit |
+| Commit + PR | `/commit-push-pr` (Claude skill) | When creating PRs |
+| Merge PR | `gh pr merge <number> --squash --delete-branch` | After PR approval |
+| Branch cleanup | `/clean_gone` (Claude skill) | After merging PRs |
 | Memory cleanup | `/memory-hygiene` (Claude skill) | After merging PRs |
 | CLAUDE.md update | `/claude-md-management:revise-claude-md` | After completing phases |
 
