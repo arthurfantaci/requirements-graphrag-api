@@ -153,6 +153,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.auth_config = auth_config
     app.state.api_key_store = api_key_store
 
+    # Warm up guardrail singletons to avoid first-request penalty
+    # Presidio loads spaCy models (~2-3s), profanity loads word lists (~50ms)
+    if guardrail_config.pii_detection_enabled:
+        from requirements_graphrag_api.guardrails.pii_detection import get_pii_analyzer
+
+        get_pii_analyzer()
+        logger.info("Presidio PII analyzer warmed up")
+
+    if guardrail_config.toxicity_enabled:
+        from requirements_graphrag_api.guardrails.toxicity import _get_profanity_filter
+
+        _get_profanity_filter()
+        logger.info("Profanity filter warmed up")
+
     logger.info(
         "Guardrails initialized: injection=%s, pii=%s, rate_limit=%s",
         guardrail_config.prompt_injection_enabled,
