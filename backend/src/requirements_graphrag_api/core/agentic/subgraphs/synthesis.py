@@ -32,8 +32,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Constants
-MAX_REVISIONS = 2
-CONFIDENCE_THRESHOLD = 0.7
+MAX_REVISIONS = 1
+CONFIDENCE_THRESHOLD = 0.5
 
 
 def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
@@ -86,7 +86,7 @@ def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
                 {
                     "context": context,
                     "entities": "",  # Will be populated by orchestrator if available
-                    "previous_context": "",  # Will be populated for multi-turn
+                    "previous_context": state.get("previous_context", ""),
                     "question": query,
                 }
             )
@@ -215,7 +215,7 @@ Focus on improving completeness and addressing the gaps identified above."""
                 {
                     "context": augmented_context,
                     "entities": "",
-                    "previous_context": "",
+                    "previous_context": state.get("previous_context", ""),
                     "question": query,
                 }
             )
@@ -321,7 +321,6 @@ Focus on improving completeness and addressing the gaps identified above."""
             needs_work = (
                 critique.confidence < CONFIDENCE_THRESHOLD
                 or critique.completeness == "insufficient"
-                or (critique.completeness == "partial" and revision_count == 0)
             )
             if needs_work:
                 logger.info(

@@ -53,6 +53,19 @@ logger = logging.getLogger(__name__)
 # Constants
 DEFAULT_MAX_ITERATIONS = 3
 RESEARCH_ENTITY_THRESHOLD = 2  # Min entities to trigger research
+COMPARISON_KEYWORDS = frozenset(
+    [
+        "compare",
+        "comparison",
+        "versus",
+        "vs",
+        "difference between",
+        "differences",
+        "similarities",
+        "contrast",
+        "relationship between",
+    ]
+)
 
 
 def create_orchestrator_graph(
@@ -237,10 +250,21 @@ def create_orchestrator_graph(
 
         logger.info("Running Synthesis subgraph")
 
+        # Build previous_context from conversation history (all messages before current)
+        previous_context = ""
+        messages = state.get("messages", [])
+        if len(messages) > 1:
+            parts = []
+            for msg in messages[:-1]:
+                role = "Q" if isinstance(msg, HumanMessage) else "A"
+                parts.append(f"{role}: {msg.content}")
+            previous_context = "\n".join(parts)
+
         # Prepare Synthesis state
         synthesis_input: SynthesisState = {
             "query": query,
             "context": context,
+            "previous_context": previous_context,
         }
 
         try:
@@ -288,9 +312,11 @@ def create_orchestrator_graph(
         - We have very few results (nothing to explore)
         - Iteration count is at max
         - Context is very short
+        - Query is simple (short + no comparison keywords + high retrieval confidence)
         """
         ranked_results = state.get("ranked_results", [])
         context = state.get("context", "")
+        query = state.get("query", "")
         iteration_count = state.get("iteration_count", 0)
         max_iterations = state.get("max_iterations", DEFAULT_MAX_ITERATIONS)
 
@@ -308,6 +334,25 @@ def create_orchestrator_graph(
         if len(context) < 200:
             logger.info("Skipping research: context too short")
             return "run_synthesis"
+
+        # Skip research for simple queries: short + no comparison keywords
+        query_lower = query.lower()
+        word_count = len(query.split())
+        has_comparison = any(kw in query_lower for kw in COMPARISON_KEYWORDS)
+
+        if word_count < 12 and not has_comparison:
+            # Also skip if top retrieval score is high (confident context)
+            top_score = 0.0
+            if ranked_results:
+                first = ranked_results[0]
+                top_score = first.score if hasattr(first, "score") else first.get("score", 0)
+            if top_score > 0.85:
+                logger.info(
+                    "Skipping research: simple query (%d words, top_score=%.2f)",
+                    word_count,
+                    top_score,
+                )
+                return "run_synthesis"
 
         logger.info("Proceeding to research phase")
         return "run_research"
