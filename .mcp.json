@@ -8,6 +8,17 @@
         "LANGSMITH_API_KEY": "${LANGSMITH_API_KEY}",
         "LANGSMITH_WORKSPACE_ID": "${LANGSMITH_WORKSPACE_ID}"
       }
+    },
+    "neo4j": {
+      "type": "stdio",
+      "command": "neo4j-mcp",
+      "args": ["--neo4j-read-only", "true"],
+      "env": {
+        "NEO4J_URI": "${NEO4J_URI}",
+        "NEO4J_USERNAME": "${NEO4J_USERNAME}",
+        "NEO4J_PASSWORD": "${NEO4J_PASSWORD}",
+        "NEO4J_DATABASE": "${NEO4J_DATABASE}"
+      }
     }
   }
 }
