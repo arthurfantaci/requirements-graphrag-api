@@ -33,6 +33,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
+from requirements_graphrag_api.observability import traceable_safe
+
 if TYPE_CHECKING:
     from langchain_openai import ChatOpenAI
 
@@ -109,6 +111,7 @@ Rules for grounding_level:
 - "ungrounded": Most claims are not supported by sources"""
 
 
+@traceable_safe(name="check_hallucination", run_type="llm")
 async def check_hallucination(
     response: str,
     sources: list[dict[str, Any]],
@@ -267,6 +270,7 @@ def _parse_llm_response(content: str) -> dict[str, Any]:
     }
 
 
+@traceable_safe(name="check_hallucination_sync", run_type="llm")
 def check_hallucination_sync(
     response: str,
     sources: list[dict[str, Any]],

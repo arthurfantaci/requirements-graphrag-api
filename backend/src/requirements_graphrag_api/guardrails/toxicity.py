@@ -26,6 +26,8 @@ from enum import StrEnum
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
+from requirements_graphrag_api.observability import traceable_safe
+
 if TYPE_CHECKING:
     from openai import AsyncOpenAI
 
@@ -322,6 +324,7 @@ async def check_toxicity_full(
         )
 
 
+@traceable_safe(name="check_toxicity", run_type="chain")
 async def check_toxicity(
     text: str,
     openai_client: AsyncOpenAI | None = None,

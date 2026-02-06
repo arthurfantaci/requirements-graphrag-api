@@ -23,6 +23,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
+from requirements_graphrag_api.observability import traceable_safe
+
 if TYPE_CHECKING:
     from presidio_analyzer import AnalyzerEngine, RecognizerResult
     from presidio_anonymizer import AnonymizerEngine
@@ -163,6 +165,7 @@ def _convert_results(
     return tuple(entities)
 
 
+@traceable_safe(name="detect_and_redact_pii", run_type="chain")
 def detect_and_redact_pii(
     text: str,
     entities: tuple[str, ...] | None = None,

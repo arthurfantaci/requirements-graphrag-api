@@ -27,6 +27,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from requirements_graphrag_api.observability import traceable_safe
+
 if TYPE_CHECKING:
     from typing import Any
 
@@ -58,6 +60,7 @@ class ConversationValidationResult:
     was_truncated: bool
 
 
+@traceable_safe(name="validate_conversation_history", run_type="chain")
 def validate_conversation_history(
     history: list[dict[str, Any]] | None,
     max_messages: int = MAX_HISTORY_MESSAGES,

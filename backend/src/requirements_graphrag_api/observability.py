@@ -106,6 +106,8 @@ def sanitize_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
             "Neo4jDriver",
             "VectorRetriever",
             "Driver",
+            "ChatOpenAI",
+            "AsyncOpenAI",
         ):
             # Replace driver/retriever objects with type info only
             sanitized[key] = f"<{value.__class__.__name__}>"
@@ -144,24 +146,104 @@ def traceable_safe(
     """
 
     def decorator(func: Callable) -> Callable:
-        # Apply the original traceable decorator with our sanitizer
+        # LangSmith's @traceable detects a `config` parameter and treats it
+        # as a LangChain RunnableConfig (calls .get() on it, or strips it).
+        # This breaks when `config` is a dataclass (ToxicityConfig, etc.).
+        #
+        # Fix: stash the config value in a ContextVar before entering
+        # LangSmith, then retrieve and re-inject it in the inner function.
+        import asyncio
+        import contextvars
+        import inspect
+
+        sig = inspect.signature(func)
+        config_param = sig.parameters.get("config")
+        has_config_param = config_param is not None
+
+        if has_config_param:
+            config_idx = list(sig.parameters.keys()).index("config")
+            config_is_positional = config_param.kind in (
+                inspect.Parameter.POSITIONAL_ONLY,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            )
+
+            _sentinel = object()
+            _cfg_var: contextvars.ContextVar = contextvars.ContextVar(
+                f"_traceable_cfg_{name or func.__name__}", default=_sentinel
+            )
+            # Track whether config was passed as positional or keyword
+            _cfg_was_positional: contextvars.ContextVar = contextvars.ContextVar(
+                f"_traceable_cfg_pos_{name or func.__name__}", default=False
+            )
+
+            if asyncio.iscoroutinefunction(func):
+
+                async def _inner(*args: Any, **kw: Any) -> Any:
+                    cfg_val = _cfg_var.get(_sentinel)
+                    if cfg_val is not _sentinel:
+                        was_positional = _cfg_was_positional.get(False)
+                        if was_positional and len(args) >= config_idx:
+                            args = (*args[:config_idx], cfg_val, *args[config_idx:])
+                        else:
+                            kw["config"] = cfg_val
+                    return await func(*args, **kw)
+            else:
+
+                def _inner(*args: Any, **kw: Any) -> Any:
+                    cfg_val = _cfg_var.get(_sentinel)
+                    if cfg_val is not _sentinel:
+                        was_positional = _cfg_was_positional.get(False)
+                        if was_positional and len(args) >= config_idx:
+                            args = (*args[:config_idx], cfg_val, *args[config_idx:])
+                        else:
+                            kw["config"] = cfg_val
+                    return func(*args, **kw)
+
+            _inner.__name__ = func.__name__
+            _inner.__qualname__ = func.__qualname__
+            target = _inner
+        else:
+            target = func
+
         traced_func = traceable(
             name=name,
             run_type=run_type,
             process_inputs=sanitize_inputs,
             **kwargs,
-        )(func)
+        )(target)
 
-        @wraps(func)
-        async def async_wrapper(*args: Any, **func_kwargs: Any) -> Any:
-            return await traced_func(*args, **func_kwargs)
+        if has_config_param:
 
-        @wraps(func)
-        def sync_wrapper(*args: Any, **func_kwargs: Any) -> Any:
-            return traced_func(*args, **func_kwargs)
+            @wraps(func)
+            async def async_wrapper(*args: Any, **func_kwargs: Any) -> Any:
+                if "config" in func_kwargs:
+                    _cfg_var.set(func_kwargs.pop("config"))
+                    _cfg_was_positional.set(False)
+                elif config_is_positional and len(args) > config_idx:
+                    _cfg_var.set(args[config_idx])
+                    _cfg_was_positional.set(True)
+                    args = args[:config_idx] + args[config_idx + 1 :]
+                return await traced_func(*args, **func_kwargs)
 
-        # Return appropriate wrapper based on whether the function is async
-        import asyncio
+            @wraps(func)
+            def sync_wrapper(*args: Any, **func_kwargs: Any) -> Any:
+                if "config" in func_kwargs:
+                    _cfg_var.set(func_kwargs.pop("config"))
+                    _cfg_was_positional.set(False)
+                elif config_is_positional and len(args) > config_idx:
+                    _cfg_var.set(args[config_idx])
+                    _cfg_was_positional.set(True)
+                    args = args[:config_idx] + args[config_idx + 1 :]
+                return traced_func(*args, **func_kwargs)
+        else:
+
+            @wraps(func)
+            async def async_wrapper(*args: Any, **func_kwargs: Any) -> Any:
+                return await traced_func(*args, **func_kwargs)
+
+            @wraps(func)
+            def sync_wrapper(*args: Any, **func_kwargs: Any) -> Any:
+                return traced_func(*args, **func_kwargs)
 
         if asyncio.iscoroutinefunction(func):
             return async_wrapper
