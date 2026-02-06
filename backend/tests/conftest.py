@@ -135,6 +135,17 @@ def minimal_env_vars() -> Generator[dict[str, str], None, None]:
 
 
 @pytest.fixture
+def sample_conversation_history() -> list[dict[str, str]]:
+    """Standard multi-turn conversation history for tests."""
+    return [
+        {"role": "user", "content": "What is traceability?"},
+        {"role": "assistant", "content": "Traceability is the ability to track requirements."},
+        {"role": "user", "content": "How is it implemented?"},
+        {"role": "assistant", "content": "It is implemented through a traceability matrix."},
+    ]
+
+
+@pytest.fixture
 def mock_guardrail_config() -> GuardrailConfig:
     """Create a mock guardrail configuration for testing.
 

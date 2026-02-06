@@ -22,6 +22,7 @@ Out-of-Scope Topics:
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING
@@ -181,6 +182,33 @@ OUT_OF_SCOPE_TOPICS: tuple[str, ...] = (
     "joke",
 )
 
+# Meta-conversation patterns — word-boundary regex to identify queries about the
+# conversation itself. These get IN_SCOPE classification with high confidence so
+# they bypass the topic guard (the conversational handler answers from history).
+META_CONVERSATION_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(rf"\b{re.escape(kw)}\b", re.IGNORECASE)
+    for kw in (
+        "what was my",
+        "summarize our conversation",
+        "my first question",
+        "you said earlier",
+        "what did I ask",
+        "our conversation",
+        "my previous question",
+        "repeat what you said",
+        "what did you say",
+        "what have we discussed",
+        "recap our discussion",
+        "my last question",
+        "what we talked about",
+        "earlier you mentioned",
+        "you told me",
+        "go back to what",
+        "remind me what",
+        "what did you tell me",
+    )
+)
+
 
 # LLM prompt for topic classification
 TOPIC_CLASSIFIER_PROMPT = """You are a topic classifier for a Requirements Management \
@@ -238,9 +266,14 @@ def _check_keywords(text: str) -> tuple[TopicClassification, str | None, float]:
     Returns:
         Tuple of (classification, detected_topic, confidence).
     """
+    # Check meta-conversation patterns first — these are always in-scope
+    for pattern in META_CONVERSATION_PATTERNS:
+        if pattern.search(text):
+            return (TopicClassification.IN_SCOPE, "meta-conversation", 0.95)
+
     text_lower = text.lower()
 
-    # Check for out-of-scope topics first
+    # Check for out-of-scope topics
     for topic in OUT_OF_SCOPE_TOPICS:
         if topic.lower() in text_lower:
             return (TopicClassification.OUT_OF_SCOPE, topic, 0.9)

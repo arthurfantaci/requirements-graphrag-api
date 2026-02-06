@@ -302,3 +302,73 @@ class TestRedirectResponses:
         assert response is not None
         # Should be polite, not confrontational
         assert "specialized" in response.lower() or "help" in response.lower()
+
+
+class TestMetaConversationBypass:
+    """Tests for meta-conversation keyword detection in topic guard."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "What was my first question?",
+            "Summarize our conversation",
+            "What did I ask earlier?",
+            "Repeat what you said about traceability",
+            "Recap our discussion",
+            "What have we discussed so far?",
+            "You told me about baselines",
+            "Remind me what you said",
+        ],
+    )
+    async def test_meta_conversation_returns_in_scope(self, query: str):
+        """Test meta-conversation queries bypass topic guard as IN_SCOPE."""
+        result = await check_topic_relevance_fast(query)
+        assert result.classification == TopicClassification.IN_SCOPE
+        assert result.confidence >= 0.9
+
+    @pytest.mark.asyncio
+    async def test_meta_conversation_word_boundary(self):
+        """Test partial-word overlap does not trigger meta-conversation.
+
+        'conversations' (plural) should NOT match 'conversation' (singular)
+        thanks to word-boundary regex.
+        """
+        result = await check_topic_relevance_fast("How do conversations work in Jama Connect?")
+        # Should NOT be meta-conversation — 'conversations' != 'conversation'
+        assert not (
+            result.classification == TopicClassification.IN_SCOPE and result.confidence == 0.95
+        ), "Should not be classified as meta-conversation"
+
+
+class TestTopicGuardRegression:
+    """Regression tests ensuring topic guard still works after meta-conversation bypass."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "Tell me about politics",
+            "What medication should I take?",
+            "Should I invest in cryptocurrency?",
+            "What's your favorite movie?",
+        ],
+    )
+    async def test_out_of_scope_still_blocked(self, query: str):
+        """Test out-of-scope queries still correctly classified."""
+        result = await check_topic_relevance_fast(query)
+        assert result.classification == TopicClassification.OUT_OF_SCOPE
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "What is requirements traceability?",
+            "How does Jama Connect work?",
+            "Explain ISO 26262 compliance",
+        ],
+    )
+    async def test_in_scope_still_passes(self, query: str):
+        """Test in-scope queries still correctly classified."""
+        result = await check_topic_relevance_fast(query)
+        assert result.classification == TopicClassification.IN_SCOPE

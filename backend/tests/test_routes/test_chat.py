@@ -20,6 +20,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, HumanMessage
 
+from requirements_graphrag_api.core.generation import StreamEventType
 from requirements_graphrag_api.routes.chat import router
 
 if TYPE_CHECKING:
@@ -551,3 +552,124 @@ class TestChatMessageModel:
         )
 
         assert response.status_code == 422
+
+
+class TestConversationalRouting:
+    """Tests for CONVERSATIONAL intent routing through the chat endpoint."""
+
+    def test_force_intent_conversational_accepted(self, client: TestClient) -> None:
+        """Test force_intent=conversational returns 200 with correct events."""
+        with patch(
+            "requirements_graphrag_api.routes.chat.stream_conversational_events"
+        ) as mock_stream:
+            answer = "Your first question was about traceability."
+
+            async def mock_events(*_args, **_kwargs):
+                yield f"event: {StreamEventType.TOKEN.value}\n"
+                yield f"data: {json.dumps({'token': answer})}\n\n"
+                yield f"event: {StreamEventType.DONE.value}\n"
+                done = {
+                    "full_answer": answer,
+                    "source_count": 0,
+                    "run_id": "test-id",
+                }
+                yield f"data: {json.dumps(done)}\n\n"
+
+            mock_stream.return_value = mock_events()
+
+            response = client.post(
+                "/api/v1/chat",
+                json={
+                    "message": "What was my first question?",
+                    "conversation_history": [
+                        {"role": "user", "content": "What is traceability?"},
+                        {"role": "assistant", "content": "Traceability is..."},
+                    ],
+                    "options": {"force_intent": "conversational"},
+                },
+            )
+
+            assert response.status_code == 200
+            parsed = parse_sse_response(response.text)
+            # First event: routing with intent=conversational
+            assert parsed[0]["intent"] == "conversational"
+
+    def test_force_intent_invalid_rejected(self, client: TestClient) -> None:
+        """Test force_intent with invalid value returns 422."""
+        response = client.post(
+            "/api/v1/chat",
+            json={
+                "message": "Test",
+                "options": {"force_intent": "invalid_intent"},
+            },
+        )
+
+        assert response.status_code == 422
+
+    def test_conversational_no_sources_or_phase_events(self, client: TestClient) -> None:
+        """Test conversational route emits no sources/cypher/phase events."""
+        with patch(
+            "requirements_graphrag_api.routes.chat.stream_conversational_events"
+        ) as mock_stream:
+
+            async def mock_events(*_args, **_kwargs):
+                yield f"event: {StreamEventType.TOKEN.value}\n"
+                yield f"data: {json.dumps({'token': 'Recall answer'})}\n\n"
+                yield f"event: {StreamEventType.DONE.value}\n"
+                yield f"data: {json.dumps({'full_answer': 'Recall answer', 'source_count': 0})}\n\n"
+
+            mock_stream.return_value = mock_events()
+
+            response = client.post(
+                "/api/v1/chat",
+                json={
+                    "message": "What was my first question?",
+                    "conversation_history": [
+                        {"role": "user", "content": "Hello"},
+                        {"role": "assistant", "content": "Hi"},
+                    ],
+                    "options": {"force_intent": "conversational"},
+                },
+            )
+
+            parsed = parse_sse_response(response.text)
+            for event in parsed:
+                assert "sources" not in event
+                assert "cypher" not in event
+                assert "phase" not in event
+
+    def test_conversational_done_has_run_id(self, client: TestClient) -> None:
+        """Test done event includes run_id when available."""
+        with patch(
+            "requirements_graphrag_api.routes.chat.stream_conversational_events"
+        ) as mock_stream:
+
+            async def mock_events(*_args, **_kwargs):
+                yield f"event: {StreamEventType.TOKEN.value}\n"
+                yield f"data: {json.dumps({'token': 'Answer'})}\n\n"
+                yield f"event: {StreamEventType.DONE.value}\n"
+                done = {
+                    "full_answer": "Answer",
+                    "source_count": 0,
+                    "run_id": "conv-run-123",
+                }
+                yield f"data: {json.dumps(done)}\n\n"
+
+            mock_stream.return_value = mock_events()
+
+            response = client.post(
+                "/api/v1/chat",
+                json={
+                    "message": "Recap",
+                    "conversation_history": [
+                        {"role": "user", "content": "Hi"},
+                        {"role": "assistant", "content": "Hello"},
+                    ],
+                    "options": {"force_intent": "conversational"},
+                },
+            )
+
+            parsed = parse_sse_response(response.text)
+            done_events = [e for e in parsed if "full_answer" in e]
+            assert len(done_events) == 1
+            assert done_events[0]["run_id"] == "conv-run-123"
