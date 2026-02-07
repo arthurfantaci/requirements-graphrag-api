@@ -19,8 +19,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, HumanMessage
-
 from requirements_graphrag_api.core.generation import StreamEventType
+
 from requirements_graphrag_api.routes.chat import router
 
 if TYPE_CHECKING:

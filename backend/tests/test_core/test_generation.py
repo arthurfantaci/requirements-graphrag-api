@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from requirements_graphrag_api.core.generation import (
+from requirements_graphrag_api.core.definitions import (
     ContextBuildResult,
     Resource,
     StreamEvent,

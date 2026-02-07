@@ -11,8 +11,7 @@ Execution:
 
 Supporting modules:
 - routing.py: Intent classification (EXPLANATORY vs STRUCTURED vs CONVERSATIONAL)
-- generation.py: Shared types and context-building for RAG
-- definitions.py: Glossary term lookup
+- definitions.py: Glossary term lookup + shared types and context-building for RAG
 - retrieval.py: Vector + graph-enriched search
 - standards.py: Industry standards lookup
 """
@@ -20,13 +19,11 @@ Supporting modules:
 from __future__ import annotations
 
 from requirements_graphrag_api.core.definitions import (
+    StreamEvent,
+    StreamEventType,
     list_all_terms,
     lookup_term,
     search_terms,
-)
-from requirements_graphrag_api.core.generation import (
-    StreamEvent,
-    StreamEventType,
 )
 from requirements_graphrag_api.core.retrieval import (
     DEFAULT_ENRICHMENT_OPTIONS,

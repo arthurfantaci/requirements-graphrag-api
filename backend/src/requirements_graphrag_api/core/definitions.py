@@ -11,7 +11,9 @@ Updated Data Model (2026-01):
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from dataclasses import dataclass, field
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any, Final
 
 if TYPE_CHECKING:
     from neo4j import Driver
@@ -255,3 +257,248 @@ async def list_all_terms(
 
     logger.info("Listed %d definition terms", len(terms))
     return terms
+
+
+# =============================================================================
+# Shared types and context-building for RAG answer generation
+# (moved from core/generation.py)
+# =============================================================================
+
+DEFINITION_RELEVANCE_THRESHOLD: Final[float] = 0.5
+
+
+class StreamEventType(StrEnum):
+    """Types of events emitted during streaming chat."""
+
+    # Explanatory (RAG) events
+    SOURCES = "sources"
+    TOKEN = "token"  # noqa: S105 - not a password
+    DONE = "done"
+    ERROR = "error"
+
+    # Structured (Cypher) events
+    ROUTING = "routing"  # Intent classification result
+    CYPHER = "cypher"  # Generated Cypher query
+    RESULTS = "results"  # Query results
+
+    # Guardrail events
+    GUARDRAIL_WARNING = "guardrail_warning"  # Post-stream safety warning
+
+
+@dataclass(frozen=True, slots=True)
+class StreamEvent:
+    """A single event in the streaming response."""
+
+    event_type: StreamEventType
+    data: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class Resource:
+    """A single resource (webinar, video, or image)."""
+
+    title: str
+    url: str
+    alt_text: str = ""
+    source_title: str = ""
+    thumbnail_url: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ContextBuildResult:
+    """Result of building context from retrieval results."""
+
+    sources: list[dict[str, Any]]
+    entities: list[dict[str, Any]]
+    context: str
+    entities_str: str
+    resources: dict[str, list[Resource]] = field(default_factory=dict)
+
+
+def _build_context_from_results(
+    definitions: list[dict[str, Any]],
+    search_results: list[dict[str, Any]],
+    *,
+    include_entities: bool = True,
+    max_resources_per_type: int = 3,
+) -> ContextBuildResult:
+    """Build context from retrieval results.
+
+    Shared logic used by the evaluation pipeline and agentic orchestrator.
+    """
+    context_parts: list[str] = []
+    sources: list[dict[str, Any]] = []
+    all_entities: dict[str, dict[str, Any]] = {}
+
+    seen_urls: set[str] = set()
+    all_images: list[Resource] = []
+    all_webinars: list[Resource] = []
+    all_videos: list[Resource] = []
+
+    webinar_thumbnail_urls: set[str] = set()
+    for r in search_results:
+        for w in r.get("media", {}).get("webinars", []):
+            thumb = w.get("thumbnail_url")
+            if thumb:
+                webinar_thumbnail_urls.add(thumb)
+
+    if definitions:
+        for defn in definitions:
+            if defn.get("score", 0) >= DEFINITION_RELEVANCE_THRESHOLD:
+                defn_url = defn.get("url", "")
+                term_display = defn["term"]
+                if defn.get("acronym"):
+                    term_display = f"{defn['term']} ({defn['acronym']})"
+                context_parts.append(
+                    f"[Definition: {term_display}]\n{defn['definition']}\nURL: {defn_url}\n"
+                )
+                sources.append(
+                    {
+                        "title": f"Definition: {term_display}",
+                        "url": defn_url,
+                        "chunk_id": None,
+                        "relevance_score": defn.get("score", 0.5),
+                    }
+                )
+                all_entities[defn["term"]] = {
+                    "definition": defn.get("definition"),
+                    "label": "Definition",
+                }
+
+    for i, result in enumerate(search_results, 1):
+        title = result["metadata"].get("title", "Unknown")
+        content = result["content"]
+        url = result["metadata"].get("url", "")
+
+        source_context = f"[Source {i}: {title}]\n{content}\n"
+
+        sources.append(
+            {
+                "title": title,
+                "content": content,
+                "url": url,
+                "chunk_id": result["metadata"].get("chunk_id"),
+                "relevance_score": result["score"],
+            }
+        )
+
+        if include_entities:
+            for entity in result.get("entities", []):
+                if isinstance(entity, dict) and entity.get("name"):
+                    name = entity["name"]
+                    label = entity.get("type", "Entity")
+                    definition = entity.get("definition")
+                    if name not in all_entities:
+                        all_entities[name] = {"definition": definition, "label": label}
+                    elif definition and not all_entities[name].get("definition"):
+                        all_entities[name]["definition"] = definition
+                elif isinstance(entity, str) and entity:
+                    if entity not in all_entities:
+                        all_entities[entity] = {"definition": None, "label": "Entity"}
+            for defn in result.get("glossary_definitions", []):
+                if isinstance(defn, dict) and defn.get("term"):
+                    term = defn["term"]
+                    definition = defn.get("definition")
+                    if term not in all_entities:
+                        all_entities[term] = {"definition": definition, "label": "Definition"}
+                    elif definition and not all_entities[term].get("definition"):
+                        all_entities[term]["definition"] = definition
+                        all_entities[term]["label"] = "Definition"
+                elif isinstance(defn, str) and defn:
+                    if defn not in all_entities:
+                        all_entities[defn] = {"definition": None, "label": "Entity"}
+
+        source_resources: list[str] = []
+        if result.get("media"):
+            media = result["media"]
+
+            source_image_count = 0
+            for img in media.get("images", []):
+                img_url = img.get("url")
+                if not img_url or img_url in seen_urls or img_url in webinar_thumbnail_urls:
+                    continue
+                if source_image_count >= max_resources_per_type:
+                    break
+                seen_urls.add(img_url)
+                source_image_count += 1
+                alt_text = img.get("alt_text", "")
+                all_images.append(
+                    Resource(
+                        title=alt_text or "Image",
+                        url=img_url,
+                        alt_text=alt_text,
+                        source_title=title,
+                    )
+                )
+                source_resources.append(f'- \U0001f5bc\ufe0f Image: "{alt_text}" - {img_url}')
+
+            source_webinar_count = 0
+            for webinar in media.get("webinars", []):
+                webinar_url = webinar.get("url")
+                if not webinar_url or webinar_url in seen_urls:
+                    continue
+                if source_webinar_count >= max_resources_per_type:
+                    break
+                seen_urls.add(webinar_url)
+                source_webinar_count += 1
+                webinar_title = webinar.get("title", "Webinar")
+                webinar_thumbnail = webinar.get("thumbnail_url", "")
+                all_webinars.append(
+                    Resource(
+                        title=webinar_title,
+                        url=webinar_url,
+                        source_title=title,
+                        thumbnail_url=webinar_thumbnail,
+                    )
+                )
+                source_resources.append(f'- \U0001f4f9 Webinar: "{webinar_title}" - {webinar_url}')
+
+            source_video_count = 0
+            for video in media.get("videos", []):
+                video_url = video.get("url")
+                if not video_url or video_url in seen_urls:
+                    continue
+                if source_video_count >= max_resources_per_type:
+                    break
+                seen_urls.add(video_url)
+                source_video_count += 1
+                video_title = video.get("title", "Video")
+                all_videos.append(
+                    Resource(
+                        title=video_title,
+                        url=video_url,
+                        source_title=title,
+                    )
+                )
+                source_resources.append(f'- \U0001f3ac Video: "{video_title}" - {video_url}')
+
+        if source_resources:
+            source_context += "\nResources from this source:\n"
+            source_context += "\n".join(source_resources)
+            source_context += "\n"
+
+        context_parts.append(source_context)
+
+    context = "\n".join(context_parts) if context_parts else "No relevant context found."
+    sorted_names = sorted(all_entities.keys())[:20]
+    entities_str = ", ".join(sorted_names) if sorted_names else "None identified"
+    entities_list = [
+        {
+            "name": name,
+            "definition": all_entities[name].get("definition"),
+            "label": all_entities[name].get("label", "Entity"),
+        }
+        for name in sorted_names
+    ]
+
+    return ContextBuildResult(
+        sources=sources,
+        entities=entities_list,
+        context=context,
+        entities_str=entities_str,
+        resources={
+            "images": all_images,
+            "webinars": all_webinars,
+            "videos": all_videos,
+        },
+    )
