@@ -758,6 +758,59 @@ async def _generate_explanatory_events(
                 yield warning_event
 
 
+async def _resolve_coreferences(
+    config: AppConfig,
+    safe_message: str,
+    conversation_history: list[ChatMessage] | None,
+) -> str:
+    """Resolve pronoun/reference expressions using conversation history.
+
+    Uses the COREFERENCE_RESOLVER prompt with a fast model to substitute
+    references like "those two industries" with their concrete antecedents
+    from conversation history. Returns the original message unchanged if
+    no history is provided, resolution fails, or times out.
+
+    Args:
+        config: Application configuration.
+        safe_message: Sanitized user message.
+        conversation_history: Previous messages for context.
+
+    Returns:
+        Resolved message with references substituted, or original on failure.
+    """
+    if not conversation_history:
+        return safe_message
+
+    try:
+        async with asyncio.timeout(5.0):
+            from langchain_core.output_parsers import StrOutputParser
+            from langchain_openai import ChatOpenAI
+
+            history_text = "\n".join(
+                f"{'User' if msg.role == 'user' else 'Assistant'}: {msg.content}"
+                for msg in conversation_history
+            )
+
+            template = get_prompt_sync(PromptName.COREFERENCE_RESOLVER)
+            llm = ChatOpenAI(
+                model=config.conversational_model,
+                temperature=0,
+                api_key=config.openai_api_key,
+            )
+            chain = template | llm | StrOutputParser()
+            resolved = await chain.ainvoke({"history": history_text, "question": safe_message})
+
+            if resolved and resolved.strip():
+                resolved = resolved.strip()
+                if resolved != safe_message:
+                    logger.info("Coreference resolved: '%s' -> '%s'", safe_message, resolved)
+                return resolved
+            return safe_message
+    except Exception:
+        logger.exception("Coreference resolution failed, using original")
+        return safe_message
+
+
 async def _generate_structured_events(
     config: AppConfig,
     driver: Driver,
@@ -776,6 +829,11 @@ async def _generate_structured_events(
         Formatted SSE event strings.
     """
     try:
+        # Resolve coreferences in multi-turn conversations before Cypher generation
+        refined_query = await _resolve_coreferences(
+            config, safe_message, request.conversation_history
+        )
+
         # Create LangSmith thread metadata for conversation grouping
         thread_metadata = create_thread_metadata(request.conversation_id)
 
@@ -783,7 +841,7 @@ async def _generate_structured_events(
         result = await text2cypher_query(
             config,
             driver,
-            safe_message,
+            refined_query,
             execute=True,
             langsmith_extra=thread_metadata,
         )

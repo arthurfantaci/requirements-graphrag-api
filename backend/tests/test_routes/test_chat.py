@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -681,3 +681,117 @@ class TestConversationalRouting:
             done_events = [e for e in parsed if "full_answer" in e]
             assert len(done_events) == 1
             assert done_events[0]["run_id"] == "conv-run-123"
+
+
+class TestCoreferenceResolution:
+    """Tests for _resolve_coreferences() helper function."""
+
+    @pytest.mark.asyncio
+    async def test_no_history_returns_original(self) -> None:
+        """Test passthrough when no conversation history."""
+        from requirements_graphrag_api.routes.chat import _resolve_coreferences
+
+        config = MagicMock()
+        result = await _resolve_coreferences(config, "List all webinars", None)
+        assert result == "List all webinars"
+
+    @pytest.mark.asyncio
+    async def test_empty_history_returns_original(self) -> None:
+        """Test passthrough with empty history list."""
+        from requirements_graphrag_api.routes.chat import _resolve_coreferences
+
+        config = MagicMock()
+        result = await _resolve_coreferences(config, "List all webinars", [])
+        assert result == "List all webinars"
+
+    @pytest.mark.asyncio
+    async def test_resolves_pronoun_with_history(self) -> None:
+        """Test that pronouns are resolved using conversation history."""
+        from requirements_graphrag_api.routes.chat import ChatMessage, _resolve_coreferences
+
+        config = MagicMock()
+        config.conversational_model = "gpt-4o-mini"
+        config.openai_api_key = "test-key"
+
+        history = [
+            ChatMessage(role="user", content="What standards apply to aerospace?"),
+            ChatMessage(role="assistant", content="DO-178C and ARP 4754A apply to aerospace."),
+        ]
+
+        resolved_text = "Are there any webinars related to the aerospace industry?"
+
+        # Mock the LangChain chain: template | llm | StrOutputParser
+        mock_final_chain = MagicMock()
+        mock_final_chain.ainvoke = AsyncMock(return_value=resolved_text)
+        mock_intermediate = MagicMock()
+        mock_intermediate.__or__ = MagicMock(return_value=mock_final_chain)
+        mock_prompt = MagicMock()
+        mock_prompt.__or__ = MagicMock(return_value=mock_intermediate)
+
+        with (
+            patch(
+                "requirements_graphrag_api.routes.chat.get_prompt_sync",
+                return_value=mock_prompt,
+            ),
+            patch("langchain_openai.ChatOpenAI"),
+        ):
+            result = await _resolve_coreferences(
+                config, "Are there any webinars related to that industry?", history
+            )
+            assert result == resolved_text
+
+    @pytest.mark.asyncio
+    async def test_llm_error_returns_original(self) -> None:
+        """Test graceful fallback on LLM error."""
+        from requirements_graphrag_api.routes.chat import ChatMessage, _resolve_coreferences
+
+        config = MagicMock()
+        config.conversational_model = "gpt-4o-mini"
+        config.openai_api_key = "test-key"
+
+        history = [ChatMessage(role="user", content="Hi")]
+
+        mock_final_chain = MagicMock()
+        mock_final_chain.ainvoke = AsyncMock(side_effect=RuntimeError("LLM error"))
+        mock_intermediate = MagicMock()
+        mock_intermediate.__or__ = MagicMock(return_value=mock_final_chain)
+        mock_prompt = MagicMock()
+        mock_prompt.__or__ = MagicMock(return_value=mock_intermediate)
+
+        with (
+            patch(
+                "requirements_graphrag_api.routes.chat.get_prompt_sync",
+                return_value=mock_prompt,
+            ),
+            patch("langchain_openai.ChatOpenAI"),
+        ):
+            result = await _resolve_coreferences(config, "those two industries", history)
+            assert result == "those two industries"
+
+    @pytest.mark.asyncio
+    async def test_empty_llm_response_returns_original(self) -> None:
+        """Test fallback when LLM returns empty string."""
+        from requirements_graphrag_api.routes.chat import ChatMessage, _resolve_coreferences
+
+        config = MagicMock()
+        config.conversational_model = "gpt-4o-mini"
+        config.openai_api_key = "test-key"
+
+        history = [ChatMessage(role="user", content="Hi")]
+
+        mock_final_chain = MagicMock()
+        mock_final_chain.ainvoke = AsyncMock(return_value="")
+        mock_intermediate = MagicMock()
+        mock_intermediate.__or__ = MagicMock(return_value=mock_final_chain)
+        mock_prompt = MagicMock()
+        mock_prompt.__or__ = MagicMock(return_value=mock_intermediate)
+
+        with (
+            patch(
+                "requirements_graphrag_api.routes.chat.get_prompt_sync",
+                return_value=mock_prompt,
+            ),
+            patch("langchain_openai.ChatOpenAI"),
+        ):
+            result = await _resolve_coreferences(config, "those two industries", history)
+            assert result == "those two industries"
