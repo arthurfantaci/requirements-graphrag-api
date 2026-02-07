@@ -36,6 +36,7 @@ function createAssistantMessage() {
     cypher: null,
     results: null,
     rowCount: null,
+    message: null,
     // Status
     status: 'streaming',
     error: null,
@@ -121,6 +122,7 @@ export function useSSEChat() {
             content: data.full_answer || msg.content,
             status: 'complete',
             rowCount: data.row_count ?? msg.rowCount,
+            message: data.message || msg.message,
             runId: data.run_id || null,
           }))
           break
