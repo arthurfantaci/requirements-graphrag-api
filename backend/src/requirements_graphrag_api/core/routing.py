@@ -58,6 +58,17 @@ CONVERSATIONAL_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
         "go back to what",
         "remind me what",
         "what did you tell me",
+        # Meta-operational patterns (reference to prior system output)
+        "have you already",
+        "did you already",
+        "you already provided",
+        "you already showed",
+        "you already gave",
+        "can you repeat",
+        "from your previous",
+        "the table you",
+        "the results you",
+        "from earlier in",
     )
 )
 

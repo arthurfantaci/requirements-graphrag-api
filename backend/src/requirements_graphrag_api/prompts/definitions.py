@@ -106,6 +106,9 @@ Your task is to determine the user's intent to route their query appropriately.
 - Recap requests: "Summarize what we discussed"
 - Reference to prior answers: "Can you repeat what you said about traceability?"
 - Conversation history: "What did I ask earlier?"
+- Output recall: "Have you already provided a table of results?"
+- Prior output reference: "Did you already show me the standards list?"
+- Repeat requests: "Can you repeat the results from earlier?"
 
 ## Classification Rules
 
@@ -126,6 +129,7 @@ Your task is to determine the user's intent to route their query appropriately.
    - "our conversation", "our discussion", "what we discussed"
    - "you said earlier", "you told me", "you mentioned"
    - "what did I ask", "what did you say"
+   - "have you already", "did you already", "the table you", "from your previous"
 
 4. When ambiguous, prefer EXPLANATORY (provides richer context)
 
