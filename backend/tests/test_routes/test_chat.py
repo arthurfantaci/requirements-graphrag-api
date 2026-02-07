@@ -19,8 +19,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, HumanMessage
-from requirements_graphrag_api.core.generation import StreamEventType
 
+from requirements_graphrag_api.core.definitions import StreamEventType
 from requirements_graphrag_api.routes.chat import router
 
 if TYPE_CHECKING:
@@ -606,8 +606,12 @@ class TestConversationalRouting:
 
         assert response.status_code == 422
 
-    def test_conversational_no_sources_or_phase_events(self, client: TestClient) -> None:
-        """Test conversational route emits no sources/cypher/phase events."""
+    def test_conversational_no_cypher_or_phase_events(self, client: TestClient) -> None:
+        """Test conversational route emits no cypher/phase events.
+
+        Note: An empty sources event IS emitted so the frontend SSE parser
+        proceeds to token rendering (added in chat.py _generate_conversational_events).
+        """
         with patch(
             "requirements_graphrag_api.routes.chat.stream_conversational_events"
         ) as mock_stream:
@@ -634,9 +638,13 @@ class TestConversationalRouting:
 
             parsed = parse_sse_response(response.text)
             for event in parsed:
-                assert "sources" not in event
                 assert "cypher" not in event
                 assert "phase" not in event
+
+            # Verify the empty sources event is present for frontend compatibility
+            sources_events = [e for e in parsed if "sources" in e]
+            assert len(sources_events) == 1
+            assert sources_events[0]["sources"] == []
 
     def test_conversational_done_has_run_id(self, client: TestClient) -> None:
         """Test done event includes run_id when available."""

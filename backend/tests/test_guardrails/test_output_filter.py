@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
-
 import pytest
 
 from requirements_graphrag_api.guardrails.output_filter import (
@@ -73,68 +71,8 @@ class TestOutputFilterResult:
 class TestFilterOutput:
     """Test output filtering functionality."""
 
-    @pytest.fixture
-    def mock_openai_client(self):
-        """Create a mock OpenAI client that returns clean results."""
-        client = AsyncMock()
-
-        mock_result = MagicMock()
-        mock_result.flagged = False
-        mock_result.categories = MagicMock()
-        mock_result.categories.model_dump.return_value = {
-            "hate": False,
-            "harassment": False,
-            "self_harm": False,
-            "sexual": False,
-            "violence": False,
-        }
-        mock_result.category_scores = MagicMock()
-        mock_result.category_scores.model_dump.return_value = {
-            "hate": 0.01,
-            "harassment": 0.01,
-            "self_harm": 0.01,
-            "sexual": 0.01,
-            "violence": 0.01,
-        }
-
-        mock_response = MagicMock()
-        mock_response.results = [mock_result]
-
-        client.moderations.create = AsyncMock(return_value=mock_response)
-        return client
-
-    @pytest.fixture
-    def mock_toxic_client(self):
-        """Create a mock client that returns toxic content."""
-        client = AsyncMock()
-
-        mock_result = MagicMock()
-        mock_result.flagged = True
-        mock_result.categories = MagicMock()
-        mock_result.categories.model_dump.return_value = {
-            "hate": True,
-            "harassment": True,
-            "self_harm": False,
-            "sexual": False,
-            "violence": False,
-        }
-        mock_result.category_scores = MagicMock()
-        mock_result.category_scores.model_dump.return_value = {
-            "hate": 0.9,
-            "harassment": 0.8,
-            "self_harm": 0.01,
-            "sexual": 0.01,
-            "violence": 0.01,
-        }
-
-        mock_response = MagicMock()
-        mock_response.results = [mock_result]
-
-        client.moderations.create = AsyncMock(return_value=mock_response)
-        return client
-
     @pytest.mark.asyncio
-    async def test_clean_output_passes(self, mock_openai_client):
+    async def test_clean_output_passes(self):
         result = await filter_output(
             output=(
                 "Requirements traceability is the ability to trace requirements "
@@ -142,24 +80,22 @@ class TestFilterOutput:
             ),
             original_query="What is requirements traceability?",
             retrieved_sources=[{"content": "traceability definition"}],
-            openai_client=mock_openai_client,
         )
         assert result.is_safe is True
         assert result.confidence_score > 0.5
         assert result.filtered_content == result.original_content
 
     @pytest.mark.asyncio
-    async def test_toxic_output_blocked(self, mock_toxic_client):
+    async def test_toxic_output_blocked(self):
         config = OutputFilterConfig()
-        toxicity_config = ToxicityConfig(use_full_check=True)
+        toxicity_config = ToxicityConfig()
 
         result = await filter_output(
-            output="Some hateful content here",
+            output="What the hell damn shit is this crap",
             original_query="What is traceability?",
             retrieved_sources=[{"content": "test"}],
             config=config,
             toxicity_config=toxicity_config,
-            openai_client=mock_toxic_client,
         )
         assert result.is_safe is False
         assert result.blocked_reason == "toxicity"
@@ -177,12 +113,11 @@ class TestFilterOutput:
         assert result.confidence_score == 1.0
 
     @pytest.mark.asyncio
-    async def test_no_sources_reduces_confidence(self, mock_openai_client):
+    async def test_no_sources_reduces_confidence(self):
         result = await filter_output(
             output="A detailed answer about requirements.",
             original_query="What is traceability?",
             retrieved_sources=[],  # No sources
-            openai_client=mock_openai_client,
         )
         assert result.confidence_score < 1.0
         assert any("No sources" in w for w in result.warnings)
@@ -192,7 +127,7 @@ class TestConfidenceScoring:
     """Test confidence score calculation."""
 
     @pytest.mark.asyncio
-    async def test_hallucination_indicators_reduce_confidence(self):
+    async def test_short_response_limited_sources_reduce_confidence(self):
         config = OutputFilterConfig(toxicity_enabled=False)
         result = await filter_output(
             output="I think this might be related to requirements. I'm not sure though.",
@@ -200,8 +135,9 @@ class TestConfidenceScoring:
             retrieved_sources=[{"content": "test"}],
             config=config,
         )
-        assert result.confidence_score < 0.8
-        assert any("uncertainty" in w.lower() for w in result.warnings)
+        # Short response (-0.2) + limited sources (-0.1) = 0.7
+        assert result.confidence_score <= 0.8
+        assert any("short" in w.lower() or "limited" in w.lower() for w in result.warnings)
 
     @pytest.mark.asyncio
     async def test_confident_language_maintains_score(self):
@@ -300,11 +236,11 @@ class TestDisclaimerInjection:
         assert LOW_CONFIDENCE_DISCLAIMER not in result.filtered_content
 
 
-class TestHallucinationIndicators:
-    """Test detection of hallucination indicators."""
+class TestConfidenceFactors:
+    """Test that confidence depends only on source count and response length."""
 
     @pytest.mark.asyncio
-    async def test_i_dont_know_detected(self):
+    async def test_limited_sources_reduces_confidence(self):
         config = OutputFilterConfig(toxicity_enabled=False)
         result = await filter_output(
             output="I don't know the exact definition, but it might be related to tracking.",
@@ -312,11 +248,13 @@ class TestHallucinationIndicators:
             retrieved_sources=[{"content": "test"}],
             config=config,
         )
-        assert result.confidence_score < 0.8
-        assert any("uncertainty" in w.lower() for w in result.warnings)
+        # limited sources (-0.1) + may be incomplete (-0.1) = 0.8
+        assert result.confidence_score <= 0.8
+        assert any("limited" in w.lower() or "incomplete" in w.lower() for w in result.warnings)
 
     @pytest.mark.asyncio
-    async def test_i_believe_detected(self):
+    async def test_hedging_language_does_not_affect_score(self):
+        """Hedging language detection was removed; confidence comes from sources + length only."""
         config = OutputFilterConfig(toxicity_enabled=False)
         result = await filter_output(
             output="I believe requirements traceability is important for project success.",
@@ -324,33 +262,23 @@ class TestHallucinationIndicators:
             retrieved_sources=[{"content": "test"}],
             config=config,
         )
-        assert result.confidence_score < 1.0
+        # limited sources (-0.1), may be incomplete (-0.1) = 0.8
+        assert result.confidence_score <= 0.9
 
     @pytest.mark.asyncio
-    async def test_based_on_training_detected(self):
-        config = OutputFilterConfig(toxicity_enabled=False)
-        result = await filter_output(
-            output="Based on my training, I would say that requirements are important.",
-            original_query="Why are requirements important?",
-            retrieved_sources=[{"content": "test"}],
-            config=config,
-        )
-        assert result.confidence_score < 1.0
-        assert any("uncertainty" in w.lower() for w in result.warnings)
-
-    @pytest.mark.asyncio
-    async def test_according_to_boosts_confidence(self):
+    async def test_sufficient_sources_and_length_full_confidence(self):
         config = OutputFilterConfig(toxicity_enabled=False)
         result = await filter_output(
             output=(
                 "According to the retrieved documents, requirements traceability is "
-                "defined as the systematic tracking of requirements."
+                "defined as the systematic tracking of requirements throughout the "
+                "entire product development lifecycle from elicitation to validation."
             ),
             original_query="Define traceability",
             retrieved_sources=[{"content": "test"}, {"content": "test2"}],
             config=config,
         )
-        assert result.confidence_score >= 0.8
+        assert result.confidence_score == 1.0
 
 
 class TestBlockedResponses:

@@ -60,7 +60,6 @@ from requirements_graphrag_api.guardrails import (
     check_toxicity,
     detect_and_redact_pii,
     log_guardrail_event,
-    metrics,
     validate_conversation_history,
 )
 from requirements_graphrag_api.guardrails.events import (
@@ -199,11 +198,7 @@ async def _generate_sse_events(
                 )
                 log_guardrail_event(event)
 
-            if injection_result.should_warn or injection_result.should_block:
-                metrics.record_prompt_injection(blocked=injection_result.should_block)
-
             if injection_result.should_block:
-                metrics.record_request(blocked=True)
                 yield f"event: {StreamEventType.ERROR.value}\n"
                 yield f"data: {json.dumps({'error': 'Request blocked by safety filter'})}\n\n"
                 return
@@ -221,7 +216,6 @@ async def _generate_sse_events(
                 logger.warning("PII detection failed — processing request with unchecked input")
 
             if pii_result.contains_pii:
-                metrics.record_pii(redacted=True)
                 entity_types = tuple(e.entity_type for e in pii_result.detected_entities)
                 event = create_pii_event(
                     request_id=request_id,
@@ -248,7 +242,6 @@ async def _generate_sse_events(
                 use_full_check=guardrail_config.toxicity_use_full_check,
             )
             if toxicity_result.should_block:
-                metrics.record_toxicity(blocked=True)
                 event = create_toxicity_event(
                     request_id=request_id,
                     categories=tuple(c.value for c in toxicity_result.categories),
@@ -259,13 +252,11 @@ async def _generate_sse_events(
                     input_text=request.message,
                 )
                 log_guardrail_event(event)
-                metrics.record_request(blocked=True)
                 yield f"event: {StreamEventType.ERROR.value}\n"
                 err = {"error": "Request blocked by content safety filter"}
                 yield f"data: {json.dumps(err)}\n\n"
                 return
             if toxicity_result.should_warn:
-                metrics.record_toxicity(blocked=False)
                 event = create_toxicity_event(
                     request_id=request_id,
                     categories=tuple(c.value for c in toxicity_result.categories),
@@ -288,7 +279,6 @@ async def _generate_sse_events(
             ]
             validation = validate_conversation_history(history_dicts)
             if validation.issues:
-                metrics.record_conversation_validation_issue()
                 logger.info(
                     "Conversation history validation: %d issues: %s",
                     len(validation.issues),
@@ -311,26 +301,14 @@ async def _generate_sse_events(
         # 4b. Build topic guard coroutine (if enabled)
         topic_guard_coro = None
         if guardrail_config.topic_guard_enabled:
-            from langchain_openai import ChatOpenAI
-
             from requirements_graphrag_api.guardrails.topic_guard import TopicGuardConfig
 
             topic_config = TopicGuardConfig(
                 enabled=True,
-                use_llm_classification=guardrail_config.topic_guard_use_llm,
                 allow_borderline=guardrail_config.topic_guard_allow_borderline,
             )
-            topic_llm = None
-            if guardrail_config.topic_guard_use_llm and config.openai_api_key:
-                topic_llm = ChatOpenAI(
-                    model="gpt-4o-mini",
-                    temperature=0,
-                    api_key=config.openai_api_key,
-                    max_tokens=20,
-                )
             topic_guard_coro = check_topic_relevance(
                 safe_message,
-                llm=topic_llm,
                 config=topic_config,
             )
 
@@ -375,7 +353,6 @@ async def _generate_sse_events(
 
         # 4f. Check topic guard result (may short-circuit)
         if topic_result and topic_result.classification == TopicClassification.OUT_OF_SCOPE:
-            metrics.record_topic_out_of_scope()
             event = create_topic_event(
                 request_id=request_id,
                 classification=topic_result.classification.value,
@@ -399,7 +376,6 @@ async def _generate_sse_events(
             return
 
         # Record successful guardrail pass
-        metrics.record_request(blocked=False)
 
         # Emit routing event so frontend knows which handler is being used
         yield f"event: {StreamEventType.ROUTING.value}\n"
@@ -526,7 +502,6 @@ async def _run_output_guardrails(
                 llm=llm,
             )
             if hal_result.should_add_warning:
-                metrics.record_hallucination_warning()
                 from requirements_graphrag_api.guardrails import (
                     HALLUCINATION_WARNING_SHORT,
                 )
@@ -596,6 +571,15 @@ async def _generate_conversational_events(
     # Create LangSmith metadata for thread grouping + intent tracking
     langsmith_extra = create_thread_metadata(request.conversation_id) or {}
     langsmith_extra.setdefault("metadata", {})["intent"] = "conversational"
+
+    # Emit empty sources event so frontend SSE parser proceeds to token rendering
+    empty_sources = {
+        "sources": [],
+        "entities": [],
+        "resources": {"images": [], "webinars": [], "videos": []},
+    }
+    yield f"event: {StreamEventType.SOURCES.value}\n"
+    yield f"data: {json.dumps(empty_sources)}\n\n"
 
     # Stream tokens from the conversational handler and accumulate for output filter
     accumulated_tokens: list[str] = []
