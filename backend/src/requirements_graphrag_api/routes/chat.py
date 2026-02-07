@@ -485,21 +485,13 @@ async def _run_output_guardrails(
 
         # 2. Hallucination check (grounding against sources)
         if guardrail_config.hallucination_enabled and retrieved_sources:
-            from langchain_openai import ChatOpenAI
-
             from requirements_graphrag_api.guardrails import (
                 check_hallucination,
             )
 
-            llm = ChatOpenAI(
-                model="gpt-4o-mini",
-                temperature=0.0,
-                api_key=config.openai_api_key,
-            )
             hal_result = await check_hallucination(
                 response=full_response,
                 sources=retrieved_sources,
-                llm=llm,
             )
             if hal_result.should_add_warning:
                 from requirements_graphrag_api.guardrails import (
