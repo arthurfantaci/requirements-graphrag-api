@@ -12,7 +12,7 @@ import { ResponseActions } from '../feedback'
 /**
  * Assistant message component with rich metadata display
  *
- * Handles both explanatory (RAG) and structured (Cypher) response types
+ * Handles explanatory (RAG), structured (Cypher), and conversational response types
  */
 export function AssistantMessage({ message }) {
   const {
@@ -59,21 +59,14 @@ export function AssistantMessage({ message }) {
         <ResultsTable results={results} rowCount={rowCount} />
       )}
 
-      {/* Explanatory: Main content with Markdown rendering and clickable citations */}
-      {isExplanatory && hasContent && (
+      {/* Non-structured content: Markdown rendering with optional citations */}
+      {!isStructured && hasContent && (
         <div className="prose prose-sm prose-neutral max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-headings:mt-4 prose-headings:mb-2">
-          {hasSources ? (
+          {isExplanatory && hasSources ? (
             <SourceCitationRenderer content={content} sources={sources} />
           ) : (
             <ReactMarkdown>{content}</ReactMarkdown>
           )}
-        </div>
-      )}
-
-      {/* Fallback: Show content when no intent yet (streaming) */}
-      {!intent && hasContent && (
-        <div className="prose prose-sm prose-neutral max-w-none prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-headings:mt-4 prose-headings:mb-2">
-          <ReactMarkdown>{content}</ReactMarkdown>
         </div>
       )}
 

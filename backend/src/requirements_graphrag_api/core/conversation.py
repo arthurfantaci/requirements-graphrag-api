@@ -19,12 +19,14 @@ from typing import TYPE_CHECKING, Any
 from langchain_openai import ChatOpenAI
 from langsmith import get_current_run_tree
 
-from requirements_graphrag_api.core.generation import StreamEventType
+from requirements_graphrag_api.core.definitions import StreamEventType
 from requirements_graphrag_api.observability import traceable_safe
 from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+
+    from langchain_core.messages import BaseMessage
 
     from requirements_graphrag_api.config import AppConfig
 
@@ -57,60 +59,47 @@ def _format_conversation_history(history: list[dict[str, str]]) -> str:
     return "\n".join(lines)
 
 
-@traceable_safe(name="handle_conversational", run_type="chain")
-async def handle_conversational(
+@traceable_safe(name="conversational_llm_stream", run_type="chain")
+async def _run_conversational_llm(
     config: AppConfig,
-    question: str,
-    conversation_history: list[dict[str, str]],
+    messages: list[BaseMessage],
     *,
     langsmith_extra: dict[str, Any] | None = None,
-) -> tuple[str, str | None]:
-    """Handle a conversational query using conversation history.
+) -> tuple[Any, str | None]:
+    """Run the conversational LLM and return the stream + run_id.
+
+    Extracted as a regular async function (not generator) so that
+    @traceable_safe can wrap it correctly — asyncio.iscoroutinefunction()
+    returns False for async generators, breaking the ContextVar stash/restore.
 
     Args:
         config: Application configuration.
-        question: The user's meta-conversation question.
-        conversation_history: Previous messages as list of role/content dicts.
+        messages: Formatted prompt messages for the LLM.
         langsmith_extra: Optional LangSmith metadata for thread grouping.
 
     Returns:
-        Tuple of (answer_text, run_id_or_none).
+        Tuple of (async_stream, run_id_or_none).
     """
-    _ = langsmith_extra
-
-    if not conversation_history:
-        run_id = None
-        try:
-            run_tree = get_current_run_tree()
-            if run_tree:
-                run_id = str(run_tree.id)
-        except Exception:
-            logger.debug("Could not get run_id for empty history path")
-        return _EMPTY_HISTORY_RESPONSE, run_id
-
-    formatted_history = _format_conversation_history(conversation_history)
-    prompt_template = get_prompt_sync(PromptName.CONVERSATIONAL)
-
     llm = ChatOpenAI(
         model=config.conversational_model,
         temperature=0.1,
         api_key=config.openai_api_key,
     )
 
-    chain = prompt_template | llm
-    result = await chain.ainvoke({"history": formatted_history, "question": question})
+    # Propagate LangSmith callbacks for thread grouping visibility
+    callbacks = (langsmith_extra or {}).get("callbacks", [])
+    stream = llm.astream(messages, config={"callbacks": callbacks} if callbacks else {})
 
-    answer = result.content if hasattr(result, "content") else str(result)
-
+    # Capture run_id while inside the traceable span
     run_id = None
     try:
         run_tree = get_current_run_tree()
         if run_tree:
             run_id = str(run_tree.id)
     except Exception:
-        logger.debug("Could not get run_id for conversational handler")
+        logger.debug("Could not get run_id for conversational LLM span")
 
-    return answer, run_id
+    return stream, run_id
 
 
 async def stream_conversational_events(
@@ -134,8 +123,6 @@ async def stream_conversational_events(
     Yields:
         Formatted SSE event strings (token events + done event).
     """
-    _ = langsmith_extra
-
     # Handle empty history without LLM call
     if not conversation_history:
         yield f"event: {StreamEventType.TOKEN.value}\n"
@@ -162,19 +149,18 @@ async def stream_conversational_events(
     formatted_history = _format_conversation_history(conversation_history)
     prompt_template = get_prompt_sync(PromptName.CONVERSATIONAL)
 
-    llm = ChatOpenAI(
-        model=config.conversational_model,
-        temperature=0.1,
-        api_key=config.openai_api_key,
-    )
-
     # Build prompt messages for astream
     messages = prompt_template.format_messages(history=formatted_history, question=question)
+
+    # Get stream + run_id from traceable inner function
+    stream, run_id = await _run_conversational_llm(
+        config, messages, langsmith_extra=langsmith_extra
+    )
 
     # True token streaming via llm.astream()
     accumulated: list[str] = []
     try:
-        async for chunk in llm.astream(messages):
+        async for chunk in stream:
             token = chunk.content if hasattr(chunk, "content") else ""
             if token:
                 accumulated.append(token)
@@ -188,15 +174,6 @@ async def stream_conversational_events(
 
     full_response = "".join(accumulated)
 
-    # Capture run_id for feedback loop
-    run_id = None
-    try:
-        run_tree = get_current_run_tree()
-        if run_tree:
-            run_id = str(run_tree.id)
-    except Exception:
-        logger.debug("Could not get run_id for conversational streaming")
-
     yield f"event: {StreamEventType.DONE.value}\n"
     done_data = {
         "full_answer": full_response,
@@ -208,6 +185,5 @@ async def stream_conversational_events(
 
 
 __all__ = [
-    "handle_conversational",
     "stream_conversational_events",
 ]

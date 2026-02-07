@@ -195,8 +195,7 @@ async def _generate_answer(
     from langchain_core.output_parsers import StrOutputParser
     from langchain_openai import ChatOpenAI
 
-    from requirements_graphrag_api.core.definitions import search_terms
-    from requirements_graphrag_api.core.generation import _build_context_from_results
+    from requirements_graphrag_api.core.definitions import _build_context_from_results, search_terms
     from requirements_graphrag_api.core.retrieval import graph_enriched_search
     from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
 

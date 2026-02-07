@@ -260,6 +260,7 @@ def get_routing_guide() -> dict[str, Any]:
 
 
 __all__ = [
+    "CONVERSATIONAL_PATTERNS",
     "QueryIntent",
     "classify_intent",
     "get_routing_guide",

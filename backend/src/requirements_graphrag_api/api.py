@@ -43,7 +43,6 @@ from requirements_graphrag_api.middleware import (
 )
 from requirements_graphrag_api.observability import configure_tracing
 from requirements_graphrag_api.routes import (
-    admin_router,
     chat_router,
     definitions_router,
     feedback_router,
@@ -243,7 +242,6 @@ app.include_router(search_router, tags=["Search"])
 app.include_router(definitions_router, tags=["Definitions"])
 app.include_router(standards_router, tags=["Standards"])
 app.include_router(schema_router, tags=["Schema"])
-app.include_router(admin_router, tags=["Admin"])  # Phase 4: Compliance dashboard
 
 
 @app.get("/")

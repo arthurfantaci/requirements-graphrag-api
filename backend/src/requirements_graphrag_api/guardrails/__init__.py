@@ -8,7 +8,6 @@ This module provides security guardrails for the GraphRAG API:
 - Output content filtering (Phase 2)
 - Conversation history validation (Phase 4)
 - Hallucination detection (Phase 4)
-- Guardrail metrics collection (Phase 4)
 - Structured event logging for security monitoring
 
 Usage:
@@ -23,7 +22,6 @@ Usage:
         # Phase 4 - Advanced Features
         validate_conversation_history,
         check_hallucination,
-        metrics,
         # Events
         log_guardrail_event,
     )
@@ -52,11 +50,6 @@ from requirements_graphrag_api.guardrails.hallucination import (
     HallucinationCheckResult,
     check_hallucination,
     check_hallucination_sync,
-)
-from requirements_graphrag_api.guardrails.metrics import (
-    GuardrailMetrics,
-    MetricsCollector,
-    metrics,
 )
 from requirements_graphrag_api.guardrails.output_filter import (
     OutputFilterConfig,
@@ -96,13 +89,10 @@ __all__ = [
     "GroundingLevel",
     "GuardrailEvent",
     "GuardrailEventType",
-    # Phase 4 - Metrics
-    "GuardrailMetrics",
     "HallucinationCheckResult",
     # Phase 1 - Prompt Injection
     "InjectionCheckResult",
     "InjectionRisk",
-    "MetricsCollector",
     # Phase 2 - Output Filtering
     "OutputFilterConfig",
     "OutputFilterResult",
@@ -128,6 +118,5 @@ __all__ = [
     "detect_and_redact_pii",
     "filter_output",
     "log_guardrail_event",
-    "metrics",
     "validate_conversation_history",
 ]

@@ -11,10 +11,9 @@ import pytest
 from requirements_graphrag_api.core.conversation import (
     _EMPTY_HISTORY_RESPONSE,
     _format_conversation_history,
-    handle_conversational,
     stream_conversational_events,
 )
-from requirements_graphrag_api.core.generation import StreamEventType
+from requirements_graphrag_api.core.definitions import StreamEventType
 from requirements_graphrag_api.prompts import PromptName
 from requirements_graphrag_api.prompts.definitions import PROMPT_DEFINITIONS
 
@@ -113,116 +112,6 @@ class TestFormatConversationHistory:
         history = [{"content": "Hello"}]
         result = _format_conversation_history(history)
         assert result == "1. Assistant: Hello"
-
-
-# ── handle_conversational ────────────────────────────────────────────────────
-
-
-class TestHandleConversational:
-    """Tests for handle_conversational function.
-
-    ``handle_conversational`` uses ``prompt_template | llm`` (LangChain pipe).
-    MagicMock doesn't implement the Runnable protocol, so we mock the chain
-    at the ``get_prompt_sync`` level — returning a mock prompt whose ``__or__``
-    yields a mock chain with a controlled ``ainvoke``.
-    """
-
-    @staticmethod
-    def _patch_chain(answer: str = "Your first question was about traceability."):
-        """Create patches that make the prompt|llm chain return ``answer``."""
-        mock_result = MagicMock()
-        mock_result.content = answer
-
-        mock_chain = MagicMock()
-        mock_chain.ainvoke = AsyncMock(return_value=mock_result)
-
-        mock_prompt = MagicMock()
-        mock_prompt.__or__ = MagicMock(return_value=mock_chain)
-
-        return (
-            patch(
-                "requirements_graphrag_api.core.conversation.get_prompt_sync",
-                return_value=mock_prompt,
-            ),
-            patch("requirements_graphrag_api.core.conversation.ChatOpenAI"),
-        )
-
-    @pytest.mark.asyncio
-    async def test_returns_answer_and_run_id(
-        self, mock_config: AppConfig, sample_history: list[dict[str, str]]
-    ) -> None:
-        """Test that handler returns (answer, run_id) tuple."""
-        mock_run_tree = MagicMock()
-        mock_run_tree.id = "test-run-id-123"
-
-        prompt_patch, llm_patch = self._patch_chain()
-        with (
-            prompt_patch,
-            llm_patch,
-            patch(
-                "requirements_graphrag_api.core.conversation.get_current_run_tree",
-                return_value=mock_run_tree,
-            ),
-        ):
-            answer, run_id = await handle_conversational(
-                mock_config, "What was my first question?", sample_history
-            )
-
-        assert answer == "Your first question was about traceability."
-        assert run_id == "test-run-id-123"
-
-    @pytest.mark.asyncio
-    async def test_empty_history_returns_graceful_message(self, mock_config: AppConfig) -> None:
-        """Test empty history returns predefined message without LLM call."""
-        with patch(
-            "requirements_graphrag_api.core.conversation.get_current_run_tree",
-            return_value=None,
-        ):
-            answer, run_id = await handle_conversational(mock_config, "What did we discuss?", [])
-
-        assert answer == _EMPTY_HISTORY_RESPONSE
-        assert run_id is None
-
-    @pytest.mark.asyncio
-    async def test_run_id_none_when_run_tree_unavailable(
-        self, mock_config: AppConfig, sample_history: list[dict[str, str]]
-    ) -> None:
-        """Test run_id is None when get_current_run_tree() returns None."""
-        prompt_patch, llm_patch = self._patch_chain()
-        with (
-            prompt_patch,
-            llm_patch,
-            patch(
-                "requirements_graphrag_api.core.conversation.get_current_run_tree",
-                return_value=None,
-            ),
-        ):
-            _, run_id = await handle_conversational(
-                mock_config, "What was my first question?", sample_history
-            )
-
-        assert run_id is None
-
-    @pytest.mark.asyncio
-    async def test_run_id_none_when_run_tree_raises(
-        self, mock_config: AppConfig, sample_history: list[dict[str, str]]
-    ) -> None:
-        """Test run_id is None when get_current_run_tree() throws."""
-        prompt_patch, llm_patch = self._patch_chain()
-        with (
-            prompt_patch,
-            llm_patch,
-            patch(
-                "requirements_graphrag_api.core.conversation.get_current_run_tree",
-                side_effect=RuntimeError("Not in a trace"),
-            ),
-        ):
-            answer, run_id = await handle_conversational(
-                mock_config, "What was my first question?", sample_history
-            )
-
-        assert answer == "Your first question was about traceability."
-        assert run_id is None
 
 
 # ── stream_conversational_events ─────────────────────────────────────────────

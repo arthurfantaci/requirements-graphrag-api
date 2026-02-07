@@ -27,7 +27,6 @@ from requirements_graphrag_api.guardrails import (
     check_toxicity,
     detect_and_redact_pii,
     log_guardrail_event,
-    metrics,
 )
 from requirements_graphrag_api.guardrails.events import (
     create_injection_event,
@@ -198,7 +197,6 @@ async def _apply_search_guardrails(
             block_threshold=InjectionRisk(guardrail_config.injection_block_threshold),
         )
         if injection_result.should_warn or injection_result.should_block:
-            metrics.record_prompt_injection(blocked=injection_result.should_block)
             event = create_injection_event(
                 request_id=request_id,
                 risk_level=injection_result.risk_level.value,
@@ -209,7 +207,6 @@ async def _apply_search_guardrails(
             log_guardrail_event(event)
 
         if injection_result.should_block:
-            metrics.record_request(blocked=True)
             raise HTTPException(
                 status_code=400,
                 detail="Request blocked by safety filter",
@@ -226,7 +223,6 @@ async def _apply_search_guardrails(
         if pii_result.check_failed:
             logger.warning("PII detection failed — processing search with unchecked input")
         if pii_result.contains_pii:
-            metrics.record_pii(redacted=True)
             entity_types = tuple(e.entity_type for e in pii_result.detected_entities)
             event = create_pii_event(
                 request_id=request_id,
@@ -249,7 +245,6 @@ async def _apply_search_guardrails(
             use_full_check=guardrail_config.toxicity_use_full_check,
         )
         if toxicity_result.should_block:
-            metrics.record_toxicity(blocked=True)
             event = create_toxicity_event(
                 request_id=request_id,
                 categories=tuple(c.value for c in toxicity_result.categories),
@@ -259,13 +254,11 @@ async def _apply_search_guardrails(
                 input_text=query,
             )
             log_guardrail_event(event)
-            metrics.record_request(blocked=True)
             raise HTTPException(
                 status_code=400,
                 detail="Request blocked by content safety filter",
             )
         if toxicity_result.should_warn:
-            metrics.record_toxicity(blocked=False)
             event = create_toxicity_event(
                 request_id=request_id,
                 categories=tuple(c.value for c in toxicity_result.categories),
@@ -276,32 +269,19 @@ async def _apply_search_guardrails(
             )
             log_guardrail_event(event)
 
-    # 4. Topic guard (keyword + LLM classification for borderline)
+    # 4. Topic guard (keyword classification)
     if guardrail_config.topic_guard_enabled:
-        from langchain_openai import ChatOpenAI
-
         from requirements_graphrag_api.guardrails.topic_guard import TopicGuardConfig
 
         topic_config = TopicGuardConfig(
             enabled=True,
-            use_llm_classification=guardrail_config.topic_guard_use_llm,
             allow_borderline=guardrail_config.topic_guard_allow_borderline,
         )
-        topic_llm = None
-        if guardrail_config.topic_guard_use_llm and config and config.openai_api_key:
-            topic_llm = ChatOpenAI(
-                model=config.chat_model,
-                temperature=0,
-                api_key=config.openai_api_key,
-                max_tokens=20,
-            )
         topic_result = await check_topic_relevance(
             safe_query,
-            llm=topic_llm,
             config=topic_config,
         )
         if topic_result.classification == TopicClassification.OUT_OF_SCOPE:
-            metrics.record_topic_out_of_scope()
             event = create_topic_event(
                 request_id=request_id,
                 classification=topic_result.classification.value,
@@ -311,13 +291,10 @@ async def _apply_search_guardrails(
                 input_text=query,
             )
             log_guardrail_event(event)
-            metrics.record_request(blocked=True)
             raise HTTPException(
                 status_code=400,
                 detail="Query is outside the scope of this service",
             )
-
-    metrics.record_request(blocked=False)
     return safe_query
 
 

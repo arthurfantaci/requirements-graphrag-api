@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
-
 import pytest
 
 from requirements_graphrag_api.guardrails.topic_guard import (
@@ -30,7 +28,6 @@ class TestTopicGuardConfig:
     def test_default_config(self):
         config = TopicGuardConfig()
         assert config.enabled is True
-        assert config.use_llm_classification is True
         assert config.allow_borderline is True
         assert "specialized assistant" in config.out_of_scope_response
 
@@ -130,7 +127,6 @@ class TestTopicRelevanceFast:
 
     @pytest.mark.asyncio
     async def test_borderline_ambiguous_query(self):
-        # Query that doesn't match any keyword
         result = await check_topic_relevance_fast("How do I do this thing?")
         assert result.classification == TopicClassification.BORDERLINE
         assert result.confidence == 0.5
@@ -151,94 +147,23 @@ class TestTopicRelevanceFast:
         )
 
 
-class TestTopicRelevanceWithLLM:
-    """Test topic relevance check with LLM classification."""
-
-    @pytest.fixture
-    def mock_llm_in_scope(self):
-        """Mock LLM that returns IN_SCOPE."""
-        llm = AsyncMock()
-        response = MagicMock()
-        response.content = "IN_SCOPE"
-        llm.ainvoke = AsyncMock(return_value=response)
-        return llm
-
-    @pytest.fixture
-    def mock_llm_out_of_scope(self):
-        """Mock LLM that returns OUT_OF_SCOPE."""
-        llm = AsyncMock()
-        response = MagicMock()
-        response.content = "OUT_OF_SCOPE"
-        llm.ainvoke = AsyncMock(return_value=response)
-        return llm
-
-    @pytest.fixture
-    def mock_llm_borderline(self):
-        """Mock LLM that returns BORDERLINE."""
-        llm = AsyncMock()
-        response = MagicMock()
-        response.content = "BORDERLINE"
-        llm.ainvoke = AsyncMock(return_value=response)
-        return llm
+class TestTopicRelevanceKeywordOnly:
+    """Test that check_topic_relevance uses keyword-only classification."""
 
     @pytest.mark.asyncio
-    async def test_llm_classification_in_scope(self, mock_llm_in_scope):
-        # Ambiguous query that needs LLM
-        result = await check_topic_relevance(
-            "How do I manage this process?",
-            llm=mock_llm_in_scope,
-        )
-        assert result.classification == TopicClassification.IN_SCOPE
-        assert result.check_type == "llm"
-
-    @pytest.mark.asyncio
-    async def test_llm_classification_out_of_scope(self, mock_llm_out_of_scope):
-        # Ambiguous query that LLM classifies as out of scope
-        result = await check_topic_relevance(
-            "What should I do today?",
-            llm=mock_llm_out_of_scope,
-        )
-        assert result.classification == TopicClassification.OUT_OF_SCOPE
-        assert result.check_type == "llm"
-        assert result.suggested_response is not None
-
-    @pytest.mark.asyncio
-    async def test_llm_classification_borderline(self, mock_llm_borderline):
-        result = await check_topic_relevance(
-            "How do I organize my team?",
-            llm=mock_llm_borderline,
-        )
-        assert result.classification == TopicClassification.BORDERLINE
-
-    @pytest.mark.asyncio
-    async def test_keyword_match_skips_llm(self, mock_llm_in_scope):
-        # Clear in-scope query shouldn't need LLM
+    async def test_keyword_only_classification(self):
         result = await check_topic_relevance(
             "What is requirements traceability?",
-            llm=mock_llm_in_scope,
         )
         assert result.check_type == "keyword"
-        # LLM should not have been called
-        mock_llm_in_scope.ainvoke.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_no_llm_provided(self):
-        # Ambiguous query without LLM falls back to keyword result
+    async def test_backwards_compat_llm_param_ignored(self):
+        # llm= should be silently ignored via **_kwargs
         result = await check_topic_relevance(
-            "How do I manage this?",
-            llm=None,
+            "What is requirements traceability?",
+            llm="ignored",
         )
-        assert result.check_type == "keyword"
-        assert result.classification == TopicClassification.BORDERLINE
-
-    @pytest.mark.asyncio
-    async def test_llm_error_falls_back(self, mock_llm_in_scope):
-        mock_llm_in_scope.ainvoke.side_effect = Exception("LLM error")
-        result = await check_topic_relevance(
-            "Ambiguous question here",
-            llm=mock_llm_in_scope,
-        )
-        # Should fall back to keyword result
         assert result.check_type == "keyword"
 
     @pytest.mark.asyncio
@@ -248,7 +173,6 @@ class TestTopicRelevanceWithLLM:
             "Tell me about politics",
             config=config,
         )
-        # Should be allowed when disabled
         assert result.classification == TopicClassification.IN_SCOPE
         assert result.check_type == "disabled"
 
@@ -269,7 +193,6 @@ class TestKeywordMatching:
 
     @pytest.mark.asyncio
     async def test_partial_word_matching(self):
-        # "iso " should match but not words containing "iso"
         result = await check_topic_relevance_fast("ISO 26262 compliance")
         assert result.classification == TopicClassification.IN_SCOPE
 
@@ -292,7 +215,6 @@ class TestRedirectResponses:
         result = await check_topic_relevance_fast("Tell me a joke")
         response = result.suggested_response
         assert response is not None
-        # Should suggest in-scope topics
         assert "traceability" in response.lower() or "requirements" in response.lower()
 
     @pytest.mark.asyncio
@@ -300,7 +222,6 @@ class TestRedirectResponses:
         result = await check_topic_relevance_fast("What's the weather?")
         response = result.suggested_response
         assert response is not None
-        # Should be polite, not confrontational
         assert "specialized" in response.lower() or "help" in response.lower()
 
 
@@ -322,20 +243,14 @@ class TestMetaConversationBypass:
         ],
     )
     async def test_meta_conversation_returns_in_scope(self, query: str):
-        """Test meta-conversation queries bypass topic guard as IN_SCOPE."""
         result = await check_topic_relevance_fast(query)
         assert result.classification == TopicClassification.IN_SCOPE
         assert result.confidence >= 0.9
 
     @pytest.mark.asyncio
     async def test_meta_conversation_word_boundary(self):
-        """Test partial-word overlap does not trigger meta-conversation.
-
-        'conversations' (plural) should NOT match 'conversation' (singular)
-        thanks to word-boundary regex.
-        """
+        """Test partial-word overlap does not trigger meta-conversation."""
         result = await check_topic_relevance_fast("How do conversations work in Jama Connect?")
-        # Should NOT be meta-conversation — 'conversations' != 'conversation'
         assert not (
             result.classification == TopicClassification.IN_SCOPE and result.confidence == 0.95
         ), "Should not be classified as meta-conversation"
@@ -355,7 +270,6 @@ class TestTopicGuardRegression:
         ],
     )
     async def test_out_of_scope_still_blocked(self, query: str):
-        """Test out-of-scope queries still correctly classified."""
         result = await check_topic_relevance_fast(query)
         assert result.classification == TopicClassification.OUT_OF_SCOPE
 
@@ -369,6 +283,5 @@ class TestTopicGuardRegression:
         ],
     )
     async def test_in_scope_still_passes(self, query: str):
-        """Test in-scope queries still correctly classified."""
         result = await check_topic_relevance_fast(query)
         assert result.classification == TopicClassification.IN_SCOPE
