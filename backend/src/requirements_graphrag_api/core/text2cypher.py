@@ -308,8 +308,11 @@ async def text2cypher_query(
                 response["row_count"] = len(results)
                 if len(results) == 0:
                     response["message"] = (
-                        "No results found for this query. Try rephrasing "
-                        "or asking an explanatory question instead."
+                        "The database query executed successfully but"
+                        " returned no matching results. This may mean"
+                        " the specific data isn't in the graph. Try"
+                        " rephrasing as a natural language question"
+                        " for a broader search."
                     )
                 logger.info("Query executed successfully, %d rows returned", len(results))
 

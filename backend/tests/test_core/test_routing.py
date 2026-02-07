@@ -216,6 +216,63 @@ class TestRoutingGuide:
             assert len(query_type["keywords"]) > 0
 
 
+class TestMetaConversationalPatterns:
+    """Tests for meta-operational CONVERSATIONAL patterns added for T11 bug fix."""
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "Have you already provided a table titled 'RESULTS'?",
+            "Did you already show me the standards?",
+            "You already provided that information earlier",
+            "You already showed me the webinars list",
+            "You already gave me a list of articles",
+            "Can you repeat the results from before?",
+            "From your previous response, what was the total?",
+            "Can you update the table you provided earlier?",
+            "Are the results you showed me complete?",
+            "From earlier in our chat, what standards did you mention?",
+        ],
+    )
+    def test_meta_operational_patterns(self, query: str) -> None:
+        """Test that meta-operational queries route to CONVERSATIONAL."""
+        result = _quick_classify(query)
+        assert result == QueryIntent.CONVERSATIONAL
+
+    def test_have_you_already_case_insensitive(self) -> None:
+        """Test case insensitivity of new patterns."""
+        assert _quick_classify("HAVE YOU ALREADY provided a table?") == QueryIntent.CONVERSATIONAL
+        assert _quick_classify("Can You Repeat that?") == QueryIntent.CONVERSATIONAL
+
+    def test_t11_production_bug_regression(self) -> None:
+        """Regression for T11: exact production query that was misrouted to STRUCTURED."""
+        query = (
+            "Have you already provided a table titled 'RESULTS' with columns: "
+            "STANDARD_NAME, WEBINAR_TITLE, WEBINAR_URL?"
+        )
+        result = _quick_classify(query)
+        assert result == QueryIntent.CONVERSATIONAL
+
+
+class TestStructuralQueriesNotCaptured:
+    """Verify meta-operational patterns don't false-positive on genuine structured queries."""
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "Provide a table of all standards",
+            "Show me all results for ISO 26262",
+            "Have the results been published?",
+            "Can you list all webinars?",
+            "From the knowledge base, list all tools",
+        ],
+    )
+    def test_structural_not_conversational(self, query: str) -> None:
+        """Test that genuine structured/domain queries don't trigger CONVERSATIONAL."""
+        result = _quick_classify(query)
+        assert result != QueryIntent.CONVERSATIONAL
+
+
 class TestStructuredRegression:
     """Regression tests ensuring structured queries still work after adding CONVERSATIONAL."""
 

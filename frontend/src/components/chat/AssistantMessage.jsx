@@ -7,6 +7,7 @@ import { ResourceGallery } from '../metadata/ResourceGallery'
 import { WebinarsGallery } from '../metadata/WebinarsGallery'
 import { CypherDisplay } from '../metadata/CypherDisplay'
 import { ResultsTable } from '../metadata/ResultsTable'
+import { StructuredEmptyState } from '../metadata/StructuredEmptyState'
 import { ResponseActions } from '../feedback'
 
 /**
@@ -25,6 +26,7 @@ export function AssistantMessage({ message }) {
     cypher,
     results,
     rowCount,
+    message: serverMessage,
     status,
     error,
     runId,
@@ -57,6 +59,11 @@ export function AssistantMessage({ message }) {
       {/* Structured: Results table */}
       {isStructured && hasResults && (
         <ResultsTable results={results} rowCount={rowCount} />
+      )}
+
+      {/* Structured: Empty result state */}
+      {isStructured && !hasResults && status === 'complete' && (
+        <StructuredEmptyState message={serverMessage} />
       )}
 
       {/* Non-structured content: Markdown rendering with optional citations */}

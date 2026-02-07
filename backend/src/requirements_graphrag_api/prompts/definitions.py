@@ -32,6 +32,9 @@ class PromptName(StrEnum):
     # Conversational prompt
     CONVERSATIONAL = "graphrag-conversational"
 
+    # Coreference resolution for Text2Cypher
+    COREFERENCE_RESOLVER = "graphrag-coreference-resolver"
+
     # Agentic prompts
     QUERY_EXPANSION = "graphrag-query-expansion"
     SYNTHESIS = "graphrag-synthesis"
@@ -106,6 +109,9 @@ Your task is to determine the user's intent to route their query appropriately.
 - Recap requests: "Summarize what we discussed"
 - Reference to prior answers: "Can you repeat what you said about traceability?"
 - Conversation history: "What did I ask earlier?"
+- Output recall: "Have you already provided a table of results?"
+- Prior output reference: "Did you already show me the standards list?"
+- Repeat requests: "Can you repeat the results from earlier?"
 
 ## Classification Rules
 
@@ -126,6 +132,7 @@ Your task is to determine the user's intent to route their query appropriately.
    - "our conversation", "our discussion", "what we discussed"
    - "you said earlier", "you told me", "you mentioned"
    - "what did I ask", "what did you say"
+   - "have you already", "did you already", "the table you", "from your previous"
 
 4. When ambiguous, prefer EXPLANATORY (provides richer context)
 
@@ -837,6 +844,62 @@ CONVERSATIONAL_METADATA = PromptMetadata(
 
 
 # =============================================================================
+# COREFERENCE RESOLVER PROMPT
+# Resolves pronoun/reference expressions for Text2Cypher context
+# =============================================================================
+
+COREFERENCE_RESOLVER_SYSTEM: Final[str] = """You resolve pronoun and reference expressions \
+in a user's question using conversation history.
+
+## Rules
+
+1. ONLY substitute references that have clear antecedents in the conversation history
+2. Do NOT add information, context, or rephrasing beyond what is needed for resolution
+3. Do NOT change the question's structure or intent
+4. If no references need resolving, return the original question unchanged
+5. If a reference is ambiguous (multiple possible antecedents), keep the original wording
+
+## Examples
+
+History:
+User: What standards apply to the aerospace industry?
+Assistant: ISO 26262, DO-178C, and ARP 4754A apply to aerospace.
+User: What about the construction industry?
+Assistant: ISO 19650 and PAS 1192 are relevant to construction.
+
+Question: "Are there any webinars related to those two industries?"
+Resolved: "Are there any webinars related to the aerospace and construction industries?"
+
+Question: "List all webinars"
+Resolved: "List all webinars"
+
+## Conversation History
+{history}"""
+
+COREFERENCE_RESOLVER_TEMPLATE = ChatPromptTemplate.from_messages(
+    [
+        ("system", COREFERENCE_RESOLVER_SYSTEM),
+        ("human", "Question: {question}\n\nResolved question:"),
+    ]
+)
+
+COREFERENCE_RESOLVER_METADATA = PromptMetadata(
+    version="1.0.0",
+    description=(
+        "Resolves pronoun and reference expressions using conversation history for Text2Cypher"
+    ),
+    input_variables=["history", "question"],
+    output_format="text",
+    evaluation_criteria=[
+        "faithful_substitution",
+        "no_information_addition",
+        "ambiguity_handling",
+    ],
+    tags=["coreference", "text2cypher", "multi-turn"],
+)
+
+
+# =============================================================================
 # PROMPT DEFINITIONS REGISTRY
 # =============================================================================
 
@@ -885,6 +948,11 @@ PROMPT_DEFINITIONS: Final[dict[PromptName, PromptDefinition]] = {
         name=PromptName.CONVERSATIONAL,
         template=CONVERSATIONAL_TEMPLATE,
         metadata=CONVERSATIONAL_METADATA,
+    ),
+    PromptName.COREFERENCE_RESOLVER: PromptDefinition(
+        name=PromptName.COREFERENCE_RESOLVER,
+        template=COREFERENCE_RESOLVER_TEMPLATE,
+        metadata=COREFERENCE_RESOLVER_METADATA,
     ),
 }
 

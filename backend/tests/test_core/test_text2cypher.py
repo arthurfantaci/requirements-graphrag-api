@@ -232,7 +232,7 @@ class TestText2CypherQuery:
 
             assert result["row_count"] == 0
             assert "message" in result
-            assert "No results found" in result["message"]
+            assert "no matching results" in result["message"]
 
     @pytest.mark.asyncio
     async def test_non_empty_results_no_message(self, mock_config: MagicMock) -> None:
