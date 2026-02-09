@@ -7,7 +7,9 @@ This module defines the top-level StateGraph that:
 4. Integrates with PostgresSaver for checkpoint persistence
 
 Flow:
-    START -> analyze_query -> rag_subgraph -> [research_subgraph?] -> synthesis_subgraph -> END
+    START -> initialize -> run_rag -> should_proceed? -> [research?] -> synthesis -> END
+                                          ↓ (quality_pass=False)
+                                     format_fallback -> END
 
 The orchestrator uses the INTENT_CLASSIFIER prompt for initial query analysis,
 then routes through the appropriate subgraphs based on complexity.
@@ -146,6 +148,7 @@ def create_orchestrator_graph(
             # Extract results
             ranked_results = rag_result.get("ranked_results", [])
             expanded_queries = rag_result.get("expanded_queries", [])
+            quality_pass = rag_result.get("quality_pass", True)
 
             # Build context string from results
             context_parts = []
@@ -160,15 +163,17 @@ def create_orchestrator_graph(
             context = "\n\n---\n\n".join(context_parts)
 
             logger.info(
-                "RAG complete: %d results, %d queries",
+                "RAG complete: %d results, %d queries, quality_pass=%s",
                 len(ranked_results),
                 len(expanded_queries),
+                quality_pass,
             )
 
             return {
                 "ranked_results": ranked_results,
                 "expanded_queries": expanded_queries,
                 "context": context,
+                "quality_pass": quality_pass,
                 "current_phase": "research",
                 "iteration_count": state.get("iteration_count", 0) + 1,
             }
@@ -303,17 +308,47 @@ def create_orchestrator_graph(
             }
 
     # -------------------------------------------------------------------------
-    # Conditional edge: should_research
+    # Node: format_fallback
     # -------------------------------------------------------------------------
-    def should_research(state: OrchestratorState) -> Literal["run_research", "run_synthesis"]:
-        """Determine if research phase is needed.
+    async def format_fallback(state: OrchestratorState) -> dict[str, Any]:
+        """Format a fallback response when quality gate fails.
 
-        Skips research if:
-        - We have very few results (nothing to explore)
-        - Iteration count is at max
-        - Context is very short
-        - Query is simple (short + no comparison keywords + high retrieval confidence)
+        Skips research and synthesis entirely, returning a structured
+        low-confidence message to the user.
         """
+        query = state.get("query", "the topic")
+        logger.info("Quality gate failed — formatting fallback for: %s", query[:50])
+
+        fallback_answer = (
+            "I couldn't find specific information about this topic "
+            "in our knowledge base. Try rephrasing your question "
+            "with different terminology, or ask about a more "
+            "specific aspect of the topic."
+        )
+
+        return {
+            "final_answer": fallback_answer,
+            "messages": [AIMessage(content=fallback_answer)],
+            "current_phase": "complete",
+        }
+
+    # -------------------------------------------------------------------------
+    # Conditional edge: route_after_rag
+    # -------------------------------------------------------------------------
+    def route_after_rag(
+        state: OrchestratorState,
+    ) -> Literal["format_fallback", "run_research", "run_synthesis"]:
+        """Route after RAG: quality gate check, then research decision.
+
+        First checks quality_pass (from grade_documents). If False,
+        routes to fallback. Otherwise applies research heuristics.
+        """
+        # --- Quality gate ---
+        if not state.get("quality_pass", True):
+            logger.info("Quality gate failed — routing to fallback")
+            return "format_fallback"
+
+        # --- Research heuristics (unchanged) ---
         ranked_results = state.get("ranked_results", [])
         context = state.get("context", "")
         query = state.get("query", "")
@@ -374,6 +409,7 @@ def create_orchestrator_graph(
     # Add nodes
     builder.add_node("initialize", initialize)
     builder.add_node("run_rag", run_rag)
+    builder.add_node("format_fallback", format_fallback)
     builder.add_node("run_research", run_research)
     builder.add_node("run_synthesis", run_synthesis)
 
@@ -386,11 +422,12 @@ def create_orchestrator_graph(
     )
     builder.add_conditional_edges(
         "run_rag",
-        should_research,
-        ["run_research", "run_synthesis"],
+        route_after_rag,
+        ["format_fallback", "run_research", "run_synthesis"],
     )
     builder.add_edge("run_research", "run_synthesis")
     builder.add_edge("run_synthesis", END)
+    builder.add_edge("format_fallback", END)
 
     # Compile with optional checkpointer
     return builder.compile(checkpointer=checkpointer)

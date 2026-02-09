@@ -394,6 +394,14 @@ async def stream_agentic_events(
                             )
                     yield create_entities_event(entities).to_sse()
 
+            # Capture fallback answer when quality gate fails
+            if event_kind == "on_chain_end" and "format_fallback" in event_name:
+                output = event_data.get("output", {})
+                final_answer = output.get("final_answer", "")
+                if not sources_emitted:
+                    yield create_sources_event([]).to_sse()
+                    sources_emitted = True
+
             # Note: We don't stream raw LLM tokens during synthesis because the
             # SYNTHESIS prompt outputs JSON that needs parsing. Instead, we capture
             # the parsed final_answer and stream it after synthesis completes.
