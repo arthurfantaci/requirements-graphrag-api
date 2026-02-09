@@ -22,6 +22,7 @@ from typing import Annotated, Any, Literal
 
 from langchain_core.messages import AnyMessage  # noqa: TC002 - needed at runtime for LangGraph
 from langgraph.graph.message import add_messages
+from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
 
 # =============================================================================
@@ -97,6 +98,24 @@ class EntityInfo:
 
 
 # =============================================================================
+# DOCUMENT GRADING MODEL (for retrieval quality gate)
+# =============================================================================
+
+
+class GradeDocuments(BaseModel):
+    """Binary relevance grade for a retrieved document.
+
+    Used with `.with_structured_output()` to constrain the LLM
+    to a yes/no relevance decision per document.
+    """
+
+    binary_score: Literal["yes", "no"] = Field(
+        description="Relevance score: 'yes' if the document is relevant "
+        "to the question, 'no' otherwise.",
+    )
+
+
+# =============================================================================
 # RAG SUBGRAPH STATE
 # =============================================================================
 
@@ -114,6 +133,9 @@ class RAGState(TypedDict, total=False):
         raw_results: Raw retrieval results before ranking.
         ranked_results: Final ranked and deduplicated results.
         retrieval_metadata: Metadata about the retrieval process.
+        relevant_count: Number of documents graded as relevant.
+        total_count: Total number of documents graded.
+        quality_pass: Whether retrieval passed the quality gate.
     """
 
     # Required
@@ -124,6 +146,11 @@ class RAGState(TypedDict, total=False):
     raw_results: Annotated[list[dict[str, Any]], operator.add]
     ranked_results: list[RetrievedDocument]
     retrieval_metadata: dict[str, Any]
+
+    # Quality gate (populated by grade_documents node)
+    relevant_count: int
+    total_count: int
+    quality_pass: bool
 
 
 # =============================================================================
@@ -267,6 +294,7 @@ class OrchestratorState(TypedDict, total=False):
     expanded_queries: list[str]
     ranked_results: list[RetrievedDocument]
     context: str
+    quality_pass: bool
 
     # Shared with Research subgraph
     entity_contexts: Annotated[list[EntityInfo], operator.add]
@@ -292,6 +320,7 @@ __all__ = [
     "AgentState",
     "CriticEvaluation",
     "EntityInfo",
+    "GradeDocuments",
     "OrchestratorState",
     "RAGState",
     "ResearchState",
