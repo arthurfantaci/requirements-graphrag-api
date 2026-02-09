@@ -73,7 +73,7 @@ def create_rag_subgraph(
         try:
             prompt_template = get_prompt_sync(PromptName.QUERY_EXPANSION)
             llm = ChatOpenAI(
-                model=config.chat_model,
+                model=config.conversational_model,
                 temperature=0.3,
                 api_key=config.openai_api_key,
             )

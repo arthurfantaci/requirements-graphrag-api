@@ -679,7 +679,7 @@ async def _generate_explanatory_events(
                 )
                 updater_template = get_prompt_sync(PromptName.QUERY_UPDATER)
                 llm = ChatOpenAI(
-                    model=config.chat_model,
+                    model=config.conversational_model,
                     temperature=0.1,
                     api_key=config.openai_api_key,
                 )

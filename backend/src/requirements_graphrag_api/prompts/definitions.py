@@ -134,7 +134,16 @@ Your task is to determine the user's intent to route their query appropriately.
    - "what did I ask", "what did you say"
    - "have you already", "did you already", "the table you", "from your previous"
 
-4. When ambiguous, prefer EXPLANATORY (provides richer context)
+4. **NOT CONVERSATIONAL** — queries that *reference* prior conversation but *request* new content:
+   - "Based on your previous response, suggest improvements" → EXPLANATORY
+   - "Enhance your last answer with more references" → EXPLANATORY
+   - "From your previous table, explain the differences between the standards" → EXPLANATORY
+   - "Can you elaborate on what you said about traceability?" → EXPLANATORY
+   The key signal: if the query asks to suggest, enhance, improve,
+   elaborate, compare, analyze, or generate, it is EXPLANATORY
+   even if it references prior conversation.
+
+5. When ambiguous, prefer EXPLANATORY (provides richer context)
 
 Respond with ONLY a JSON object:
 {{"intent": "explanatory"}} or {{"intent": "structured"}} or {{"intent": "conversational"}}"""
@@ -676,7 +685,8 @@ Your task is to generate a comprehensive, accurate answer and then critically ev
 
 1. **Ground in context** - Every claim should be supported by the retrieved context
 2. **Cite sources** - Use [Source N] format for citations
-3. **Acknowledge gaps** - If context is incomplete, say so
+3. **Lead with content** - Present substantive findings first. Place caveats \
+and limitations at the end, never the beginning. Do not start with what you lack
 4. **Use technical terminology** - Maintain domain accuracy
 5. **Structure clearly** - Use headings, bullets for complex answers
 
@@ -818,6 +828,10 @@ say so honestly.
 4. Be concise and accurate in your recall
 5. If the user asks for a summary, provide a brief overview of topics discussed
 6. If the user asks about a specific earlier exchange, quote or paraphrase it
+7. If the conversation history is empty or you cannot fulfill the request from \
+history alone, respond: "I don't have that in our conversation history. \
+Could you rephrase your question as a standalone query so I can search \
+our knowledge base?"
 
 ## Conversation History
 {history}"""

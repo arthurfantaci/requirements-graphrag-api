@@ -72,6 +72,26 @@ CONVERSATIONAL_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
     )
 )
 
+# Generation-signal keywords that override CONVERSATIONAL classification.
+# When a query matches CONVERSATIONAL patterns but ALSO contains these
+# keywords, it should be reclassified as EXPLANATORY — the user wants
+# new content generation, not just conversation recall.
+GENERATION_SIGNALS: frozenset[str] = frozenset(
+    [
+        "suggest",
+        "recommend",
+        "enhance",
+        "improve",
+        "explain",
+        "generate",
+        "create",
+        "write",
+        "elaborate",
+        "compare",
+        "analyze",
+    ]
+)
+
 # Keywords that strongly suggest structured intent (case-insensitive)
 STRUCTURED_KEYWORDS: frozenset[str] = frozenset(
     [
@@ -114,6 +134,16 @@ def _quick_classify(question: str) -> QueryIntent | None:
     # Check conversational patterns first (word-boundary regex)
     for pattern in CONVERSATIONAL_PATTERNS:
         if pattern.search(question):
+            # Secondary check: if query ALSO contains generation signals,
+            # the user wants new content, not just recall (P0-3 fix)
+            question_lower = question.lower()
+            if any(signal in question_lower for signal in GENERATION_SIGNALS):
+                logger.debug(
+                    "Quick classify: EXPLANATORY (CONVERSATIONAL override — "
+                    "generation signal detected in: %s)",
+                    question[:50],
+                )
+                return QueryIntent.EXPLANATORY
             logger.debug("Quick classify: CONVERSATIONAL (pattern: %s)", pattern.pattern)
             return QueryIntent.CONVERSATIONAL
 
@@ -272,6 +302,7 @@ def get_routing_guide() -> dict[str, Any]:
 
 __all__ = [
     "CONVERSATIONAL_PATTERNS",
+    "GENERATION_SIGNALS",
     "QueryIntent",
     "classify_intent",
     "get_routing_guide",
