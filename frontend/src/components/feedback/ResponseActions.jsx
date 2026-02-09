@@ -74,7 +74,10 @@ export function ResponseActions({ content, runId, messageId }) {
     const isPositive = pendingFeedback === 'positive'
     setFeedbackGiven(pendingFeedback)
 
-    if (!runId) return
+    if (!runId) {
+      console.warn('Feedback submitted without run_id — trace ID missing from server response')
+      return
+    }
 
     try {
       await apiFetch('/feedback', {
