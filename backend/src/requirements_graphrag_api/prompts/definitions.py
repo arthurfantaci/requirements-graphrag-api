@@ -618,7 +618,8 @@ comprehensive context for answering the user's question.
 
 1. **Step-back Query**: A broader, more general version of the question
    - Removes specific details to find foundational information
-   - Example: "What are ASIL levels in ISO 26262?" → "What is ISO 26262 safety classification?"
+   - Example: "What are ASIL levels in ISO 26262?" → \
+"What is ISO 26262 safety classification?"
 
 2. **Synonym/Alternate Terms**: Rephrase using different terminology
    - Requirements Management has many synonymous terms
@@ -626,7 +627,18 @@ comprehensive context for answering the user's question.
 
 3. **Aspect-Specific Query**: Focus on one aspect of a multi-faceted question
    - Break complex questions into components
-   - Example: "How to implement V&V?" → "What is verification?" + "What is validation?"
+   - Example: "How to implement V&V?" → \
+"What is verification?" + "What is validation?"
+
+## Domain Synonym Guidance
+
+When expanding queries about industries or domains, include common \
+abbreviations and synonyms used in the knowledge base:
+- "construction" → also use "AEC", "Architecture Engineering Construction"
+- "automotive" → also use "ADAS", "ISO 26262", "functional safety"
+- "aerospace" → also use "DO-178C", "ARP 4754A", "airborne systems"
+- "medical" / "healthcare" → also use "IEC 62304", "medical device"
+- "requirements management" → also use "RM", "ALM", "traceability"
 
 ## Output Format
 
