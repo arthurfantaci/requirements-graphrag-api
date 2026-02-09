@@ -28,6 +28,7 @@ from requirements_graphrag_api.core.agentic.subgraphs import (
     create_research_subgraph,
     create_synthesis_subgraph,
 )
+from tests.conftest import create_ai_message_mock
 
 if TYPE_CHECKING:
     from requirements_graphrag_api.config import AppConfig
@@ -121,6 +122,63 @@ class TestRAGSubgraph:
         }
         assert state["query"] == "test query"
         assert len(state["expanded_queries"]) == 2
+
+    @pytest.mark.asyncio
+    async def test_grade_documents_passes_all_docs_through(
+        self, mock_config: AppConfig, mock_driver, mock_retriever
+    ):
+        """grade_documents is a pass-through — all ranked docs are kept (#147)."""
+        search_results = [
+            {
+                "text": "Traceability overview",
+                "score": 0.65,
+                "metadata": {"title": "Webinar: Traceability", "chunk_id": "c1"},
+            },
+            {
+                "text": "More content",
+                "score": 0.55,
+                "metadata": {"title": "Article: Standards", "chunk_id": "c2"},
+            },
+            {
+                "text": "Low score doc",
+                "score": 0.40,
+                "metadata": {"title": "Doc3", "chunk_id": "c3"},
+            },
+        ]
+        expansion_json = json.dumps(
+            {"queries": [{"query": "list all webinars about traceability", "strategy": "original"}]}
+        )
+
+        mock_chain = MagicMock()
+        mock_chain.ainvoke = AsyncMock(return_value=create_ai_message_mock(expansion_json))
+        mock_prompt_template = MagicMock()
+        mock_prompt_template.__or__ = MagicMock(return_value=mock_chain)
+
+        mock_llm = MagicMock()
+
+        with (
+            patch(
+                "requirements_graphrag_api.core.agentic.subgraphs.rag.get_prompt_sync",
+                return_value=mock_prompt_template,
+            ),
+            patch(
+                "requirements_graphrag_api.core.agentic.subgraphs.rag.ChatOpenAI",
+                return_value=mock_llm,
+            ),
+            patch(
+                "requirements_graphrag_api.core.retrieval.graph_enriched_search",
+                new_callable=AsyncMock,
+                return_value=search_results,
+            ),
+        ):
+            graph = create_rag_subgraph(mock_config, mock_driver, mock_retriever)
+            result = await graph.ainvoke({"query": "list all webinars about traceability"})
+
+        # All 3 docs pass through — no LLM grading
+        assert len(result["ranked_results"]) == 3
+        assert result["relevant_count"] == 3
+        assert result["total_count"] == 3
+        assert result["quality_pass"] is True
 
 
 # =============================================================================
