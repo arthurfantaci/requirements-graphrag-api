@@ -85,7 +85,7 @@ def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
             result = await chain.ainvoke(
                 {
                     "context": context,
-                    "entities": "",  # Will be populated by orchestrator if available
+                    "entities": state.get("entities_str", ""),
                     "previous_context": state.get("previous_context", ""),
                     "question": query,
                 }
@@ -214,7 +214,7 @@ Focus on improving completeness and addressing the gaps identified above."""
             result = await synth_chain.ainvoke(
                 {
                     "context": augmented_context,
-                    "entities": "",
+                    "entities": state.get("entities_str", ""),
                     "previous_context": state.get("previous_context", ""),
                     "question": query,
                 }

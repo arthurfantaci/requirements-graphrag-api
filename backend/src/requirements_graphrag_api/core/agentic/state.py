@@ -214,6 +214,9 @@ class SynthesisState(TypedDict, total=False):
     # Multi-turn conversation context
     previous_context: str
 
+    # Research subgraph entity info (for {entities} prompt variable)
+    entities_str: str
+
     # Populated during subgraph execution
     draft_answer: str
     critique: CriticEvaluation
@@ -300,6 +303,7 @@ class OrchestratorState(TypedDict, total=False):
     entity_contexts: Annotated[list[EntityInfo], operator.add]
 
     # Shared with Synthesis subgraph
+    entities_str: str  # Research subgraph entity info for {entities} prompt var
     draft_answer: str
     critique: CriticEvaluation
     final_answer: str

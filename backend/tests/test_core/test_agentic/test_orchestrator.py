@@ -26,6 +26,7 @@ from requirements_graphrag_api.core.agentic.orchestrator import (
     create_orchestrator_graph,
 )
 from requirements_graphrag_api.core.agentic.state import (
+    EntityInfo,
     OrchestratorState,
     RetrievedDocument,
 )
@@ -557,3 +558,74 @@ class TestRunRagEnrichedContext:
             assert "Traceability Matrix -> REQUIRES -> Baseline" in ctx
             # KG standards
             assert "ISO 19650" in ctx
+
+
+class TestEntitiesStrFlow:
+    """Tests that entities_str flows from research → orchestrator → synthesis."""
+
+    @pytest.mark.asyncio
+    async def test_research_entities_reach_synthesis(
+        self, mock_config: AppConfig, mock_driver, mock_retriever
+    ):
+        """Verify research EntityInfo objects are formatted and passed to synthesis."""
+        with (
+            patch(
+                "requirements_graphrag_api.core.agentic.orchestrator.create_rag_subgraph"
+            ) as mock_rag,
+            patch(
+                "requirements_graphrag_api.core.agentic.orchestrator.create_research_subgraph"
+            ) as mock_research,
+            patch(
+                "requirements_graphrag_api.core.agentic.orchestrator.create_synthesis_subgraph"
+            ) as mock_synth,
+        ):
+            c = "A" * 250  # Long enough content for research routing
+            mock_rag_graph = MagicMock()
+            mock_rag_graph.ainvoke = AsyncMock(
+                return_value={
+                    "ranked_results": [
+                        RetrievedDocument(content=c, source="s", score=0.7),
+                        RetrievedDocument(content=c, source="t", score=0.6),
+                        RetrievedDocument(content=c, source="u", score=0.5),
+                    ],
+                    "expanded_queries": ["compare DOORS vs Jama"],
+                }
+            )
+            mock_rag.return_value = mock_rag_graph
+
+            mock_research_graph = MagicMock()
+            mock_research_graph.ainvoke = AsyncMock(
+                return_value={
+                    "entity_contexts": [
+                        EntityInfo(
+                            name="Jama Connect",
+                            entity_type="Tool",
+                            description="Requirements management tool",
+                            related_entities=["DOORS", "Polarion"],
+                        ),
+                    ],
+                }
+            )
+            mock_research.return_value = mock_research_graph
+
+            mock_synth_graph = MagicMock()
+            mock_synth_graph.ainvoke = AsyncMock(
+                return_value={"final_answer": "Answer", "citations": []}
+            )
+            mock_synth.return_value = mock_synth_graph
+
+            graph = create_orchestrator_graph(mock_config, mock_driver, mock_retriever)
+            # Comparison query triggers research path
+            state: OrchestratorState = {
+                "messages": [HumanMessage(content="Compare DOORS vs Jama")],
+                "query": "Compare DOORS vs Jama",
+            }
+
+            await graph.ainvoke(state)
+
+            # Verify synthesis received entities_str from research
+            synth_call = mock_synth_graph.ainvoke.call_args[0][0]
+            entities = synth_call.get("entities_str", "")
+            assert "Jama Connect" in entities
+            assert "Tool" in entities
+            assert "Related: DOORS, Polarion" in entities

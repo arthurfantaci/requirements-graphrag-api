@@ -30,7 +30,6 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 
 from requirements_graphrag_api.core.agentic.state import (
-    EntityInfo,
     OrchestratorState,
     RAGState,
     ResearchState,
@@ -42,7 +41,11 @@ from requirements_graphrag_api.core.agentic.subgraphs import (
     create_research_subgraph,
     create_synthesis_subgraph,
 )
-from requirements_graphrag_api.core.context import NormalizedDocument, format_context
+from requirements_graphrag_api.core.context import (
+    NormalizedDocument,
+    format_context,
+    format_entity_info_for_synthesis,
+)
 
 if TYPE_CHECKING:
     from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -210,27 +213,14 @@ def create_orchestrator_graph(
             # Extract entity contexts
             entity_contexts = research_result.get("entity_contexts", [])
 
-            # Augment context with entity information
-            if entity_contexts:
-                entity_info_parts = []
-                for entity in entity_contexts:
-                    if isinstance(entity, EntityInfo):
-                        info = f"**{entity.name}** ({entity.entity_type})"
-                        if entity.description:
-                            info += f": {entity.description}"
-                        if entity.related_entities:
-                            info += f"\n  Related: {', '.join(entity.related_entities[:5])}"
-                        entity_info_parts.append(info)
-
-                if entity_info_parts:
-                    entity_section = "\n\n## Explored Entities\n" + "\n\n".join(entity_info_parts)
-                    context = state.get("context", "") + entity_section
+            # Format entities for the {entities} prompt variable
+            entities_str = format_entity_info_for_synthesis(entity_contexts)
 
             logger.info("Research complete: %d entities explored", len(entity_contexts))
 
             return {
                 "entity_contexts": entity_contexts,
-                "context": context,
+                "entities_str": entities_str,
                 "current_phase": "synthesis",
             }
 
@@ -269,6 +259,7 @@ def create_orchestrator_graph(
             "query": query,
             "context": context,
             "previous_context": previous_context,
+            "entities_str": state.get("entities_str", ""),
         }
 
         try:
