@@ -20,12 +20,12 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any, Final, TypedDict
 
-from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
 from langsmith import get_current_run_tree
 from neo4j import Query
 from neo4j.exceptions import ClientError, CypherSyntaxError, DatabaseError, ServiceUnavailable
 
+from requirements_graphrag_api.evaluation.cost_analysis import get_global_cost_tracker
 from requirements_graphrag_api.observability import traceable_safe
 from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
 from requirements_graphrag_api.prompts.definitions import TEXT2CYPHER_EXAMPLES
@@ -143,15 +143,19 @@ async def generate_cypher(
     )
 
     # Use the prompt template from the catalog
-    chain = prompt_template | llm | StrOutputParser()
+    chain = prompt_template | llm
 
-    cypher = await chain.ainvoke(
+    response = await chain.ainvoke(
         {
             "schema": schema_info,
             "examples": TEXT2CYPHER_EXAMPLES,
             "question": question,
         }
     )
+    get_global_cost_tracker().record_from_response(
+        config.chat_model, response, operation="text2cypher"
+    )
+    cypher = response.content
 
     # Clean up the response
     cypher = cypher.strip()

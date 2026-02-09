@@ -312,22 +312,25 @@ class TestClassifyIntentConversational:
     async def test_llm_fallback_returns_conversational(self, mock_config: MagicMock) -> None:
         """Test LLM fallback correctly parses conversational JSON.
 
-        The chain is ``prompt | llm | StrOutputParser()``. We mock the
+        The chain is ``prompt | llm`` (no StrOutputParser). We mock the
         prompt's ``__or__`` to short-circuit and produce a chain whose
-        ``ainvoke`` returns the JSON string directly.
+        ``ainvoke`` returns an AIMessage-like mock with JSON content.
         """
         json_response = '{"intent": "conversational", "confidence": "high"}'
 
-        # prompt | llm returns intermediate; then | StrOutputParser returns final
-        # Mock the full chain: prompt.__or__ → intermediate.__or__ → final
-        mock_final_chain = MagicMock()
-        mock_final_chain.ainvoke = AsyncMock(return_value=json_response)
+        # Build AIMessage-like response with .content and .response_metadata
+        mock_ai_msg = MagicMock()
+        mock_ai_msg.content = json_response
+        mock_ai_msg.response_metadata = {
+            "token_usage": {"prompt_tokens": 50, "completion_tokens": 20},
+        }
 
-        mock_intermediate = MagicMock()
-        mock_intermediate.__or__ = MagicMock(return_value=mock_final_chain)
+        # prompt | llm is a 2-step chain
+        mock_chain = MagicMock()
+        mock_chain.ainvoke = AsyncMock(return_value=mock_ai_msg)
 
         mock_prompt = MagicMock()
-        mock_prompt.__or__ = MagicMock(return_value=mock_intermediate)
+        mock_prompt.__or__ = MagicMock(return_value=mock_chain)
 
         with (
             patch(

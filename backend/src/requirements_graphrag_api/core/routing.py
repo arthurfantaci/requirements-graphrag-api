@@ -16,9 +16,9 @@ import re
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
-from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
 
+from requirements_graphrag_api.evaluation.cost_analysis import get_global_cost_tracker
 from requirements_graphrag_api.observability import traceable_safe
 from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
 
@@ -203,9 +203,13 @@ async def classify_intent(
         api_key=config.openai_api_key,
     )
 
-    chain = prompt_template | llm | StrOutputParser()
+    chain = prompt_template | llm
 
-    response = await chain.ainvoke({"question": question})
+    llm_response = await chain.ainvoke({"question": question})
+    get_global_cost_tracker().record_from_response(
+        config.chat_model, llm_response, operation="intent_classification"
+    )
+    response = llm_response.content
 
     # Parse JSON response
     try:

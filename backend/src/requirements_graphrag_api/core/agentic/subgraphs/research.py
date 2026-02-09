@@ -18,11 +18,11 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any, Literal
 
-from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 
 from requirements_graphrag_api.core.agentic.state import EntityInfo, ResearchState
+from requirements_graphrag_api.evaluation.cost_analysis import get_global_cost_tracker
 from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
 
 if TYPE_CHECKING:
@@ -81,13 +81,17 @@ def create_research_subgraph(
                 api_key=config.openai_api_key,
             )
 
-            chain = prompt_template | llm | StrOutputParser()
-            result = await chain.ainvoke(
+            chain = prompt_template | llm
+            response = await chain.ainvoke(
                 {
                     "context": context,
                     "question": query,
                 }
             )
+            get_global_cost_tracker().record_from_response(
+                config.chat_model, response, operation="entity_identification"
+            )
+            result = response.content
 
             # Parse JSON response
             try:

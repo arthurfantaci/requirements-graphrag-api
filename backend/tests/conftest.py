@@ -8,9 +8,42 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from requirements_graphrag_api.config import AppConfig, GuardrailConfig
+from requirements_graphrag_api.evaluation.cost_analysis import reset_global_cost_tracker
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
+
+
+class MockAIMessage:
+    """Lightweight stand-in for LangChain's AIMessage.
+
+    Uses a plain class (not MagicMock) so that ``hasattr`` behaves correctly —
+    ``record_from_response`` checks ``hasattr(response, "usage")`` first
+    (OpenAI format), which would always be True on a MagicMock.
+    """
+
+    def __init__(self, content: str) -> None:
+        self.content = content
+        self.response_metadata: dict = {
+            "token_usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "total_tokens": 150,
+            },
+            "model_name": "gpt-4o-mini",
+        }
+
+
+def create_ai_message_mock(content: str) -> MockAIMessage:
+    """Create a mock AIMessage with content and token usage metadata.
+
+    Args:
+        content: The text content of the message.
+
+    Returns:
+        A MockAIMessage with response_metadata for cost tracking.
+    """
+    return MockAIMessage(content)
 
 
 def create_llm_mock(response: str, *, streaming: bool = False) -> MagicMock:
@@ -18,6 +51,11 @@ def create_llm_mock(response: str, *, streaming: bool = False) -> MagicMock:
 
     This helper creates a mock that properly handles being invoked in a chain
     via either `ainvoke`, `invoke`, `astream`, or direct call.
+
+    The mock returns AIMessage-like objects (with `.content` and
+    `.response_metadata`) to match the production chain pattern where
+    StrOutputParser is not used and cost tracking reads token usage
+    from the raw AIMessage.
 
     Args:
         response: The string response the mock should return.
@@ -27,15 +65,16 @@ def create_llm_mock(response: str, *, streaming: bool = False) -> MagicMock:
         A configured MagicMock that can be used in place of ChatOpenAI.
     """
     mock_llm = MagicMock()
+    mock_response = create_ai_message_mock(response)
 
     # Configure ainvoke for async chain invocation
-    mock_llm.ainvoke = AsyncMock(return_value=response)
+    mock_llm.ainvoke = AsyncMock(return_value=mock_response)
 
     # Configure invoke for sync chain invocation
-    mock_llm.invoke = MagicMock(return_value=response)
+    mock_llm.invoke = MagicMock(return_value=mock_response)
 
     # Configure for direct call (used by some LangChain internals)
-    mock_llm.return_value = response
+    mock_llm.return_value = mock_response
 
     # Configure astream for async streaming
     async def mock_astream(*_args, **_kwargs):
@@ -143,6 +182,14 @@ def sample_conversation_history() -> list[dict[str, str]]:
         {"role": "user", "content": "How is it implemented?"},
         {"role": "assistant", "content": "It is implemented through a traceability matrix."},
     ]
+
+
+@pytest.fixture(autouse=True)
+def _reset_cost_tracker():
+    """Reset the global cost tracker before each test to prevent cross-test leakage."""
+    reset_global_cost_tracker()
+    yield
+    reset_global_cost_tracker()
 
 
 @pytest.fixture
