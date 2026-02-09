@@ -134,7 +134,16 @@ Your task is to determine the user's intent to route their query appropriately.
    - "what did I ask", "what did you say"
    - "have you already", "did you already", "the table you", "from your previous"
 
-4. When ambiguous, prefer EXPLANATORY (provides richer context)
+4. **NOT CONVERSATIONAL** — queries that *reference* prior conversation but *request* new content:
+   - "Based on your previous response, suggest improvements" → EXPLANATORY
+   - "Enhance your last answer with more references" → EXPLANATORY
+   - "From your previous table, explain the differences between the standards" → EXPLANATORY
+   - "Can you elaborate on what you said about traceability?" → EXPLANATORY
+   The key signal: if the query asks to suggest, enhance, improve,
+   elaborate, compare, analyze, or generate, it is EXPLANATORY
+   even if it references prior conversation.
+
+5. When ambiguous, prefer EXPLANATORY (provides richer context)
 
 Respond with ONLY a JSON object:
 {{"intent": "explanatory"}} or {{"intent": "structured"}} or {{"intent": "conversational"}}"""
