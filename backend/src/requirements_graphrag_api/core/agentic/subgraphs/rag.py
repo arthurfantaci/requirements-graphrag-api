@@ -26,7 +26,6 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 
 from requirements_graphrag_api.core.agentic.state import (
-    GradeDocuments,
     RAGState,
     RetrievedDocument,
 )
@@ -45,7 +44,6 @@ logger = logging.getLogger(__name__)
 DEFAULT_RETRIEVAL_LIMIT = 6
 MAX_RESULTS_PER_QUERY = 6  # Increased from 4 to get more coverage per query
 MAX_TOTAL_RESULTS = 10
-QUALITY_GATE_THRESHOLD = 0.5  # At least 50% of docs must be relevant
 
 
 def create_rag_subgraph(
@@ -263,80 +261,26 @@ def create_rag_subgraph(
     # Node: grade_documents
     # -------------------------------------------------------------------------
     async def grade_documents(state: RAGState) -> dict[str, Any]:
-        """Grade each retrieved document for relevance.
+        """Pass all ranked documents through as relevant.
 
-        Uses an LLM with structured output to make a binary yes/no
-        relevance decision per document. Filters out irrelevant docs
-        and sets quality_pass based on the ratio of relevant documents.
+        LLM-based grading is disabled — it added latency (10 sequential
+        calls) and rejected valid documents (webinar content, domain-
+        qualified queries).  Vector similarity from retrieval is a
+        sufficient relevance signal for now.
         """
         ranked_results = state.get("ranked_results", [])
-        query = state["query"]
-
-        if not ranked_results:
-            logger.info("No documents to grade")
-            return {
-                "ranked_results": [],
-                "relevant_count": 0,
-                "total_count": 0,
-                "quality_pass": False,
-            }
-
-        llm = ChatOpenAI(
-            model=config.conversational_model,
-            temperature=0,
-            api_key=config.openai_api_key,
-        )
-        grader = llm.with_structured_output(GradeDocuments, include_raw=True)
-
-        relevant_docs: list[RetrievedDocument] = []
         total = len(ranked_results)
-
-        for doc in ranked_results:
-            try:
-                grader_result = await grader.ainvoke(
-                    [
-                        {
-                            "role": "system",
-                            "content": "You are a relevance grader. "
-                            "Determine if the document is relevant "
-                            "to the user's question. Respond with "
-                            "binary_score 'yes' or 'no'.",
-                        },
-                        {
-                            "role": "user",
-                            "content": f"Document:\n{doc.content[:500]}\n\nQuestion: {query}",
-                        },
-                    ]
-                )
-                get_global_cost_tracker().record_from_response(
-                    config.conversational_model,
-                    grader_result["raw"],
-                    operation="grade_documents",
-                )
-                grade = grader_result["parsed"]
-                if grade.binary_score == "yes":
-                    relevant_docs.append(doc)
-            except Exception:
-                logger.warning(
-                    "Grading failed for doc '%s', keeping it",
-                    doc.source[:30],
-                )
-                relevant_docs.append(doc)
-
-        relevant_count = len(relevant_docs)
-        quality_pass = (relevant_count / total) >= QUALITY_GATE_THRESHOLD
+        quality_pass = total > 0
 
         logger.info(
-            "Graded %d docs: %d relevant (%.0f%%), quality_pass=%s",
+            "Grade pass-through: %d docs, quality_pass=%s",
             total,
-            relevant_count,
-            (relevant_count / total) * 100,
             quality_pass,
         )
 
         return {
-            "ranked_results": relevant_docs,
-            "relevant_count": relevant_count,
+            "ranked_results": ranked_results,
+            "relevant_count": total,
             "total_count": total,
             "quality_pass": quality_pass,
         }

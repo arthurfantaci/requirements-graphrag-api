@@ -110,8 +110,8 @@ class GradeDocuments(BaseModel):
     """
 
     binary_score: Literal["yes", "no"] = Field(
-        description="Relevance score: 'yes' if the document is relevant "
-        "to the question, 'no' otherwise.",
+        description="'yes' if the document could provide useful context "
+        "or background knowledge for the question, 'no' otherwise.",
     )
 
 

@@ -167,7 +167,10 @@ def create_research_subgraph(
                     related_entities=[
                         r.get("name", "") for r in result.get("related_entities", [])
                     ],
-                    mentioned_in=result.get("mentioned_in", [])[:5],
+                    mentioned_in=[
+                        m if isinstance(m, str) else m.get("title", str(m))
+                        for m in result.get("mentioned_in", [])[:5]
+                    ],
                 )
                 logger.info(
                     "Explored %s: %d related, %d articles",
