@@ -198,7 +198,7 @@ async def stream_agentic_events(
     Yields:
         SSE-formatted strings (data: {json}\n\n).
     """
-    run_id = config.get("run_id")
+    run_id: str | None = None
     query = initial_state.get("query", "")
 
     logger.info("Starting agentic stream for query: %s", query[:50] if query else "N/A")
@@ -224,6 +224,11 @@ async def stream_agentic_events(
             event_kind = event.get("event")
             event_name = event.get("name", "")
             event_data = event.get("data", {})
+
+            # Capture run_id from the first event (P0-1 fix)
+            if run_id is None and event.get("run_id"):
+                run_id = event["run_id"]
+                logger.debug("Captured run_id from astream_events: %s", run_id)
 
             # Track phase changes
             if event_kind == "on_chain_start":
