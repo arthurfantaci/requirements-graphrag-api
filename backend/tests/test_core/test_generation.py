@@ -541,3 +541,53 @@ class TestBuildContextFromResults:
         assert isinstance(result.entities, list)
         assert isinstance(result.context, str)
         assert isinstance(result.resources, dict)
+
+    def test_includes_semantic_relationships_in_context(self) -> None:
+        """Verify semantic_relationships appear in context (via format_context)."""
+        search_results = [
+            {
+                "content": "Automotive safety content.",
+                "score": 0.9,
+                "metadata": {"title": "Safety Article", "url": "https://example.com"},
+                "entities": [],
+                "glossary_definitions": [],
+                "semantic_relationships": [
+                    {
+                        "from_entity": "FMEA",
+                        "relationship": "COMPONENT_OF",
+                        "to_entity": "Risk Analysis",
+                    },
+                ],
+                "industry_standards": [],
+            }
+        ]
+        result = _build_context_from_results(
+            definitions=[],
+            search_results=search_results,
+        )
+        assert "FMEA -> COMPONENT_OF -> Risk Analysis" in result.context
+
+    def test_includes_industry_standards_in_context(self) -> None:
+        """Verify industry_standards appear in context (via format_context)."""
+        search_results = [
+            {
+                "content": "Medical device content.",
+                "score": 0.9,
+                "metadata": {"title": "Medical Article", "url": "https://example.com"},
+                "entities": [],
+                "glossary_definitions": [],
+                "semantic_relationships": [],
+                "industry_standards": [
+                    {
+                        "standard": "IEC 62304",
+                        "organization": "IEC",
+                        "standard_definition": "Medical device SW lifecycle",
+                    },
+                ],
+            }
+        ]
+        result = _build_context_from_results(
+            definitions=[],
+            search_results=search_results,
+        )
+        assert "IEC 62304" in result.context
