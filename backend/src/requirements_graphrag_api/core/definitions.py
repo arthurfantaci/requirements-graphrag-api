@@ -324,181 +324,125 @@ def _build_context_from_results(
 ) -> ContextBuildResult:
     """Build context from retrieval results.
 
-    Shared logic used by the evaluation pipeline and agentic orchestrator.
+    Delegates to :func:`~requirements_graphrag_api.core.context.format_context`
+    for entity/glossary/relationship/standards formatting, then appends
+    inline media resource sections for evaluation pipeline compatibility.
+
+    The evaluation pipeline (RAG_GENERATION prompt) expects media URLs
+    embedded in the context string, unlike the production SYNTHESIS prompt
+    which receives media via separate SSE events.
     """
-    context_parts: list[str] = []
-    sources: list[dict[str, Any]] = []
-    all_entities: dict[str, dict[str, Any]] = {}
+    from requirements_graphrag_api.core.context import NormalizedDocument, format_context
 
-    seen_urls: set[str] = set()
-    all_images: list[Resource] = []
-    all_webinars: list[Resource] = []
-    all_videos: list[Resource] = []
+    # Normalize raw dicts → NormalizedDocument
+    normalized = [NormalizedDocument.from_raw_result(r) for r in search_results]
 
-    webinar_thumbnail_urls: set[str] = set()
-    for r in search_results:
-        for w in r.get("media", {}).get("webinars", []):
-            thumb = w.get("thumbnail_url")
-            if thumb:
-                webinar_thumbnail_urls.add(thumb)
+    # Delegate to shared format_context (handles entities, glossary,
+    # relationships, standards, media extraction, deduplication)
+    formatted = format_context(
+        normalized,
+        definitions=definitions if include_entities else None,
+        max_resources_per_type=max_resources_per_type,
+    )
 
-    if definitions:
-        for defn in definitions:
-            if defn.get("score", 0) >= DEFINITION_RELEVANCE_THRESHOLD:
-                defn_url = defn.get("url", "")
-                term_display = defn["term"]
-                if defn.get("acronym"):
-                    term_display = f"{defn['term']} ({defn['acronym']})"
-                context_parts.append(
-                    f"[Definition: {term_display}]\n{defn['definition']}\nURL: {defn_url}\n"
-                )
-                sources.append(
-                    {
-                        "title": f"Definition: {term_display}",
-                        "url": defn_url,
-                        "chunk_id": None,
-                        "relevance_score": defn.get("score", 0.5),
-                    }
-                )
-                all_entities[defn["term"]] = {
-                    "definition": defn.get("definition"),
-                    "label": "Definition",
-                }
+    # ---- Evaluation-specific: embed media in context string ----
+    # format_context() extracts media to resources (for SSE), but the
+    # evaluation pipeline expects them inline with emoji formatting.
+    context = _embed_media_in_context(
+        formatted.context,
+        search_results,
+        formatted.resources,
+        max_resources_per_type,
+    )
 
-    for i, result in enumerate(search_results, 1):
-        title = result["metadata"].get("title", "Unknown")
-        content = result["content"]
-        url = result["metadata"].get("url", "")
-
-        source_context = f"[Source {i}: {title}]\n{content}\n"
-
-        sources.append(
-            {
-                "title": title,
-                "content": content,
-                "url": url,
-                "chunk_id": result["metadata"].get("chunk_id"),
-                "relevance_score": result["score"],
-            }
-        )
-
-        if include_entities:
-            for entity in result.get("entities", []):
-                if isinstance(entity, dict) and entity.get("name"):
-                    name = entity["name"]
-                    label = entity.get("type", "Entity")
-                    definition = entity.get("definition")
-                    if name not in all_entities:
-                        all_entities[name] = {"definition": definition, "label": label}
-                    elif definition and not all_entities[name].get("definition"):
-                        all_entities[name]["definition"] = definition
-                elif isinstance(entity, str) and entity:
-                    if entity not in all_entities:
-                        all_entities[entity] = {"definition": None, "label": "Entity"}
-            for defn in result.get("glossary_definitions", []):
-                if isinstance(defn, dict) and defn.get("term"):
-                    term = defn["term"]
-                    definition = defn.get("definition")
-                    if term not in all_entities:
-                        all_entities[term] = {"definition": definition, "label": "Definition"}
-                    elif definition and not all_entities[term].get("definition"):
-                        all_entities[term]["definition"] = definition
-                        all_entities[term]["label"] = "Definition"
-                elif isinstance(defn, str) and defn:
-                    if defn not in all_entities:
-                        all_entities[defn] = {"definition": None, "label": "Entity"}
-
-        source_resources: list[str] = []
-        if result.get("media"):
-            media = result["media"]
-
-            source_image_count = 0
-            for img in media.get("images", []):
-                img_url = img.get("url")
-                if not img_url or img_url in seen_urls or img_url in webinar_thumbnail_urls:
-                    continue
-                if source_image_count >= max_resources_per_type:
-                    break
-                seen_urls.add(img_url)
-                source_image_count += 1
-                alt_text = img.get("alt_text", "")
-                all_images.append(
-                    Resource(
-                        title=alt_text or "Image",
-                        url=img_url,
-                        alt_text=alt_text,
-                        source_title=title,
-                    )
-                )
-                source_resources.append(f'- \U0001f5bc\ufe0f Image: "{alt_text}" - {img_url}')
-
-            source_webinar_count = 0
-            for webinar in media.get("webinars", []):
-                webinar_url = webinar.get("url")
-                if not webinar_url or webinar_url in seen_urls:
-                    continue
-                if source_webinar_count >= max_resources_per_type:
-                    break
-                seen_urls.add(webinar_url)
-                source_webinar_count += 1
-                webinar_title = webinar.get("title", "Webinar")
-                webinar_thumbnail = webinar.get("thumbnail_url", "")
-                all_webinars.append(
-                    Resource(
-                        title=webinar_title,
-                        url=webinar_url,
-                        source_title=title,
-                        thumbnail_url=webinar_thumbnail,
-                    )
-                )
-                source_resources.append(f'- \U0001f4f9 Webinar: "{webinar_title}" - {webinar_url}')
-
-            source_video_count = 0
-            for video in media.get("videos", []):
-                video_url = video.get("url")
-                if not video_url or video_url in seen_urls:
-                    continue
-                if source_video_count >= max_resources_per_type:
-                    break
-                seen_urls.add(video_url)
-                source_video_count += 1
-                video_title = video.get("title", "Video")
-                all_videos.append(
-                    Resource(
-                        title=video_title,
-                        url=video_url,
-                        source_title=title,
-                    )
-                )
-                source_resources.append(f'- \U0001f3ac Video: "{video_title}" - {video_url}')
-
-        if source_resources:
-            source_context += "\nResources from this source:\n"
-            source_context += "\n".join(source_resources)
-            source_context += "\n"
-
-        context_parts.append(source_context)
-
-    context = "\n".join(context_parts) if context_parts else "No relevant context found."
-    sorted_names = sorted(all_entities.keys())[:20]
-    entities_str = ", ".join(sorted_names) if sorted_names else "None identified"
+    # Build entities_list in the ContextBuildResult format
+    sorted_names = sorted(formatted.entities_by_name.keys())[:20]
     entities_list = [
         {
             "name": name,
-            "definition": all_entities[name].get("definition"),
-            "label": all_entities[name].get("label", "Entity"),
+            "definition": formatted.entities_by_name[name].get("definition"),
+            "label": formatted.entities_by_name[name].get("label", "Entity"),
         }
         for name in sorted_names
     ]
 
     return ContextBuildResult(
-        sources=sources,
+        sources=formatted.sources,
         entities=entities_list,
         context=context,
-        entities_str=entities_str,
-        resources={
-            "images": all_images,
-            "webinars": all_webinars,
-            "videos": all_videos,
-        },
+        entities_str=formatted.entities_str,
+        resources=formatted.resources,
     )
+
+
+def _embed_media_in_context(
+    context: str,
+    search_results: list[dict[str, Any]],
+    resources: dict[str, list[Resource]],
+    max_per_type: int,
+) -> str:
+    """Embed media resource lines into per-source context sections.
+
+    This preserves the evaluation pipeline's format where each source
+    block includes ``Resources from this source:`` with emoji-prefixed
+    media lines.
+    """
+    # Build per-source media lines from the collected resources
+    # Map source_title -> list of media lines
+    source_media: dict[str, list[str]] = {}
+    for img in resources.get("images", []):
+        key = img.source_title
+        source_media.setdefault(key, []).append(
+            f'- \U0001f5bc\ufe0f Image: "{img.alt_text}" - {img.url}'
+        )
+    for webinar in resources.get("webinars", []):
+        key = webinar.source_title
+        source_media.setdefault(key, []).append(
+            f'- \U0001f4f9 Webinar: "{webinar.title}" - {webinar.url}'
+        )
+    for video in resources.get("videos", []):
+        key = video.source_title
+        source_media.setdefault(key, []).append(
+            f'- \U0001f3ac Video: "{video.title}" - {video.url}'
+        )
+
+    if not source_media:
+        return context
+
+    # Insert media lines after each [Source N: title] block
+    lines = context.split("\n")
+    result_lines: list[str] = []
+    current_source_title = ""
+
+    for line in lines:
+        result_lines.append(line)
+        # Detect source headers: "[Source N: Title]"
+        if line.startswith("[Source ") and line.endswith("]"):
+            # Extract title from "[Source N: Title]"
+            colon_pos = line.find(": ")
+            if colon_pos > 0:
+                current_source_title = line[colon_pos + 2 : -1]
+
+        # Detect chunk separator — insert media for previous source
+        if line == "---" and current_source_title in source_media:
+            media_lines = source_media.pop(current_source_title)
+            # Insert before the separator
+            separator = result_lines.pop()  # remove "---"
+            # Remove trailing empty line if present
+            if result_lines and result_lines[-1] == "":
+                result_lines.pop()
+            result_lines.append("")
+            result_lines.append("Resources from this source:")
+            result_lines.extend(media_lines)
+            result_lines.append("")
+            result_lines.append(separator)
+            current_source_title = ""
+
+    # Handle media for the last source (no trailing "---")
+    if current_source_title in source_media:
+        media_lines = source_media.pop(current_source_title)
+        result_lines.append("")
+        result_lines.append("Resources from this source:")
+        result_lines.extend(media_lines)
+
+    return "\n".join(result_lines)

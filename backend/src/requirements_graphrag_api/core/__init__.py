@@ -18,6 +18,12 @@ Supporting modules:
 
 from __future__ import annotations
 
+from requirements_graphrag_api.core.context import (
+    FormattedContext,
+    NormalizedDocument,
+    format_context,
+    format_entity_info_for_synthesis,
+)
 from requirements_graphrag_api.core.definitions import (
     StreamEvent,
     StreamEventType,
@@ -52,13 +58,17 @@ from requirements_graphrag_api.core.text2cypher import generate_cypher, text2cyp
 
 __all__ = [
     "DEFAULT_ENRICHMENT_OPTIONS",
+    "FormattedContext",
     "GraphEnrichmentOptions",
+    "NormalizedDocument",
     "QueryIntent",
     "StreamEvent",
     "StreamEventType",
     "classify_intent",
     "create_vector_retriever",
     "explore_entity",
+    "format_context",
+    "format_entity_info_for_synthesis",
     "generate_cypher",
     "get_entities_from_chunks",
     "get_related_entities",
