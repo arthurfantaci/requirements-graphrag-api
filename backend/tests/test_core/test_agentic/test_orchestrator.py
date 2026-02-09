@@ -225,7 +225,9 @@ class TestOrchestratorIntegration:
             mock_rag_graph = MagicMock()
             mock_rag_graph.ainvoke = AsyncMock(
                 return_value={
-                    "ranked_results": [],
+                    "ranked_results": [
+                        RetrievedDocument(content="Traceability content", source="s"),
+                    ],
                     "expanded_queries": ["test"],
                 }
             )
@@ -404,7 +406,12 @@ class TestPreviousContext:
         ):
             mock_rag_graph = MagicMock()
             mock_rag_graph.ainvoke = AsyncMock(
-                return_value={"ranked_results": [], "expanded_queries": []}
+                return_value={
+                    "ranked_results": [
+                        RetrievedDocument(content="Jama traceability", source="s"),
+                    ],
+                    "expanded_queries": [],
+                }
             )
             mock_rag.return_value = mock_rag_graph
 
@@ -450,7 +457,12 @@ class TestPreviousContext:
         ):
             mock_rag_graph = MagicMock()
             mock_rag_graph.ainvoke = AsyncMock(
-                return_value={"ranked_results": [], "expanded_queries": []}
+                return_value={
+                    "ranked_results": [
+                        RetrievedDocument(content="Traceability content", source="s"),
+                    ],
+                    "expanded_queries": [],
+                }
             )
             mock_rag.return_value = mock_rag_graph
 

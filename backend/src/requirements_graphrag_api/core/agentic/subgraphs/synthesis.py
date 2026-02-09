@@ -19,11 +19,11 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any, Literal
 
-from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 
 from requirements_graphrag_api.core.agentic.state import CriticEvaluation, SynthesisState
+from requirements_graphrag_api.evaluation.cost_analysis import get_global_cost_tracker
 from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
 
 if TYPE_CHECKING:
@@ -81,8 +81,8 @@ def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
                 api_key=config.openai_api_key,
             )
 
-            chain = prompt_template | llm | StrOutputParser()
-            result = await chain.ainvoke(
+            chain = prompt_template | llm
+            response = await chain.ainvoke(
                 {
                     "context": context,
                     "entities": state.get("entities_str", ""),
@@ -90,6 +90,10 @@ def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
                     "question": query,
                 }
             )
+            get_global_cost_tracker().record_from_response(
+                config.chat_model, response, operation="synthesis_draft"
+            )
+            result = response.content
 
             # Parse JSON response
             try:
@@ -174,13 +178,17 @@ def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
                 api_key=config.openai_api_key,
             )
 
-            critic_chain = critic_template | llm | StrOutputParser()
-            critic_result = await critic_chain.ainvoke(
+            critic_chain = critic_template | llm
+            critic_response = await critic_chain.ainvoke(
                 {
                     "context": context,
                     "question": query,
                 }
             )
+            get_global_cost_tracker().record_from_response(
+                config.chat_model, critic_response, operation="critic"
+            )
+            critic_result = critic_response.content
 
             # Parse critic feedback
             try:
@@ -198,7 +206,7 @@ def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
 
             # Regenerate with guidance
             synth_template = get_prompt_sync(PromptName.SYNTHESIS)
-            synth_chain = synth_template | llm | StrOutputParser()
+            synth_chain = synth_template | llm
 
             # Augment context with previous draft and critique
             augmented_context = f"""{context}
@@ -211,7 +219,7 @@ def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
 
 Focus on improving completeness and addressing the gaps identified above."""
 
-            result = await synth_chain.ainvoke(
+            synth_response = await synth_chain.ainvoke(
                 {
                     "context": augmented_context,
                     "entities": state.get("entities_str", ""),
@@ -219,6 +227,10 @@ Focus on improving completeness and addressing the gaps identified above."""
                     "question": query,
                 }
             )
+            get_global_cost_tracker().record_from_response(
+                config.chat_model, synth_response, operation="synthesis_revision"
+            )
+            result = synth_response.content
 
             # Parse revised response
             try:

@@ -22,7 +22,6 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
-from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 
@@ -31,6 +30,7 @@ from requirements_graphrag_api.core.agentic.state import (
     RAGState,
     RetrievedDocument,
 )
+from requirements_graphrag_api.evaluation.cost_analysis import get_global_cost_tracker
 from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
 
 if TYPE_CHECKING:
@@ -86,8 +86,12 @@ def create_rag_subgraph(
                 api_key=config.openai_api_key,
             )
 
-            chain = prompt_template | llm | StrOutputParser()
-            result = await chain.ainvoke({"question": query})
+            chain = prompt_template | llm
+            response = await chain.ainvoke({"question": query})
+            get_global_cost_tracker().record_from_response(
+                config.conversational_model, response, operation="query_expansion"
+            )
+            result = response.content
 
             # Parse JSON response
             try:
@@ -282,14 +286,14 @@ def create_rag_subgraph(
             temperature=0,
             api_key=config.openai_api_key,
         )
-        grader = llm.with_structured_output(GradeDocuments)
+        grader = llm.with_structured_output(GradeDocuments, include_raw=True)
 
         relevant_docs: list[RetrievedDocument] = []
         total = len(ranked_results)
 
         for doc in ranked_results:
             try:
-                grade: GradeDocuments = await grader.ainvoke(
+                grader_result = await grader.ainvoke(
                     [
                         {
                             "role": "system",
@@ -304,6 +308,12 @@ def create_rag_subgraph(
                         },
                     ]
                 )
+                get_global_cost_tracker().record_from_response(
+                    config.conversational_model,
+                    grader_result["raw"],
+                    operation="grade_documents",
+                )
+                grade = grader_result["parsed"]
                 if grade.binary_score == "yes":
                     relevant_docs.append(doc)
             except Exception:

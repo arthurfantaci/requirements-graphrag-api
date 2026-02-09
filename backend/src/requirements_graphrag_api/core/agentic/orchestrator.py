@@ -8,7 +8,7 @@ This module defines the top-level StateGraph that:
 
 Flow:
     START -> initialize -> run_rag -> should_proceed? -> [research?] -> synthesis -> END
-                                          ↓ (quality_pass=False)
+                                          ↓ (no relevant docs)
                                      format_fallback -> END
 
 The orchestrator uses the INTENT_CLASSIFIER prompt for initial query analysis,
@@ -328,18 +328,18 @@ def create_orchestrator_graph(
     def route_after_rag(
         state: OrchestratorState,
     ) -> Literal["format_fallback", "run_research", "run_synthesis"]:
-        """Route after RAG: quality gate check, then research decision.
+        """Route after RAG: check for relevant docs, then research decision.
 
-        First checks quality_pass (from grade_documents). If False,
-        routes to fallback. Otherwise applies research heuristics.
+        Routes to fallback only when zero relevant documents remain after
+        grading. When relevant docs exist (even a small fraction), proceeds
+        to synthesis — the ranked_results list is already filtered to only
+        relevant docs by grade_documents.
         """
-        # --- Quality gate ---
-        if not state.get("quality_pass", True):
-            logger.info("Quality gate failed — routing to fallback")
+        ranked_results = state.get("ranked_results", [])
+        if not ranked_results:
+            logger.info("Quality gate: no relevant documents — routing to fallback")
             return "format_fallback"
 
-        # --- Research heuristics (unchanged) ---
-        ranked_results = state.get("ranked_results", [])
         context = state.get("context", "")
         query = state.get("query", "")
         iteration_count = state.get("iteration_count", 0)
