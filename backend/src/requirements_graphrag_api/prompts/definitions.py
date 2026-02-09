@@ -687,7 +687,7 @@ Your task is to generate a comprehensive, accurate answer and then critically ev
 ## Retrieved Context
 {context}
 
-## Related Entities
+## Related Entities (from deep graph exploration)
 {entities}
 
 ## Previous Conversation (if multi-turn)
@@ -701,6 +701,8 @@ Your task is to generate a comprehensive, accurate answer and then critically ev
 and limitations at the end, never the beginning. Do not start with what you lack
 4. **Use technical terminology** - Maintain domain accuracy
 5. **Structure clearly** - Use headings, bullets for complex answers
+6. **Use Knowledge Graph Context** - The context includes glossary definitions, \
+semantic relationships, and industry standards. Use these for precise terminology
 
 ## Self-Critique (CRITICAL)
 
@@ -733,7 +735,7 @@ SYNTHESIS_TEMPLATE = ChatPromptTemplate.from_messages(
 )
 
 SYNTHESIS_METADATA = PromptMetadata(
-    version="1.0.0",
+    version="1.1.0",
     description="Synthesizes answers with self-critique and citations",
     input_variables=["context", "entities", "previous_context", "question"],
     output_format="json",
