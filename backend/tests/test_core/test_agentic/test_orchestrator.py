@@ -471,3 +471,89 @@ class TestPreviousContext:
             # Verify synthesis was called with empty previous_context
             synth_call = mock_synth_graph.ainvoke.call_args[0][0]
             assert synth_call.get("previous_context", "") == ""
+
+
+class TestRunRagEnrichedContext:
+    """Tests that run_rag includes enrichment data in context string."""
+
+    @pytest.mark.asyncio
+    async def test_enrichment_appears_in_context(
+        self, mock_config: AppConfig, mock_driver, mock_retriever
+    ):
+        """Verify entities, glossary, relationships flow into context."""
+        with (
+            patch(
+                "requirements_graphrag_api.core.agentic.orchestrator.create_rag_subgraph"
+            ) as mock_rag,
+            patch("requirements_graphrag_api.core.agentic.orchestrator.create_research_subgraph"),
+            patch(
+                "requirements_graphrag_api.core.agentic.orchestrator.create_synthesis_subgraph"
+            ) as mock_synth,
+        ):
+            mock_rag_graph = MagicMock()
+            mock_rag_graph.ainvoke = AsyncMock(
+                return_value={
+                    "ranked_results": [
+                        RetrievedDocument(
+                            content="AEC requirements traceability content.",
+                            source="AEC Article",
+                            score=0.95,
+                            metadata={
+                                "entities": [
+                                    {"name": "AEC", "type": "Industry"},
+                                    {"name": "Traceability", "type": "Concept"},
+                                ],
+                                "glossary_definitions": [
+                                    {
+                                        "term": "Traceability Matrix",
+                                        "definition": "A doc correlating reqs to tests.",
+                                    },
+                                ],
+                                "semantic_relationships": [
+                                    {
+                                        "from_entity": "Traceability Matrix",
+                                        "relationship": "REQUIRES",
+                                        "to_entity": "Baseline",
+                                    },
+                                ],
+                                "industry_standards": [
+                                    {
+                                        "standard": "ISO 19650",
+                                        "organization": "ISO",
+                                        "standard_definition": "BIM data management",
+                                    },
+                                ],
+                            },
+                        ),
+                    ],
+                    "expanded_queries": ["test"],
+                }
+            )
+            mock_rag.return_value = mock_rag_graph
+
+            mock_synth_graph = MagicMock()
+            mock_synth_graph.ainvoke = AsyncMock(
+                return_value={"final_answer": "Answer", "citations": []}
+            )
+            mock_synth.return_value = mock_synth_graph
+
+            graph = create_orchestrator_graph(mock_config, mock_driver, mock_retriever)
+            state: OrchestratorState = {
+                "messages": [HumanMessage(content="What is AEC traceability?")],
+                "query": "What is AEC traceability?",
+            }
+
+            await graph.ainvoke(state)
+
+            # Verify synthesis received enriched context
+            synth_call = mock_synth_graph.ainvoke.call_args[0][0]
+            ctx = synth_call["context"]
+
+            # Inline entities
+            assert "(Entities: AEC, Traceability)" in ctx
+            # KG glossary
+            assert "Traceability Matrix" in ctx
+            # KG relationships
+            assert "Traceability Matrix -> REQUIRES -> Baseline" in ctx
+            # KG standards
+            assert "ISO 19650" in ctx

@@ -42,6 +42,7 @@ from requirements_graphrag_api.core.agentic.subgraphs import (
     create_research_subgraph,
     create_synthesis_subgraph,
 )
+from requirements_graphrag_api.core.context import NormalizedDocument, format_context
 
 if TYPE_CHECKING:
     from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -150,17 +151,15 @@ def create_orchestrator_graph(
             expanded_queries = rag_result.get("expanded_queries", [])
             quality_pass = rag_result.get("quality_pass", True)
 
-            # Build context string from results
-            context_parts = []
-            for i, doc in enumerate(ranked_results[:10], 1):
+            # Build hybrid context string (inline entities + KG section)
+            normalized = []
+            for doc in ranked_results[:10]:
                 if isinstance(doc, RetrievedDocument):
-                    context_parts.append(f"[Source {i}: {doc.source}]\n{doc.content}")
+                    normalized.append(NormalizedDocument.from_retrieved_document(doc))
                 elif isinstance(doc, dict):
-                    context_parts.append(
-                        f"[Source {i}: {doc.get('source', 'Unknown')}]\n{doc.get('content', '')}"
-                    )
-
-            context = "\n\n---\n\n".join(context_parts)
+                    normalized.append(NormalizedDocument.from_raw_result(doc))
+            formatted = format_context(normalized)
+            context = formatted.context
 
             logger.info(
                 "RAG complete: %d results, %d queries, quality_pass=%s",
