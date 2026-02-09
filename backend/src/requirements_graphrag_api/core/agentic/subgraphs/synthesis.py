@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 # Constants
 MAX_REVISIONS = 1
-CONFIDENCE_THRESHOLD = 0.5
+CONFIDENCE_THRESHOLD = 0.65
 
 
 def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
