@@ -106,10 +106,11 @@ def create_orchestrator_graph(
         Extracts the query from messages and sets up initial state.
         """
         messages = state.get("messages", [])
-        query = state.get("query", "")
+        query = ""
 
-        # Extract query from last human message if not explicitly set
-        if not query and messages:
+        # Always extract query from the latest human message so that
+        # checkpointer-restored state doesn't shadow new user input.
+        if messages:
             for msg in reversed(messages):
                 if isinstance(msg, HumanMessage):
                     query = msg.content
