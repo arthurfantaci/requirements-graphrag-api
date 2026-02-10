@@ -150,18 +150,6 @@ function extractSourceNumbers(str) {
 }
 
 /**
- * Custom text renderer for react-markdown that handles source citations
- */
-function createTextRenderer(sources) {
-  return function TextRenderer({ children }) {
-    if (typeof children === 'string') {
-      return <>{renderTextWithCitations(children, sources)}</>
-    }
-    return <>{children}</>
-  }
-}
-
-/**
  * Markdown renderer with clickable source citations
  *
  * Renders markdown content and transforms [Source N] references
@@ -171,8 +159,6 @@ function createTextRenderer(sources) {
  * @param {Array} sources - Array of source objects with title, url, relevance_score
  */
 export function SourceCitationRenderer({ content, sources }) {
-  const TextRenderer = createTextRenderer(sources)
-
   return (
     <ReactMarkdown
       components={{

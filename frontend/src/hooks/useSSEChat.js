@@ -261,18 +261,9 @@ export function useSSEChat() {
     [messages, isLoading, conversationId, parseSSELine, processEvent, updateLastMessage]
   )
 
-  /**
-   * Clear all messages
-   */
-  const clearMessages = useCallback(() => {
-    setMessages([])
-  }, [])
-
   return {
     messages,
     isLoading,
-    conversationId,
     sendMessage,
-    clearMessages,
   }
 }

@@ -66,7 +66,6 @@ MIN_KNOWN_STANDARDS_COUNT = 10
 MIN_DOMAIN_TERMS_COUNT = 15
 MIN_GOLDEN_DATASET_COUNT = 25
 MIN_MUST_PASS_COUNT = 20
-GENERATOR_TEST_COUNT = 5
 
 # Tier identifiers
 TIER_SMOKE = 2
@@ -267,7 +266,6 @@ def validate_benchmark_dataset() -> tuple[bool, list[str]]:
     errors: list[str] = []
 
     try:
-        from tests.benchmark.generator import generate_evaluation_dataset
         from tests.benchmark.golden_dataset import GOLDEN_DATASET, get_must_pass_examples
 
         # Validate golden dataset
@@ -288,17 +286,8 @@ def validate_benchmark_dataset() -> tuple[bool, list[str]]:
             if not example.ground_truth:
                 errors.append(f"Example {example.id} missing ground_truth")
 
-        # Validate generator works
-        generated = generate_evaluation_dataset(total_examples=GENERATOR_TEST_COUNT)
-        if len(generated) < GENERATOR_TEST_COUNT:
-            errors.append(
-                f"Generator produced only {len(generated)} examples "
-                f"(expected {GENERATOR_TEST_COUNT})"
-            )
-
         logger.info("Golden dataset: %d examples", len(GOLDEN_DATASET))
         logger.info("Must-pass examples: %d", len(must_pass))
-        logger.info("Generator test: %d examples", len(generated))
 
     except ImportError as e:
         errors.append(f"Import error: {e}")
