@@ -40,6 +40,12 @@ class PromptName(StrEnum):
     SYNTHESIS = "graphrag-synthesis"
     ENTITY_SELECTOR = "graphrag-entity-selector"
 
+    # Evaluation prompts (LLM-as-judge)
+    EVAL_FAITHFULNESS = "graphrag-eval-faithfulness"
+    EVAL_ANSWER_RELEVANCY = "graphrag-eval-answer-relevancy"
+    EVAL_CONTEXT_PRECISION = "graphrag-eval-context-precision"
+    EVAL_CONTEXT_RECALL = "graphrag-eval-context-recall"
+
 
 @dataclass(frozen=True)
 class PromptMetadata:
@@ -788,6 +794,172 @@ COREFERENCE_RESOLVER_METADATA = PromptMetadata(
 
 
 # =============================================================================
+# EVALUATION PROMPTS — LLM-as-judge (RAGAS-style)
+# Used by ragas_evaluators.py for offline evaluation via langsmith.evaluate()
+# =============================================================================
+
+EVAL_FAITHFULNESS_SYSTEM: Final[str] = """You are evaluating the faithfulness of an answer \
+to its source context.
+
+Given:
+- **Context**: {context}
+- **Question**: {question}
+- **Answer**: {answer}
+
+## Task
+
+Determine whether every claim in the answer is supported by the context.
+
+## Step-by-step
+
+1. Extract each distinct claim from the answer.
+2. For each claim, check if it is SUPPORTED, PARTIALLY SUPPORTED, or NOT SUPPORTED by the context.
+3. Calculate: score = fully_supported / total_claims (partially supported counts as 0.5).
+
+## Output
+
+Respond with ONLY a JSON object:
+{{"claims": [{{"claim": "...", "verdict": "supported|partial|unsupported"}}], \
+"score": <float 0.0-1.0>, "reasoning": "<brief explanation>"}}"""
+
+EVAL_FAITHFULNESS_TEMPLATE = ChatPromptTemplate.from_messages(
+    [
+        ("system", EVAL_FAITHFULNESS_SYSTEM),
+        ("human", "Evaluate faithfulness:"),
+    ]
+)
+
+EVAL_FAITHFULNESS_METADATA = PromptMetadata(
+    version="2.0.0",
+    description="LLM-as-judge: evaluates answer faithfulness via claim-level verification",
+    input_variables=["context", "question", "answer"],
+    output_format="json",
+    tags=["evaluation", "ragas", "faithfulness"],
+)
+
+
+EVAL_ANSWER_RELEVANCY_SYSTEM: Final[str] = """You are evaluating the relevancy of an answer \
+to a question.
+
+Given:
+- **Question**: {question}
+- **Answer**: {answer}
+
+## Task
+
+Determine whether the answer directly and completely addresses the question.
+
+## Step-by-step
+
+1. Identify the core information need of the question.
+2. Check if the answer addresses that need directly.
+3. Check for irrelevant content that dilutes the answer.
+4. Score based on: directness + completeness - irrelevance.
+
+## Output
+
+Respond with ONLY a JSON object:
+{{"score": <float 0.0-1.0>, "reasoning": "<brief explanation>"}}"""
+
+EVAL_ANSWER_RELEVANCY_TEMPLATE = ChatPromptTemplate.from_messages(
+    [
+        ("system", EVAL_ANSWER_RELEVANCY_SYSTEM),
+        ("human", "Evaluate relevancy:"),
+    ]
+)
+
+EVAL_ANSWER_RELEVANCY_METADATA = PromptMetadata(
+    version="2.0.0",
+    description="LLM-as-judge: evaluates answer relevancy to the question",
+    input_variables=["question", "answer"],
+    output_format="json",
+    tags=["evaluation", "ragas", "relevancy"],
+)
+
+
+EVAL_CONTEXT_PRECISION_SYSTEM: Final[str] = """You are evaluating the precision of retrieved \
+contexts for a question.
+
+Given:
+- **Question**: {question}
+- **Retrieved Contexts**: {contexts}
+
+## Task
+
+Determine what proportion of the retrieved contexts are relevant to answering the question.
+
+## Step-by-step
+
+1. For each retrieved context chunk, determine if it is RELEVANT or IRRELEVANT to the question.
+2. A context is relevant if it contains information useful for answering the question.
+3. Calculate: score = relevant_contexts / total_contexts.
+
+## Output
+
+Respond with ONLY a JSON object:
+{{"verdicts": [{{"context_index": 0, "relevant": true|false, "reason": "..."}}], \
+"score": <float 0.0-1.0>, "reasoning": "<brief explanation>"}}"""
+
+EVAL_CONTEXT_PRECISION_TEMPLATE = ChatPromptTemplate.from_messages(
+    [
+        ("system", EVAL_CONTEXT_PRECISION_SYSTEM),
+        ("human", "Evaluate context precision:"),
+    ]
+)
+
+EVAL_CONTEXT_PRECISION_METADATA = PromptMetadata(
+    version="2.0.0",
+    description="LLM-as-judge: evaluates context precision via per-chunk relevance verdicts",
+    input_variables=["question", "contexts"],
+    output_format="json",
+    tags=["evaluation", "ragas", "precision"],
+)
+
+
+EVAL_CONTEXT_RECALL_SYSTEM: Final[str] = """You are evaluating context recall against a \
+ground truth answer.
+
+Given:
+- **Question**: {question}
+- **Retrieved Contexts**: {contexts}
+- **Ground Truth Answer**: {ground_truth}
+
+## Task — Atomic Fact Decomposition
+
+Determine what proportion of facts in the ground truth are supported by the retrieved contexts.
+
+## Step-by-step
+
+1. Decompose the ground truth into atomic facts (single, indivisible claims).
+2. For each atomic fact, check if it is SUPPORTED by any of the retrieved contexts.
+3. Calculate: recall = supported_facts / total_facts.
+
+## Output
+
+Respond with ONLY a JSON object:
+{{"facts": [{{"fact": "...", "supported": true|false}}], \
+"score": <float 0.0-1.0>, "reasoning": "<brief explanation>"}}"""
+
+EVAL_CONTEXT_RECALL_TEMPLATE = ChatPromptTemplate.from_messages(
+    [
+        ("system", EVAL_CONTEXT_RECALL_SYSTEM),
+        ("human", "Evaluate context recall:"),
+    ]
+)
+
+EVAL_CONTEXT_RECALL_METADATA = PromptMetadata(
+    version="2.0.0",
+    description=(
+        "LLM-as-judge: evaluates context recall via atomic fact decomposition "
+        "(expected improvement over holistic comparison)"
+    ),
+    input_variables=["question", "contexts", "ground_truth"],
+    output_format="json",
+    tags=["evaluation", "ragas", "recall"],
+)
+
+
+# =============================================================================
 # PROMPT DEFINITIONS REGISTRY
 # =============================================================================
 
@@ -841,6 +1013,27 @@ PROMPT_DEFINITIONS: Final[dict[PromptName, PromptDefinition]] = {
         name=PromptName.COREFERENCE_RESOLVER,
         template=COREFERENCE_RESOLVER_TEMPLATE,
         metadata=COREFERENCE_RESOLVER_METADATA,
+    ),
+    # Evaluation prompts (LLM-as-judge)
+    PromptName.EVAL_FAITHFULNESS: PromptDefinition(
+        name=PromptName.EVAL_FAITHFULNESS,
+        template=EVAL_FAITHFULNESS_TEMPLATE,
+        metadata=EVAL_FAITHFULNESS_METADATA,
+    ),
+    PromptName.EVAL_ANSWER_RELEVANCY: PromptDefinition(
+        name=PromptName.EVAL_ANSWER_RELEVANCY,
+        template=EVAL_ANSWER_RELEVANCY_TEMPLATE,
+        metadata=EVAL_ANSWER_RELEVANCY_METADATA,
+    ),
+    PromptName.EVAL_CONTEXT_PRECISION: PromptDefinition(
+        name=PromptName.EVAL_CONTEXT_PRECISION,
+        template=EVAL_CONTEXT_PRECISION_TEMPLATE,
+        metadata=EVAL_CONTEXT_PRECISION_METADATA,
+    ),
+    PromptName.EVAL_CONTEXT_RECALL: PromptDefinition(
+        name=PromptName.EVAL_CONTEXT_RECALL,
+        template=EVAL_CONTEXT_RECALL_TEMPLATE,
+        metadata=EVAL_CONTEXT_RECALL_METADATA,
     ),
 }
 

@@ -160,10 +160,10 @@ def run_evaluation(
     from langsmith import Client, evaluate
 
     from requirements_graphrag_api.evaluation.ragas_evaluators import (
-        answer_relevancy_evaluator_sync,
-        context_precision_evaluator_sync,
-        context_recall_evaluator_sync,
-        faithfulness_evaluator_sync,
+        answer_relevancy_evaluator,
+        context_precision_evaluator,
+        context_recall_evaluator,
+        faithfulness_evaluator,
     )
 
     client = Client()
@@ -221,10 +221,10 @@ def run_evaluation(
 
     # Define evaluators
     evaluators = [
-        faithfulness_evaluator_sync,
-        answer_relevancy_evaluator_sync,
-        context_precision_evaluator_sync,
-        context_recall_evaluator_sync,
+        faithfulness_evaluator,
+        answer_relevancy_evaluator,
+        context_precision_evaluator,
+        context_recall_evaluator,
     ]
 
     # Run evaluation with LangSmith
