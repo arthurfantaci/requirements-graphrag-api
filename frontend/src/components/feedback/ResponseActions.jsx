@@ -36,6 +36,7 @@ function ThumbsDownIcon() {
 export function ResponseActions({ content, runId, messageId }) {
   const [copied, setCopied] = useState(false)
   const [feedbackGiven, setFeedbackGiven] = useState(null) // 'positive' | 'negative' | null
+  const [feedbackWarning, setFeedbackWarning] = useState(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [pendingFeedback, setPendingFeedback] = useState(null) // 'positive' | 'negative'
 
@@ -72,12 +73,16 @@ export function ResponseActions({ content, runId, messageId }) {
   const submitFeedback = async (details) => {
     setModalOpen(false)
     const isPositive = pendingFeedback === 'positive'
-    setFeedbackGiven(pendingFeedback)
 
     if (!runId) {
-      console.warn('Feedback submitted without run_id — trace ID missing from server response')
+      console.warn('Missing runId for feedback submission')
+      setFeedbackWarning('Feedback could not be submitted (missing trace ID)')
+      setPendingFeedback(null)
       return
     }
+
+    setFeedbackGiven(pendingFeedback)
+    setFeedbackWarning(null)
 
     try {
       await apiFetch('/feedback', {
@@ -85,7 +90,7 @@ export function ResponseActions({ content, runId, messageId }) {
         body: JSON.stringify({
           run_id: runId,
           score: isPositive ? 1.0 : 0.0,
-          comment: details || null, // Goes to feedback_notes in LangSmith
+          comment: details || null,
           message_id: messageId,
           category: isPositive ? 'positive' : 'negative',
         }),
@@ -149,6 +154,11 @@ export function ResponseActions({ content, runId, messageId }) {
         >
           <ThumbsDownIcon />
         </button>
+
+        {/* Inline warning when feedback cannot be submitted */}
+        {feedbackWarning && (
+          <span className="ml-2 text-xs text-amber-600">{feedbackWarning}</span>
+        )}
       </div>
 
       {/* Feedback Modal */}
