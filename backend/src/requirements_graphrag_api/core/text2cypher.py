@@ -27,8 +27,7 @@ from neo4j.exceptions import ClientError, CypherSyntaxError, DatabaseError, Serv
 
 from requirements_graphrag_api.evaluation.cost_analysis import get_global_cost_tracker
 from requirements_graphrag_api.observability import traceable_safe
-from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
-from requirements_graphrag_api.prompts.definitions import TEXT2CYPHER_EXAMPLES
+from requirements_graphrag_api.prompts import PromptName, get_prompt
 
 if TYPE_CHECKING:
     from neo4j import Driver
@@ -134,7 +133,7 @@ async def generate_cypher(
         schema_info = "Schema information unavailable"
 
     # Get prompt from catalog (uses cache if available)
-    prompt_template = get_prompt_sync(PromptName.TEXT2CYPHER)
+    prompt_template = await get_prompt(PromptName.TEXT2CYPHER)
 
     llm = ChatOpenAI(
         model=config.chat_model,
@@ -148,7 +147,6 @@ async def generate_cypher(
     response = await chain.ainvoke(
         {
             "schema": schema_info,
-            "examples": TEXT2CYPHER_EXAMPLES,
             "question": question,
         }
     )

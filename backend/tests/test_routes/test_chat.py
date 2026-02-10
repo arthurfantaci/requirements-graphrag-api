@@ -730,7 +730,8 @@ class TestCoreferenceResolution:
 
         with (
             patch(
-                "requirements_graphrag_api.routes.chat.get_prompt_sync",
+                "requirements_graphrag_api.routes.chat.get_prompt",
+                new_callable=AsyncMock,
                 return_value=mock_prompt,
             ),
             patch("langchain_openai.ChatOpenAI"),
@@ -760,7 +761,8 @@ class TestCoreferenceResolution:
 
         with (
             patch(
-                "requirements_graphrag_api.routes.chat.get_prompt_sync",
+                "requirements_graphrag_api.routes.chat.get_prompt",
+                new_callable=AsyncMock,
                 return_value=mock_prompt,
             ),
             patch("langchain_openai.ChatOpenAI"),
@@ -788,7 +790,8 @@ class TestCoreferenceResolution:
 
         with (
             patch(
-                "requirements_graphrag_api.routes.chat.get_prompt_sync",
+                "requirements_graphrag_api.routes.chat.get_prompt",
+                new_callable=AsyncMock,
                 return_value=mock_prompt,
             ),
             patch("langchain_openai.ChatOpenAI"),

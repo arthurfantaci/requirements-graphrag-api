@@ -80,9 +80,9 @@ async def create_rag_target(
     from langchain_core.output_parsers import StrOutputParser
     from langchain_openai import ChatOpenAI
 
-    from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
+    from requirements_graphrag_api.prompts import PromptName, get_prompt
 
-    prompt_template = get_prompt_sync(PromptName.RAG_GENERATION)
+    prompt_template = await get_prompt(PromptName.RAG_GENERATION)
     llm = ChatOpenAI(model=model, temperature=0.1)
 
     async def rag_target(inputs: dict[str, Any]) -> dict[str, Any]:

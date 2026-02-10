@@ -20,7 +20,7 @@ from langchain_openai import ChatOpenAI
 
 from requirements_graphrag_api.evaluation.cost_analysis import get_global_cost_tracker
 from requirements_graphrag_api.observability import traceable_safe
-from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
+from requirements_graphrag_api.prompts import PromptName, get_prompt
 
 if TYPE_CHECKING:
     from requirements_graphrag_api.config import AppConfig
@@ -195,7 +195,7 @@ async def classify_intent(
             return quick_result
 
     # Stage 2: LLM-based classification
-    prompt_template = get_prompt_sync(PromptName.INTENT_CLASSIFIER)
+    prompt_template = await get_prompt(PromptName.INTENT_CLASSIFIER)
 
     llm = ChatOpenAI(
         model=config.chat_model,

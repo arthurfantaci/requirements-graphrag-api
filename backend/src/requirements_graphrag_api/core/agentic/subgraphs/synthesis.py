@@ -24,7 +24,7 @@ from langgraph.graph import END, START, StateGraph
 
 from requirements_graphrag_api.core.agentic.state import CriticEvaluation, SynthesisState
 from requirements_graphrag_api.evaluation.cost_analysis import get_global_cost_tracker
-from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
+from requirements_graphrag_api.prompts import PromptName, get_prompt
 
 if TYPE_CHECKING:
     from requirements_graphrag_api.config import AppConfig
@@ -74,7 +74,7 @@ def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
             }
 
         try:
-            prompt_template = get_prompt_sync(PromptName.SYNTHESIS)
+            prompt_template = await get_prompt(PromptName.SYNTHESIS)
             llm = ChatOpenAI(
                 model=config.chat_model,
                 temperature=0.3,
@@ -171,7 +171,7 @@ def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
 
         try:
             # Get detailed critique using CRITIC prompt
-            critic_template = get_prompt_sync(PromptName.CRITIC)
+            critic_template = await get_prompt(PromptName.CRITIC)
             llm = ChatOpenAI(
                 model=config.chat_model,
                 temperature=0.2,
@@ -205,7 +205,7 @@ def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
                 guidance += f"\nConsider: {critic_data.get('followup_query')}"
 
             # Regenerate with guidance
-            synth_template = get_prompt_sync(PromptName.SYNTHESIS)
+            synth_template = await get_prompt(PromptName.SYNTHESIS)
             synth_chain = synth_template | llm
 
             # Augment context with previous draft and critique

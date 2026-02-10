@@ -55,7 +55,8 @@ class TestCostTrackerText2Cypher:
 
         with (
             patch(
-                "requirements_graphrag_api.core.text2cypher.get_prompt_sync",
+                "requirements_graphrag_api.core.text2cypher.get_prompt",
+                new_callable=AsyncMock,
                 return_value=mock_prompt,
             ),
             patch("requirements_graphrag_api.core.text2cypher.ChatOpenAI"),
@@ -96,7 +97,8 @@ class TestCostTrackerRouting:
                 return_value=None,
             ),
             patch(
-                "requirements_graphrag_api.core.routing.get_prompt_sync",
+                "requirements_graphrag_api.core.routing.get_prompt",
+                new_callable=AsyncMock,
                 return_value=mock_prompt,
             ),
             patch("requirements_graphrag_api.core.routing.ChatOpenAI"),
@@ -151,7 +153,8 @@ class TestCostTrackerRAG:
 
         with (
             patch(
-                "requirements_graphrag_api.core.agentic.subgraphs.rag.get_prompt_sync",
+                "requirements_graphrag_api.core.agentic.subgraphs.rag.get_prompt",
+                new_callable=AsyncMock,
                 return_value=mock_prompt,
             ),
             patch("requirements_graphrag_api.core.agentic.subgraphs.rag.ChatOpenAI"),
@@ -199,7 +202,8 @@ class TestCostTrackerSynthesis:
 
         with (
             patch(
-                "requirements_graphrag_api.core.agentic.subgraphs.synthesis.get_prompt_sync",
+                "requirements_graphrag_api.core.agentic.subgraphs.synthesis.get_prompt",
+                new_callable=AsyncMock,
                 return_value=mock_prompt,
             ),
             patch("requirements_graphrag_api.core.agentic.subgraphs.synthesis.ChatOpenAI"),
@@ -248,7 +252,8 @@ class TestCostTrackerResearch:
 
         with (
             patch(
-                "requirements_graphrag_api.core.agentic.subgraphs.research.get_prompt_sync",
+                "requirements_graphrag_api.core.agentic.subgraphs.research.get_prompt",
+                new_callable=AsyncMock,
                 return_value=mock_prompt,
             ),
             patch("requirements_graphrag_api.core.agentic.subgraphs.research.ChatOpenAI"),

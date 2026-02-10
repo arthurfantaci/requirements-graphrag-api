@@ -3,14 +3,10 @@
 This package provides:
 - Centralized prompt definitions with metadata
 - LangSmith Hub integration for version control
-- Caching for performance optimization
-- Evaluation utilities for A/B testing
+- Environment-based prompt selection
 
 Quick Start:
-    from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
-
-    # Get a prompt synchronously
-    prompt = get_prompt_sync(PromptName.INTENT_CLASSIFIER)
+    from requirements_graphrag_api.prompts import PromptName, get_prompt
 
     # Get a prompt asynchronously (supports Hub lookup)
     prompt = await get_prompt(PromptName.INTENT_CLASSIFIER)
@@ -19,16 +15,13 @@ Quick Start:
 from __future__ import annotations
 
 from requirements_graphrag_api.prompts.catalog import (
-    CacheEntry,
     PromptCatalog,
     get_catalog,
     get_prompt,
-    get_prompt_sync,
     initialize_catalog,
 )
 from requirements_graphrag_api.prompts.definitions import (
     PROMPT_DEFINITIONS,
-    TEXT2CYPHER_EXAMPLES,
     PromptDefinition,
     PromptMetadata,
     PromptName,
@@ -36,14 +29,11 @@ from requirements_graphrag_api.prompts.definitions import (
 
 __all__ = [
     "PROMPT_DEFINITIONS",
-    "TEXT2CYPHER_EXAMPLES",
-    "CacheEntry",
     "PromptCatalog",
     "PromptDefinition",
     "PromptMetadata",
     "PromptName",
     "get_catalog",
     "get_prompt",
-    "get_prompt_sync",
     "initialize_catalog",
 ]

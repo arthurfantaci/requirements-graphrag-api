@@ -70,7 +70,7 @@ from requirements_graphrag_api.guardrails.events import (
 )
 from requirements_graphrag_api.middleware.rate_limit import CHAT_RATE_LIMIT, get_rate_limiter
 from requirements_graphrag_api.observability import create_thread_metadata
-from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
+from requirements_graphrag_api.prompts import PromptName, get_prompt
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -677,7 +677,7 @@ async def _generate_explanatory_events(
                     f"Q: {msg.content}" if msg.role == "user" else f"A: {msg.content}"
                     for msg in request.conversation_history
                 )
-                updater_template = get_prompt_sync(PromptName.QUERY_UPDATER)
+                updater_template = await get_prompt(PromptName.QUERY_UPDATER)
                 llm = ChatOpenAI(
                     model=config.conversational_model,
                     temperature=0.1,
@@ -791,7 +791,7 @@ async def _resolve_coreferences(
                 for msg in conversation_history
             )
 
-            template = get_prompt_sync(PromptName.COREFERENCE_RESOLVER)
+            template = await get_prompt(PromptName.COREFERENCE_RESOLVER)
             llm = ChatOpenAI(
                 model=config.conversational_model,
                 temperature=0,

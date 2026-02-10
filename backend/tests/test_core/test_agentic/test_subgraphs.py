@@ -100,7 +100,8 @@ class TestRAGSubgraph:
 
             # We need to patch at the prompt level since the chain is built inside
             with patch(
-                "requirements_graphrag_api.core.agentic.subgraphs.rag.get_prompt_sync"
+                "requirements_graphrag_api.core.agentic.subgraphs.rag.get_prompt",
+                new_callable=AsyncMock,
             ) as mock_prompt:
                 mock_template = MagicMock()
                 mock_template.__or__ = MagicMock(
@@ -158,7 +159,8 @@ class TestRAGSubgraph:
 
         with (
             patch(
-                "requirements_graphrag_api.core.agentic.subgraphs.rag.get_prompt_sync",
+                "requirements_graphrag_api.core.agentic.subgraphs.rag.get_prompt",
+                new_callable=AsyncMock,
                 return_value=mock_prompt_template,
             ),
             patch(

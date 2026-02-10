@@ -23,7 +23,7 @@ from langgraph.graph import END, START, StateGraph
 
 from requirements_graphrag_api.core.agentic.state import EntityInfo, ResearchState
 from requirements_graphrag_api.evaluation.cost_analysis import get_global_cost_tracker
-from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
+from requirements_graphrag_api.prompts import PromptName, get_prompt
 
 if TYPE_CHECKING:
     from neo4j import Driver
@@ -74,7 +74,7 @@ def create_research_subgraph(
             }
 
         try:
-            prompt_template = get_prompt_sync(PromptName.ENTITY_SELECTOR)
+            prompt_template = await get_prompt(PromptName.ENTITY_SELECTOR)
             llm = ChatOpenAI(
                 model=config.chat_model,
                 temperature=0.2,

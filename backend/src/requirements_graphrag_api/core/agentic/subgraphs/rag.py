@@ -30,7 +30,7 @@ from requirements_graphrag_api.core.agentic.state import (
     RetrievedDocument,
 )
 from requirements_graphrag_api.evaluation.cost_analysis import get_global_cost_tracker
-from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
+from requirements_graphrag_api.prompts import PromptName, get_prompt
 
 if TYPE_CHECKING:
     from neo4j import Driver
@@ -77,7 +77,7 @@ def create_rag_subgraph(
         logger.info("Expanding query: %s", query[:50])
 
         try:
-            prompt_template = get_prompt_sync(PromptName.QUERY_EXPANSION)
+            prompt_template = await get_prompt(PromptName.QUERY_EXPANSION)
             llm = ChatOpenAI(
                 model=config.conversational_model,
                 temperature=0.3,

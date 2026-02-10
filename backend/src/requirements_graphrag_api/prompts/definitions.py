@@ -351,47 +351,8 @@ Key Relationships:
 - (Chunk)-[:NEXT_CHUNK]->(Chunk)
 
 Few-Shot Examples:
-{examples}
 
-Guidelines:
-1. Use MATCH for read queries only (no CREATE, MERGE, DELETE)
-2. Use toLower() for case-insensitive matching
-3. Use CONTAINS for partial text matching
-4. Return meaningful property values, not just node counts
-5. Limit results to 25 unless aggregating
-6. For media queries (webinars, videos, images), traverse from Article
-7. For media listing queries, use COLLECT(DISTINCT ...) to aggregate
-   source articles and avoid duplicate rows
-
-Generate only the Cypher query, no explanation."""
-
-TEXT2CYPHER_TEMPLATE = ChatPromptTemplate.from_messages(
-    [
-        ("system", TEXT2CYPHER_SYSTEM),
-        ("human", "Question: {question}\n\nCypher:"),
-    ]
-)
-
-TEXT2CYPHER_METADATA = PromptMetadata(
-    version="1.0.0",
-    description="Converts natural language questions to Cypher queries",
-    input_variables=["schema", "examples", "question"],
-    output_format="cypher",
-    evaluation_criteria=[
-        "syntactic_validity",
-        "semantic_correctness",
-        "result_accuracy",
-        "read_only_compliance",
-    ],
-    tags=["text2cypher", "graph", "query_generation"],
-)
-
-
-# =============================================================================
-# TEXT2CYPHER FEW-SHOT EXAMPLES
-# =============================================================================
-
-TEXT2CYPHER_EXAMPLES: Final[str] = """Example 1:
+Example 1:
 Question: How many articles are in the knowledge base?
 Cypher: MATCH (a:Article)
 RETURN count(a) AS article_count
@@ -467,7 +428,39 @@ Cypher: MATCH (w:Webinar)
 WITH count(w) AS webinar_count
 MATCH (v:Video)
 RETURN webinar_count, count(v) AS video_count
-"""
+
+Guidelines:
+1. Use MATCH for read queries only (no CREATE, MERGE, DELETE)
+2. Use toLower() for case-insensitive matching
+3. Use CONTAINS for partial text matching
+4. Return meaningful property values, not just node counts
+5. Limit results to 25 unless aggregating
+6. For media queries (webinars, videos, images), traverse from Article
+7. For media listing queries, use COLLECT(DISTINCT ...) to aggregate
+   source articles and avoid duplicate rows
+
+Generate only the Cypher query, no explanation."""
+
+TEXT2CYPHER_TEMPLATE = ChatPromptTemplate.from_messages(
+    [
+        ("system", TEXT2CYPHER_SYSTEM),
+        ("human", "Question: {question}\n\nCypher:"),
+    ]
+)
+
+TEXT2CYPHER_METADATA = PromptMetadata(
+    version="1.0.0",
+    description="Converts natural language questions to Cypher queries",
+    input_variables=["schema", "question"],
+    output_format="cypher",
+    evaluation_criteria=[
+        "syntactic_validity",
+        "semantic_correctness",
+        "result_accuracy",
+        "read_only_compliance",
+    ],
+    tags=["text2cypher", "graph", "query_generation"],
+)
 
 
 # =============================================================================
@@ -854,7 +847,6 @@ PROMPT_DEFINITIONS: Final[dict[PromptName, PromptDefinition]] = {
 
 __all__ = [
     "PROMPT_DEFINITIONS",
-    "TEXT2CYPHER_EXAMPLES",
     "PromptDefinition",
     "PromptMetadata",
     "PromptName",

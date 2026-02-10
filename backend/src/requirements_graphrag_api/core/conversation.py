@@ -21,7 +21,7 @@ from langsmith import get_current_run_tree
 
 from requirements_graphrag_api.core.definitions import StreamEventType
 from requirements_graphrag_api.observability import traceable_safe
-from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
+from requirements_graphrag_api.prompts import PromptName, get_prompt
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -147,7 +147,7 @@ async def stream_conversational_events(
         return
 
     formatted_history = _format_conversation_history(conversation_history)
-    prompt_template = get_prompt_sync(PromptName.CONVERSATIONAL)
+    prompt_template = await get_prompt(PromptName.CONVERSATIONAL)
 
     # Build prompt messages for astream
     messages = prompt_template.format_messages(history=formatted_history, question=question)
