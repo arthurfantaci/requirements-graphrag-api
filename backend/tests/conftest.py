@@ -185,6 +185,12 @@ def sample_conversation_history() -> list[dict[str, str]]:
 
 
 @pytest.fixture(autouse=True)
+def _disable_langsmith_tracing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Prevent test runs from shipping traces to LangSmith."""
+    monkeypatch.setenv("LANGSMITH_TRACING", "false")
+
+
+@pytest.fixture(autouse=True)
 def _reset_cost_tracker():
     """Reset the global cost tracker before each test to prevent cross-test leakage."""
     reset_global_cost_tracker()

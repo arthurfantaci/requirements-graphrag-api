@@ -57,6 +57,12 @@ from requirements_graphrag_api.evaluation.cost_analysis import (
     get_global_cost_tracker,
     reset_global_cost_tracker,
 )
+from requirements_graphrag_api.evaluation.metrics import (
+    ANSWER_RELEVANCY_PROMPT,
+    CONTEXT_PRECISION_PROMPT,
+    CONTEXT_RECALL_PROMPT,
+    FAITHFULNESS_PROMPT,
+)
 from requirements_graphrag_api.evaluation.performance import (
     ExecutionMetrics,
     PerformanceTracker,
@@ -65,6 +71,10 @@ from requirements_graphrag_api.evaluation.performance import (
     get_performance_summary,
     reset_global_tracker,
     track_execution,
+)
+from requirements_graphrag_api.evaluation.ragas_evaluators import (
+    _get_judge_llm,
+    _parse_llm_score,
 )
 from requirements_graphrag_api.observability import traceable_safe
 
@@ -243,6 +253,62 @@ async def _generate_answer(
     return answer, contexts
 
 
+async def _llm_judge_metrics(
+    question: str,
+    answer: str,
+    contexts: list[str],
+    ground_truth: str,
+) -> dict[str, float]:
+    """Score a single RAG example using LLM-as-judge (RAGAS-style).
+
+    Runs 4 RAGAS metrics concurrently via gpt-4o-mini:
+    faithfulness, answer_relevancy, context_precision, context_recall.
+
+    Returns:
+        Dict mapping metric name to score (0.0-1.0).
+    """
+    import asyncio
+
+    contexts_str = "\n\n---\n\n".join(contexts) if contexts else ""
+
+    prompts = {
+        "faithfulness": FAITHFULNESS_PROMPT.format(
+            question=question,
+            context=contexts_str,
+            answer=answer,
+        ),
+        "answer_relevancy": ANSWER_RELEVANCY_PROMPT.format(
+            question=question,
+            answer=answer,
+        ),
+        "context_precision": CONTEXT_PRECISION_PROMPT.format(
+            question=question,
+            contexts=contexts_str,
+        ),
+        "context_recall": CONTEXT_RECALL_PROMPT.format(
+            question=question,
+            contexts=contexts_str,
+            ground_truth=ground_truth,
+        ),
+    }
+
+    llm = _get_judge_llm()
+
+    async def _score(metric_name: str, prompt: str) -> tuple[str, float]:
+        try:
+            response = await llm.ainvoke(prompt)
+            score, reasoning = _parse_llm_score(response.content)
+            logger.debug("%s: score=%.2f reason=%s", metric_name, score, reasoning)
+            return metric_name, score
+        except Exception as e:
+            logger.warning("LLM judge failed for %s: %s", metric_name, e)
+            return metric_name, 0.0
+
+    results = await asyncio.gather(*[_score(name, prompt) for name, prompt in prompts.items()])
+
+    return dict(results)
+
+
 async def _evaluate_single(
     retriever: VectorRetriever,
     driver: Driver,
@@ -263,31 +329,13 @@ async def _evaluate_single(
     # Generate answer
     answer, contexts = await _generate_answer(retriever, driver, config, example.question)
 
-    # Calculate metrics (simplified scoring for now)
-    # In production, these would use LLM-as-judge with the prompts
-    metrics: dict[str, float] = {}
-
-    # Basic heuristic metrics (replace with LLM-as-judge in production)
-    # Context precision: check if contexts mention key terms
-    question_terms = set(example.question.lower().split())
-    context_text = " ".join(contexts).lower()
-    matching_terms = sum(1 for t in question_terms if t in context_text)
-    metrics["context_precision"] = min(1.0, matching_terms / max(len(question_terms), 1))
-
-    # Answer relevancy: check if answer mentions question terms
-    answer_lower = answer.lower()
-    answer_matches = sum(1 for t in question_terms if t in answer_lower)
-    metrics["answer_relevancy"] = min(1.0, answer_matches / max(len(question_terms), 1))
-
-    # Faithfulness: check if answer terms appear in context
-    answer_terms = set(answer.lower().split())
-    faithful_terms = sum(1 for t in answer_terms if t in context_text)
-    metrics["faithfulness"] = min(1.0, faithful_terms / max(len(answer_terms), 1))
-
-    # Context recall: check coverage of ground truth
-    gt_terms = set(example.ground_truth.lower().split())
-    recall_matches = sum(1 for t in gt_terms if t in context_text)
-    metrics["context_recall"] = min(1.0, recall_matches / max(len(gt_terms), 1))
+    # Score with LLM-as-judge (RAGAS-style)
+    metrics = await _llm_judge_metrics(
+        question=example.question,
+        answer=answer,
+        contexts=contexts,
+        ground_truth=example.ground_truth,
+    )
 
     # Calculate average score
     avg_score = sum(metrics.values()) / len(metrics) if metrics else 0.0
