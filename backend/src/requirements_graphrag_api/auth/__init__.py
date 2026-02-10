@@ -85,7 +85,6 @@ from requirements_graphrag_api.auth.scopes import (
     Scope,
     ScopeChecker,
     check_scopes,
-    require_scope,
     require_scopes,
 )
 
@@ -124,7 +123,6 @@ __all__ = [
     "log_auth_success",
     "log_guardrail_event",
     "log_rate_limit_event",
-    "require_scope",
     "require_scopes",
     "validate_api_key_format",
 ]

@@ -173,19 +173,3 @@ async def filter_output(
         confidence_score=confidence,
         should_add_disclaimer=should_add_disclaimer,
     )
-
-
-async def filter_streaming_output(
-    output_chunk: str,
-    accumulated_output: str,
-    config: OutputFilterConfig = DEFAULT_CONFIG,
-) -> tuple[str, bool]:
-    """Filter streaming output chunk (lightweight check).
-
-    Full toxicity check should be done on the complete output
-    using filter_output() after streaming completes.
-    """
-    if not config.enabled:
-        return output_chunk, True
-
-    return output_chunk, True

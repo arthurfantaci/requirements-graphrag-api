@@ -192,26 +192,3 @@ FEEDBACK_RATE_LIMIT = "30/minute"
 
 # Health endpoint - allow more for monitoring
 HEALTH_RATE_LIMIT = "120/minute"
-
-
-def get_endpoint_limit(endpoint: str) -> str:
-    """Get the rate limit for a specific endpoint.
-
-    Args:
-        endpoint: The endpoint path.
-
-    Returns:
-        Rate limit string for the endpoint.
-    """
-    config = get_guardrail_config()
-
-    if "/chat" in endpoint:
-        return config.rate_limit_chat
-    if "/search" in endpoint:
-        return config.rate_limit_search
-    if "/feedback" in endpoint:
-        return FEEDBACK_RATE_LIMIT
-    if "/health" in endpoint:
-        return HEALTH_RATE_LIMIT
-
-    return config.rate_limit_default

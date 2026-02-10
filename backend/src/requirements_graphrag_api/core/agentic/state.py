@@ -226,35 +226,6 @@ class SynthesisState(TypedDict, total=False):
 
 
 # =============================================================================
-# AGENT STATE (for tool-calling agent loop)
-# =============================================================================
-
-
-class AgentState(TypedDict, total=False):
-    """Core state for the tool-calling agent loop.
-
-    This state is used by the main agent for tool selection and invocation.
-    Uses add_messages reducer to properly handle message updates.
-
-    Required:
-        messages: Conversation messages (uses add_messages reducer).
-
-    Optional:
-        tool_calls_count: Number of tool calls made.
-        iteration_count: Number of agent loop iterations.
-        should_continue: Whether the agent should continue iterating.
-    """
-
-    # Required - messages with add_messages reducer for proper handling
-    messages: Annotated[list[AnyMessage], add_messages]
-
-    # Control flow
-    tool_calls_count: int
-    iteration_count: int
-    should_continue: bool
-
-
-# =============================================================================
 # ORCHESTRATOR STATE (main composed graph)
 # =============================================================================
 
@@ -321,7 +292,6 @@ class OrchestratorState(TypedDict, total=False):
 
 
 __all__ = [
-    "AgentState",
     "CriticEvaluation",
     "EntityInfo",
     "GradeDocuments",

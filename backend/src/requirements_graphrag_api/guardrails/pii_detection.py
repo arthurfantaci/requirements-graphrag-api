@@ -41,20 +41,6 @@ DEFAULT_PII_ENTITIES: tuple[str, ...] = (
     "US_SSN",
 )
 
-# Extended entity list for more comprehensive detection
-EXTENDED_PII_ENTITIES: tuple[str, ...] = (
-    "PERSON",
-    "EMAIL_ADDRESS",
-    "PHONE_NUMBER",
-    "CREDIT_CARD",
-    "US_SSN",
-    "US_BANK_NUMBER",
-    "IP_ADDRESS",
-    "LOCATION",
-    "IBAN_CODE",
-    "MEDICAL_LICENSE",
-)
-
 
 @dataclass(frozen=True, slots=True)
 class DetectedEntity:
