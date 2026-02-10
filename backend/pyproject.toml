@@ -171,6 +171,7 @@ fail_under = 60
 
 [dependency-groups]
 dev = [
+    "langgraph-cli[inmem]>=0.4.12",
     "mypy>=1.19.1",
     "radon>=6.0.1",
     "vulture>=2.14",
