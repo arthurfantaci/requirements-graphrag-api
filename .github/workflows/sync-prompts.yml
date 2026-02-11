@@ -39,9 +39,8 @@ jobs:
           LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
           # LangSmith Hub requires an owner (user or org) for prompts
           LANGSMITH_ORG: ${{ secrets.LANGSMITH_ORG }}
-          # Workspace ID - try both env vars the SDK might check
-          LANGSMITH_TENANT_ID: ${{ secrets.LANGSMITH_WORKSPACE }}
-          LANGCHAIN_TENANT_ID: ${{ secrets.LANGSMITH_WORKSPACE }}
+          # Workspace ID for org-scoped API keys (catalog.py reads this)
+          LANGSMITH_WORKSPACE_ID: ${{ secrets.LANGSMITH_WORKSPACE }}
 
       - name: Summary
         run: |

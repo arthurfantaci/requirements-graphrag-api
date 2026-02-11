@@ -720,17 +720,18 @@ class TestCoreferenceResolution:
 
         resolved_text = "Are there any webinars related to the aerospace industry?"
 
-        # Mock the LangChain chain: template | llm | StrOutputParser
-        mock_final_chain = MagicMock()
-        mock_final_chain.ainvoke = AsyncMock(return_value=resolved_text)
-        mock_intermediate = MagicMock()
-        mock_intermediate.__or__ = MagicMock(return_value=mock_final_chain)
+        # Mock the LangChain chain: template | llm (returns AIMessage)
+        mock_ai_msg = MagicMock()
+        mock_ai_msg.content = resolved_text
+        mock_chain = MagicMock()
+        mock_chain.ainvoke = AsyncMock(return_value=mock_ai_msg)
         mock_prompt = MagicMock()
-        mock_prompt.__or__ = MagicMock(return_value=mock_intermediate)
+        mock_prompt.__or__ = MagicMock(return_value=mock_chain)
 
         with (
             patch(
-                "requirements_graphrag_api.routes.chat.get_prompt_sync",
+                "requirements_graphrag_api.routes.chat.get_prompt",
+                new_callable=AsyncMock,
                 return_value=mock_prompt,
             ),
             patch("langchain_openai.ChatOpenAI"),
@@ -751,16 +752,15 @@ class TestCoreferenceResolution:
 
         history = [ChatMessage(role="user", content="Hi")]
 
-        mock_final_chain = MagicMock()
-        mock_final_chain.ainvoke = AsyncMock(side_effect=RuntimeError("LLM error"))
-        mock_intermediate = MagicMock()
-        mock_intermediate.__or__ = MagicMock(return_value=mock_final_chain)
+        mock_chain = MagicMock()
+        mock_chain.ainvoke = AsyncMock(side_effect=RuntimeError("LLM error"))
         mock_prompt = MagicMock()
-        mock_prompt.__or__ = MagicMock(return_value=mock_intermediate)
+        mock_prompt.__or__ = MagicMock(return_value=mock_chain)
 
         with (
             patch(
-                "requirements_graphrag_api.routes.chat.get_prompt_sync",
+                "requirements_graphrag_api.routes.chat.get_prompt",
+                new_callable=AsyncMock,
                 return_value=mock_prompt,
             ),
             patch("langchain_openai.ChatOpenAI"),
@@ -779,16 +779,17 @@ class TestCoreferenceResolution:
 
         history = [ChatMessage(role="user", content="Hi")]
 
-        mock_final_chain = MagicMock()
-        mock_final_chain.ainvoke = AsyncMock(return_value="")
-        mock_intermediate = MagicMock()
-        mock_intermediate.__or__ = MagicMock(return_value=mock_final_chain)
+        mock_ai_msg = MagicMock()
+        mock_ai_msg.content = ""
+        mock_chain = MagicMock()
+        mock_chain.ainvoke = AsyncMock(return_value=mock_ai_msg)
         mock_prompt = MagicMock()
-        mock_prompt.__or__ = MagicMock(return_value=mock_intermediate)
+        mock_prompt.__or__ = MagicMock(return_value=mock_chain)
 
         with (
             patch(
-                "requirements_graphrag_api.routes.chat.get_prompt_sync",
+                "requirements_graphrag_api.routes.chat.get_prompt",
+                new_callable=AsyncMock,
                 return_value=mock_prompt,
             ),
             patch("langchain_openai.ChatOpenAI"),

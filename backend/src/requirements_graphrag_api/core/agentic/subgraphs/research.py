@@ -23,7 +23,7 @@ from langgraph.graph import END, START, StateGraph
 
 from requirements_graphrag_api.core.agentic.state import EntityInfo, ResearchState
 from requirements_graphrag_api.evaluation.cost_analysis import get_global_cost_tracker
-from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
+from requirements_graphrag_api.prompts import PromptName, get_prompt
 
 if TYPE_CHECKING:
     from neo4j import Driver
@@ -53,6 +53,13 @@ def create_research_subgraph(
     # Import here to avoid circular imports
     from requirements_graphrag_api.core.retrieval import explore_entity
 
+    # Shared LLM instance — avoids re-creating httpx client per node call
+    entity_llm = ChatOpenAI(
+        model=config.chat_model,
+        temperature=0.2,
+        api_key=config.openai_api_key,
+    )
+
     # -------------------------------------------------------------------------
     # Node: identify_entities
     # -------------------------------------------------------------------------
@@ -74,14 +81,8 @@ def create_research_subgraph(
             }
 
         try:
-            prompt_template = get_prompt_sync(PromptName.ENTITY_SELECTOR)
-            llm = ChatOpenAI(
-                model=config.chat_model,
-                temperature=0.2,
-                api_key=config.openai_api_key,
-            )
-
-            chain = prompt_template | llm
+            prompt_template = await get_prompt(PromptName.ENTITY_SELECTOR)
+            chain = prompt_template | entity_llm
             response = await chain.ainvoke(
                 {
                     "context": context,

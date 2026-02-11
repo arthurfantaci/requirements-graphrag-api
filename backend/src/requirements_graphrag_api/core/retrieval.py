@@ -23,6 +23,7 @@ Retrieval Patterns:
 from __future__ import annotations
 
 import ast
+import asyncio
 import logging
 import os
 from dataclasses import dataclass
@@ -132,8 +133,8 @@ async def vector_search(
     """
     logger.info("Vector search: query='%s', limit=%d", query, limit)
 
-    # Perform similarity search with scores
-    results = retriever.search(query_text=query, top_k=limit)
+    # Perform similarity search with scores (sync API, offload to thread)
+    results = await asyncio.to_thread(retriever.search, query_text=query, top_k=limit)
 
     # Get article context for each chunk
     # Note: neo4j-graphrag VectorRetriever returns 'id' not 'element_id'
@@ -144,28 +145,34 @@ async def vector_search(
             chunk_ids.append(node_id)
 
     # Fetch article metadata for chunks
-    article_context = {}
+    article_context: dict[str, dict[str, Any]] = {}
     if chunk_ids:
-        with driver.session() as session:
-            context_result = session.run(
-                """
-                MATCH (c:Chunk)-[:FROM_ARTICLE]->(a:Article)
-                WHERE elementId(c) IN $chunk_ids
-                RETURN elementId(c) AS chunk_id,
-                       a.article_title AS title,
-                       a.url AS url,
-                       a.article_id AS article_id,
-                       a.chapter_title AS chapter
-                """,
-                chunk_ids=chunk_ids,
-            )
-            for record in context_result:
-                article_context[record["chunk_id"]] = {
-                    "title": record["title"],
-                    "url": record["url"],
-                    "article_id": record["article_id"],
-                    "chapter": record["chapter"],
-                }
+
+        def _fetch_article_context() -> dict[str, dict[str, Any]]:
+            ctx: dict[str, dict[str, Any]] = {}
+            with driver.session() as session:
+                context_result = session.run(
+                    """
+                    MATCH (c:Chunk)-[:FROM_ARTICLE]->(a:Article)
+                    WHERE elementId(c) IN $chunk_ids
+                    RETURN elementId(c) AS chunk_id,
+                           a.article_title AS title,
+                           a.url AS url,
+                           a.article_id AS article_id,
+                           a.chapter_title AS chapter
+                    """,
+                    chunk_ids=chunk_ids,
+                )
+                for record in context_result:
+                    ctx[record["chunk_id"]] = {
+                        "title": record["title"],
+                        "url": record["url"],
+                        "article_id": record["article_id"],
+                        "chapter": record["chapter"],
+                    }
+            return ctx
+
+        article_context = await asyncio.to_thread(_fetch_article_context)
 
     # Format results
     formatted = []
@@ -242,40 +249,43 @@ async def hybrid_search(
     vector_results = await vector_search(retriever, driver, query, limit=limit * 2)
 
     # Get keyword search results using fulltext index on chunks
-    keyword_results = []
-    try:
-        with driver.session() as session:
-            keyword_result = session.run(
-                """
-                CALL db.index.fulltext.queryNodes('chunk_fulltext', $query)
-                YIELD node, score
-                MATCH (node)-[:FROM_ARTICLE]->(a:Article)
-                RETURN node.text AS content,
-                       score,
-                       {
-                           article_id: a.article_id,
-                           title: a.article_title,
-                           chapter: a.chapter_title,
-                           url: a.url,
-                           chunk_id: elementId(node)
-                       } AS metadata
-                LIMIT $limit
-                """,
-                query=query,
-                limit=limit * 2,
-            )
-            keyword_results = [
-                {
-                    "content": r["content"],
-                    "score": float(r["score"]),
-                    "metadata": dict(r["metadata"]) if r["metadata"] else {},
-                    "source": "keyword",
-                }
-                for r in keyword_result
-            ]
-    except Exception as e:
-        # Fulltext index may not exist - fall back to vector only
-        logger.warning("Keyword search failed (fulltext index may not exist): %s", e)
+    def _keyword_search() -> list[dict[str, Any]]:
+        try:
+            with driver.session() as session:
+                keyword_result = session.run(
+                    """
+                    CALL db.index.fulltext.queryNodes('chunk_fulltext', $query)
+                    YIELD node, score
+                    MATCH (node)-[:FROM_ARTICLE]->(a:Article)
+                    RETURN node.text AS content,
+                           score,
+                           {
+                               article_id: a.article_id,
+                               title: a.article_title,
+                               chapter: a.chapter_title,
+                               url: a.url,
+                               chunk_id: elementId(node)
+                           } AS metadata
+                    LIMIT $limit
+                    """,
+                    query=query,
+                    limit=limit * 2,
+                )
+                return [
+                    {
+                        "content": r["content"],
+                        "score": float(r["score"]),
+                        "metadata": dict(r["metadata"]) if r["metadata"] else {},
+                        "source": "keyword",
+                    }
+                    for r in keyword_result
+                ]
+        except Exception as e:
+            # Fulltext index may not exist - fall back to vector only
+            logger.warning("Keyword search failed (fulltext index may not exist): %s", e)
+            return []
+
+    keyword_results = await asyncio.to_thread(_keyword_search)
 
     # Merge and deduplicate results
     seen_ids = set()
@@ -823,55 +833,56 @@ async def graph_enriched_search(
         return base_results
 
     # ==========================================================================
-    # Level 1: Window Expansion
+    # Run all enrichment queries in parallel via asyncio.gather()
+    # Each sync Neo4j call is offloaded to the thread pool to avoid
+    # blocking the event loop. Expected latency improvement: 3-5x.
     # ==========================================================================
-    window_context: dict[str, dict[str, str | None]] = {}
-    if opts.enable_window_expansion:
-        window_context = _enrich_with_window_context(
-            driver, chunk_ids, window_size=opts.window_size
-        )
 
-    # ==========================================================================
-    # Level 2: Entity Extraction with Properties
-    # ==========================================================================
-    entities_by_chunk: dict[str, list[dict[str, Any]]] = {}
-    if opts.enable_entity_extraction:
-        entities_by_chunk = _enrich_with_entities(
+    async def _noop() -> dict:
+        return {}
+
+    (
+        window_context,
+        entities_by_chunk,
+        relationships_by_chunk,
+        industry_context,
+        media_by_chunk,
+        references_by_chunk,
+        definitions_by_chunk,
+    ) = await asyncio.gather(
+        asyncio.to_thread(_enrich_with_window_context, driver, chunk_ids, opts.window_size)
+        if opts.enable_window_expansion
+        else _noop(),
+        asyncio.to_thread(
+            _enrich_with_entities,
             driver,
             chunk_ids,
-            max_entities=opts.max_entities_per_chunk,
-            include_properties=opts.include_entity_properties,
+            opts.max_entities_per_chunk,
+            opts.include_entity_properties,
         )
-
-    # ==========================================================================
-    # Level 3: Semantic Relationship Traversal
-    # ==========================================================================
-    relationships_by_chunk: dict[str, list[dict[str, Any]]] = {}
-    if opts.enable_semantic_traversal:
-        relationships_by_chunk = _enrich_with_semantic_relationships(
+        if opts.enable_entity_extraction
+        else _noop(),
+        asyncio.to_thread(
+            _enrich_with_semantic_relationships,
             driver,
             chunk_ids,
-            relationship_types=opts.relationship_types,
-            max_related=opts.max_related_per_entity,
+            opts.relationship_types,
+            opts.max_related_per_entity,
         )
-
-    # ==========================================================================
-    # Level 4: Domain Context
-    # ==========================================================================
-    industry_context: dict[str, list[dict[str, Any]]] = {}
-    if opts.enable_industry_context:
-        industry_context = _enrich_with_industry_context(driver, chunk_ids)
-
-    media_by_chunk: dict[str, dict[str, list[dict[str, Any]]]] = {}
-    if opts.enable_media_enrichment:
-        media_by_chunk = _enrich_with_media(driver, chunk_ids, max_items=opts.max_media_items)
-
-    references_by_chunk: dict[str, list[dict[str, str]]] = {}
-    if opts.enable_cross_references:
-        references_by_chunk = _enrich_with_cross_references(driver, chunk_ids)
-
-    # Always include definitions (they're core to understanding)
-    definitions_by_chunk = _enrich_with_definitions(driver, chunk_ids)
+        if opts.enable_semantic_traversal
+        else _noop(),
+        asyncio.to_thread(_enrich_with_industry_context, driver, chunk_ids)
+        if opts.enable_industry_context
+        else _noop(),
+        asyncio.to_thread(_enrich_with_media, driver, chunk_ids, opts.max_media_items)
+        if opts.enable_media_enrichment
+        else _noop(),
+        asyncio.to_thread(_enrich_with_cross_references, driver, chunk_ids)
+        if opts.enable_cross_references
+        else _noop(),
+        # Always include definitions (they're core to understanding)
+        asyncio.to_thread(_enrich_with_definitions, driver, chunk_ids),
+    )
 
     # ==========================================================================
     # Assemble Enriched Results
@@ -907,7 +918,7 @@ async def graph_enriched_search(
     return enriched
 
 
-def get_entities_from_chunks(
+async def get_entities_from_chunks(
     driver: Driver,
     chunk_ids: list[str],
 ) -> list[dict[str, Any]]:
@@ -925,26 +936,29 @@ def get_entities_from_chunks(
     if not chunk_ids:
         return []
 
-    with driver.session() as session:
-        result = session.run(
-            """
-            MATCH (entity)-[:MENTIONED_IN]->(c:Chunk)
-            WHERE elementId(c) IN $chunk_ids
-            WITH entity, labels(entity)[0] AS label, count(*) AS mentions
-            RETURN label,
-                   entity.name AS name,
-                   entity.display_name AS display_name,
-                   entity.definition AS definition,
-                   mentions
-            ORDER BY mentions DESC, label, name
-            LIMIT 20
-            """,
-            chunk_ids=chunk_ids,
-        )
-        return [dict(record) for record in result]
+    def _query() -> list[dict[str, Any]]:
+        with driver.session() as session:
+            result = session.run(
+                """
+                MATCH (entity)-[:MENTIONED_IN]->(c:Chunk)
+                WHERE elementId(c) IN $chunk_ids
+                WITH entity, labels(entity)[0] AS label, count(*) AS mentions
+                RETURN label,
+                       entity.name AS name,
+                       entity.display_name AS display_name,
+                       entity.definition AS definition,
+                       mentions
+                ORDER BY mentions DESC, label, name
+                LIMIT 20
+                """,
+                chunk_ids=chunk_ids,
+            )
+            return [dict(record) for record in result]
+
+    return await asyncio.to_thread(_query)
 
 
-def search_entities_by_name(
+async def search_entities_by_name(
     driver: Driver,
     search_term: str,
 ) -> list[dict[str, Any]]:
@@ -957,32 +971,36 @@ def search_entities_by_name(
     Returns:
         List of matching entities with their connection counts.
     """
-    with driver.session() as session:
-        result = session.run(
-            """
-            MATCH (n)
-            WHERE (n:Concept OR n:Challenge OR n:Bestpractice OR n:Standard
-                   OR n:Methodology OR n:Artifact OR n:Tool OR n:Role
-                   OR n:Processstage OR n:Industry)
-                  AND (toLower(n.name) CONTAINS toLower($term)
-                       OR toLower(n.display_name) CONTAINS toLower($term))
-            WITH n, labels(n)[0] AS label
-            OPTIONAL MATCH (n)-[r]-(related)
-            WITH n, label, count(DISTINCT related) AS connections
-            RETURN label,
-                   n.name AS name,
-                   n.display_name AS display_name,
-                   n.definition AS definition,
-                   connections
-            ORDER BY connections DESC
-            LIMIT 10
-            """,
-            term=search_term,
-        )
-        return [dict(record) for record in result]
+
+    def _query() -> list[dict[str, Any]]:
+        with driver.session() as session:
+            result = session.run(
+                """
+                MATCH (n)
+                WHERE (n:Concept OR n:Challenge OR n:Bestpractice OR n:Standard
+                       OR n:Methodology OR n:Artifact OR n:Tool OR n:Role
+                       OR n:Processstage OR n:Industry)
+                      AND (toLower(n.name) CONTAINS toLower($term)
+                           OR toLower(n.display_name) CONTAINS toLower($term))
+                WITH n, labels(n)[0] AS label
+                OPTIONAL MATCH (n)-[r]-(related)
+                WITH n, label, count(DISTINCT related) AS connections
+                RETURN label,
+                       n.name AS name,
+                       n.display_name AS display_name,
+                       n.definition AS definition,
+                       connections
+                ORDER BY connections DESC
+                LIMIT 10
+                """,
+                term=search_term,
+            )
+            return [dict(record) for record in result]
+
+    return await asyncio.to_thread(_query)
 
 
-def get_related_entities(
+async def get_related_entities(
     driver: Driver,
     entity_name: str,
 ) -> list[dict[str, Any]]:
@@ -995,26 +1013,30 @@ def get_related_entities(
     Returns:
         List of related entities with relationship information.
     """
-    with driver.session() as session:
-        result = session.run(
-            """
-            MATCH (n {name: $name})-[r]-(related)
-            WHERE NOT related:Chunk AND NOT related:Article
-            WITH type(r) AS rel_type,
-                 labels(related)[0] AS related_label,
-                 related.name AS related_name,
-                 related.display_name AS related_display,
-                 startNode(r) = n AS outgoing
-            RETURN rel_type,
-                   CASE WHEN outgoing THEN '->' ELSE '<-' END AS direction,
-                   related_label,
-                   related_name,
-                   related_display
-            ORDER BY rel_type, related_label
-            """,
-            name=entity_name.lower(),
-        )
-        return [dict(record) for record in result]
+
+    def _query() -> list[dict[str, Any]]:
+        with driver.session() as session:
+            result = session.run(
+                """
+                MATCH (n {name: $name})-[r]-(related)
+                WHERE NOT related:Chunk AND NOT related:Article
+                WITH type(r) AS rel_type,
+                     labels(related)[0] AS related_label,
+                     related.name AS related_name,
+                     related.display_name AS related_display,
+                     startNode(r) = n AS outgoing
+                RETURN rel_type,
+                       CASE WHEN outgoing THEN '->' ELSE '<-' END AS direction,
+                       related_label,
+                       related_name,
+                       related_display
+                ORDER BY rel_type, related_label
+                """,
+                name=entity_name.lower(),
+            )
+            return [dict(record) for record in result]
+
+    return await asyncio.to_thread(_query)
 
 
 @traceable_safe(name="explore_entity", run_type="retriever")
@@ -1039,21 +1061,24 @@ async def explore_entity(
     logger.info("Exploring entity: '%s'", entity_name)
 
     # Find the entity (case-insensitive search)
-    with driver.session() as session:
-        entity_result = session.run(
-            """
-            MATCH (e)
-            WHERE (e:Concept OR e:Challenge OR e:Bestpractice OR e:Standard
-                   OR e:Methodology OR e:Artifact OR e:Tool OR e:Role
-                   OR e:Processstage OR e:Industry)
-              AND (toLower(e.name) CONTAINS toLower($name)
-                   OR toLower(e.display_name) CONTAINS toLower($name))
-            RETURN e, labels(e) AS labels
-            LIMIT 1
-            """,
-            name=entity_name,
-        )
-        result = list(entity_result)
+    def _find_entity() -> list[Any]:
+        with driver.session() as session:
+            entity_result = session.run(
+                """
+                MATCH (e)
+                WHERE (e:Concept OR e:Challenge OR e:Bestpractice OR e:Standard
+                       OR e:Methodology OR e:Artifact OR e:Tool OR e:Role
+                       OR e:Processstage OR e:Industry)
+                  AND (toLower(e.name) CONTAINS toLower($name)
+                       OR toLower(e.display_name) CONTAINS toLower($name))
+                RETURN e, labels(e) AS labels
+                LIMIT 1
+                """,
+                name=entity_name,
+            )
+            return list(entity_result)
+
+    result = await asyncio.to_thread(_find_entity)
 
     if not result:
         logger.info("Entity not found: '%s'", entity_name)
@@ -1070,46 +1095,48 @@ async def explore_entity(
     }
 
     if include_related:
-        with driver.session() as session:
-            # Get related entities
-            related_result = session.run(
-                """
-                MATCH (e {name: $name})-[r]-(related)
-                WHERE NOT related:Chunk AND NOT related:Article
-                RETURN type(r) AS relationship,
-                       related.name AS name,
-                       related.display_name AS display_name,
-                       labels(related) AS labels
-                LIMIT $limit
-                """,
-                name=entity.get("name"),
-                limit=related_limit,
-            )
 
-            response["related"] = [
-                {
-                    "name": r["name"],
-                    "display_name": r["display_name"],
-                    "relationship": r["relationship"],
-                    "labels": r["labels"],
-                }
-                for r in related_result
-            ]
+        def _get_related() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+            with driver.session() as session:
+                related_result = session.run(
+                    """
+                    MATCH (e {name: $name})-[r]-(related)
+                    WHERE NOT related:Chunk AND NOT related:Article
+                    RETURN type(r) AS relationship,
+                           related.name AS name,
+                           related.display_name AS display_name,
+                           labels(related) AS labels
+                    LIMIT $limit
+                    """,
+                    name=entity.get("name"),
+                    limit=related_limit,
+                )
+                related = [
+                    {
+                        "name": r["name"],
+                        "display_name": r["display_name"],
+                        "relationship": r["relationship"],
+                        "labels": r["labels"],
+                    }
+                    for r in related_result
+                ]
 
-            # Get chunks that mention this entity (reversed direction)
-            chunks_result = session.run(
-                """
-                MATCH (e {name: $name})-[:MENTIONED_IN]->(c:Chunk)
-                MATCH (c)-[:FROM_ARTICLE]->(a:Article)
-                RETURN DISTINCT a.article_title AS article,
-                       a.url AS url
-                LIMIT 5
-                """,
-                name=entity.get("name"),
-            )
-            response["mentioned_in"] = [
-                {"article": m["article"], "url": m["url"]} for m in chunks_result
-            ]
+                chunks_result = session.run(
+                    """
+                    MATCH (e {name: $name})-[:MENTIONED_IN]->(c:Chunk)
+                    MATCH (c)-[:FROM_ARTICLE]->(a:Article)
+                    RETURN DISTINCT a.article_title AS article,
+                           a.url AS url
+                    LIMIT 5
+                    """,
+                    name=entity.get("name"),
+                )
+                mentioned = [{"article": m["article"], "url": m["url"]} for m in chunks_result]
+                return related, mentioned
+
+        related_list, mentioned_list = await asyncio.to_thread(_get_related)
+        response["related"] = related_list
+        response["mentioned_in"] = mentioned_list
 
     related_count = len(response.get("related", []))
     logger.info("Entity exploration complete: found %d related entities", related_count)

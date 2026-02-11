@@ -80,9 +80,9 @@ async def create_rag_target(
     from langchain_core.output_parsers import StrOutputParser
     from langchain_openai import ChatOpenAI
 
-    from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
+    from requirements_graphrag_api.prompts import PromptName, get_prompt
 
-    prompt_template = get_prompt_sync(PromptName.RAG_GENERATION)
+    prompt_template = await get_prompt(PromptName.RAG_GENERATION)
     llm = ChatOpenAI(model=model, temperature=0.1)
 
     async def rag_target(inputs: dict[str, Any]) -> dict[str, Any]:
@@ -160,10 +160,10 @@ def run_evaluation(
     from langsmith import Client, evaluate
 
     from requirements_graphrag_api.evaluation.ragas_evaluators import (
-        answer_relevancy_evaluator_sync,
-        context_precision_evaluator_sync,
-        context_recall_evaluator_sync,
-        faithfulness_evaluator_sync,
+        answer_relevancy_evaluator,
+        context_precision_evaluator,
+        context_recall_evaluator,
+        faithfulness_evaluator,
     )
 
     client = Client()
@@ -221,10 +221,10 @@ def run_evaluation(
 
     # Define evaluators
     evaluators = [
-        faithfulness_evaluator_sync,
-        answer_relevancy_evaluator_sync,
-        context_precision_evaluator_sync,
-        context_recall_evaluator_sync,
+        faithfulness_evaluator,
+        answer_relevancy_evaluator,
+        context_precision_evaluator,
+        context_recall_evaluator,
     ]
 
     # Run evaluation with LangSmith

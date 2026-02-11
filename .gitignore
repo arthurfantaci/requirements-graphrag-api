@@ -71,6 +71,7 @@ logs/
 
 # Generated output
 evaluation_results.json
+ci_evaluation_results.json
 comparison_results.json
 
 # Runtime data

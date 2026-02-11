@@ -338,7 +338,8 @@ class TestClassifyIntentConversational:
                 return_value=None,
             ),
             patch(
-                "requirements_graphrag_api.core.routing.get_prompt_sync",
+                "requirements_graphrag_api.core.routing.get_prompt",
+                new_callable=AsyncMock,
                 return_value=mock_prompt,
             ),
             patch("requirements_graphrag_api.core.routing.ChatOpenAI"),

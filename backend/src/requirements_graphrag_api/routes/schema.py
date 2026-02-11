@@ -6,6 +6,7 @@ Updated Data Model (2026-01):
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Request
@@ -33,29 +34,31 @@ async def get_schema(request: Request) -> dict[str, Any]:
     """
     driver: Driver = request.app.state.driver
 
-    with driver.session() as session:
-        # Get node label counts
-        node_result = session.run(
-            """
-            MATCH (n)
-            WITH labels(n) AS labels
-            UNWIND labels AS label
-            RETURN label, count(*) AS count
-            ORDER BY count DESC
-            """
-        )
-        node_counts = [dict(record) for record in node_result]
+    def _query() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        with driver.session() as session:
+            node_result = session.run(
+                """
+                MATCH (n)
+                WITH labels(n) AS labels
+                UNWIND labels AS label
+                RETURN label, count(*) AS count
+                ORDER BY count DESC
+                """
+            )
+            nodes = [dict(record) for record in node_result]
 
-        # Get relationship type counts
-        rel_result = session.run(
-            """
-            MATCH ()-[r]->()
-            RETURN type(r) AS type, count(*) AS count
-            ORDER BY count DESC
-            LIMIT 20
-            """
-        )
-        rel_counts = [dict(record) for record in rel_result]
+            rel_result = session.run(
+                """
+                MATCH ()-[r]->()
+                RETURN type(r) AS type, count(*) AS count
+                ORDER BY count DESC
+                LIMIT 20
+                """
+            )
+            rels = [dict(record) for record in rel_result]
+            return nodes, rels
+
+    node_counts, rel_counts = await asyncio.to_thread(_query)
 
     return {
         "node_labels": node_counts,

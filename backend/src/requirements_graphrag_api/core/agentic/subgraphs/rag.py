@@ -3,12 +3,10 @@
 This subgraph handles the retrieval phase:
 1. Query expansion using QUERY_EXPANSION prompt
 2. Parallel retrieval across multiple queries
-3. Result deduplication and ranking
-4. Document grading (quality gate)
+3. Result deduplication, ranking, and quality gate
 
 Flow:
-    START -> expand_queries -> parallel_retrieve -> dedupe_and_rank
-         -> grade_documents -> END
+    START -> expand_queries -> parallel_retrieve -> dedupe_and_rank -> END
 
 State:
     RAGState with query, expanded_queries, raw_results, ranked_results,
@@ -30,7 +28,7 @@ from requirements_graphrag_api.core.agentic.state import (
     RetrievedDocument,
 )
 from requirements_graphrag_api.evaluation.cost_analysis import get_global_cost_tracker
-from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
+from requirements_graphrag_api.prompts import PromptName, get_prompt
 
 if TYPE_CHECKING:
     from neo4j import Driver
@@ -64,6 +62,13 @@ def create_rag_subgraph(
     # Import here to avoid circular imports
     from requirements_graphrag_api.core.retrieval import graph_enriched_search
 
+    # Shared LLM instance — avoids re-creating httpx client per node call
+    expansion_llm = ChatOpenAI(
+        model=config.conversational_model,
+        temperature=0.3,
+        api_key=config.openai_api_key,
+    )
+
     # -------------------------------------------------------------------------
     # Node: expand_queries
     # -------------------------------------------------------------------------
@@ -77,14 +82,8 @@ def create_rag_subgraph(
         logger.info("Expanding query: %s", query[:50])
 
         try:
-            prompt_template = get_prompt_sync(PromptName.QUERY_EXPANSION)
-            llm = ChatOpenAI(
-                model=config.conversational_model,
-                temperature=0.3,
-                api_key=config.openai_api_key,
-            )
-
-            chain = prompt_template | llm
+            prompt_template = await get_prompt(PromptName.QUERY_EXPANSION)
+            chain = prompt_template | expansion_llm
             response = await chain.ainvoke({"question": query})
             get_global_cost_tracker().record_from_response(
                 config.conversational_model, response, operation="query_expansion"
@@ -252,34 +251,15 @@ def create_rag_subgraph(
             }
         )
 
+        # Quality gate — vector similarity is a sufficient relevance signal;
+        # LLM grading was removed in #148 (too slow, rejected valid content).
+        total = len(ranked_results)
+        quality_pass = total > 0
+        logger.info("Quality gate: %d docs, quality_pass=%s", total, quality_pass)
+
         return {
             "ranked_results": ranked_results,
             "retrieval_metadata": metadata,
-        }
-
-    # -------------------------------------------------------------------------
-    # Node: grade_documents
-    # -------------------------------------------------------------------------
-    async def grade_documents(state: RAGState) -> dict[str, Any]:
-        """Pass all ranked documents through as relevant.
-
-        LLM-based grading is disabled — it added latency (10 sequential
-        calls) and rejected valid documents (webinar content, domain-
-        qualified queries).  Vector similarity from retrieval is a
-        sufficient relevance signal for now.
-        """
-        ranked_results = state.get("ranked_results", [])
-        total = len(ranked_results)
-        quality_pass = total > 0
-
-        logger.info(
-            "Grade pass-through: %d docs, quality_pass=%s",
-            total,
-            quality_pass,
-        )
-
-        return {
-            "ranked_results": ranked_results,
             "relevant_count": total,
             "total_count": total,
             "quality_pass": quality_pass,
@@ -294,14 +274,12 @@ def create_rag_subgraph(
     builder.add_node("expand_queries", expand_queries)
     builder.add_node("parallel_retrieve", parallel_retrieve)
     builder.add_node("dedupe_and_rank", dedupe_and_rank)
-    builder.add_node("grade_documents", grade_documents)
 
     # Add edges (linear flow)
     builder.add_edge(START, "expand_queries")
     builder.add_edge("expand_queries", "parallel_retrieve")
     builder.add_edge("parallel_retrieve", "dedupe_and_rank")
-    builder.add_edge("dedupe_and_rank", "grade_documents")
-    builder.add_edge("grade_documents", END)
+    builder.add_edge("dedupe_and_rank", END)
 
     return builder.compile()
 

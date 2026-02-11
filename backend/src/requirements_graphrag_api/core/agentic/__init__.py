@@ -35,7 +35,6 @@ from requirements_graphrag_api.core.agentic.orchestrator import (
     create_orchestrator_graph,
 )
 from requirements_graphrag_api.core.agentic.state import (
-    AgentState,
     CriticEvaluation,
     EntityInfo,
     OrchestratorState,
@@ -51,7 +50,6 @@ from requirements_graphrag_api.core.agentic.streaming import (
 )
 
 __all__ = [
-    "AgentState",
     "AgenticEvent",
     "AgenticEventType",
     "CriticEvaluation",

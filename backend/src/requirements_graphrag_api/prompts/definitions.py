@@ -40,6 +40,12 @@ class PromptName(StrEnum):
     SYNTHESIS = "graphrag-synthesis"
     ENTITY_SELECTOR = "graphrag-entity-selector"
 
+    # Evaluation prompts (LLM-as-judge)
+    EVAL_FAITHFULNESS = "graphrag-eval-faithfulness"
+    EVAL_ANSWER_RELEVANCY = "graphrag-eval-answer-relevancy"
+    EVAL_CONTEXT_PRECISION = "graphrag-eval-context-precision"
+    EVAL_CONTEXT_RECALL = "graphrag-eval-context-recall"
+
 
 @dataclass(frozen=True)
 class PromptMetadata:
@@ -221,58 +227,6 @@ CRITIC_METADATA = PromptMetadata(
 
 
 # =============================================================================
-# STEPBACK PROMPT (DEPRECATED — superseded by QUERY_EXPANSION)
-# Kept for potential A/B testing of single-strategy vs multi-strategy expansion.
-# QUERY_EXPANSION includes step-back as one of three built-in strategies.
-# =============================================================================
-
-STEPBACK_SYSTEM: Final[
-    str
-] = """You are a query refinement assistant for a Requirements Management knowledge base.
-
-Your task is to transform specific questions into broader, more general queries.
-This helps retrieve better context by finding foundational information first.
-
-Guidelines:
-- Remove specific details, names, or narrow constraints
-- Focus on the underlying concept or principle
-- Maintain the domain relevance (requirements management)
-- Keep the query concise (1-2 sentences)
-
-Examples:
-- Specific: "What are the ASIL levels in ISO 26262?"
-  Broader: "What is ISO 26262 and how does it classify safety?"
-
-- Specific: "How does Jama Connect handle trace links?"
-  Broader: "What is requirements traceability and how is it implemented?"
-
-- Specific: "What's the difference between verification and validation in DO-178C?"
-  Broader: "What are verification and validation in requirements management?"
-
-Respond with ONLY the broader question, no explanation."""
-
-STEPBACK_TEMPLATE = ChatPromptTemplate.from_messages(
-    [
-        ("system", STEPBACK_SYSTEM),
-        ("human", "Specific question: {question}\n\nBroader question:"),
-    ]
-)
-
-STEPBACK_METADATA = PromptMetadata(
-    version="1.0.0",
-    description="Transforms specific questions into broader queries for step-back prompting",
-    input_variables=["question"],
-    output_format="text",
-    evaluation_criteria=[
-        "appropriate_generalization",
-        "domain_relevance",
-        "retrieval_improvement",
-    ],
-    tags=["query_refinement", "agentic", "stepback"],
-)
-
-
-# =============================================================================
 # QUERY UPDATER PROMPT
 # Updates remaining questions with context from answered parts
 # =============================================================================
@@ -403,47 +357,8 @@ Key Relationships:
 - (Chunk)-[:NEXT_CHUNK]->(Chunk)
 
 Few-Shot Examples:
-{examples}
 
-Guidelines:
-1. Use MATCH for read queries only (no CREATE, MERGE, DELETE)
-2. Use toLower() for case-insensitive matching
-3. Use CONTAINS for partial text matching
-4. Return meaningful property values, not just node counts
-5. Limit results to 25 unless aggregating
-6. For media queries (webinars, videos, images), traverse from Article
-7. For media listing queries, use COLLECT(DISTINCT ...) to aggregate
-   source articles and avoid duplicate rows
-
-Generate only the Cypher query, no explanation."""
-
-TEXT2CYPHER_TEMPLATE = ChatPromptTemplate.from_messages(
-    [
-        ("system", TEXT2CYPHER_SYSTEM),
-        ("human", "Question: {question}\n\nCypher:"),
-    ]
-)
-
-TEXT2CYPHER_METADATA = PromptMetadata(
-    version="1.0.0",
-    description="Converts natural language questions to Cypher queries",
-    input_variables=["schema", "examples", "question"],
-    output_format="cypher",
-    evaluation_criteria=[
-        "syntactic_validity",
-        "semantic_correctness",
-        "result_accuracy",
-        "read_only_compliance",
-    ],
-    tags=["text2cypher", "graph", "query_generation"],
-)
-
-
-# =============================================================================
-# TEXT2CYPHER FEW-SHOT EXAMPLES
-# =============================================================================
-
-TEXT2CYPHER_EXAMPLES: Final[str] = """Example 1:
+Example 1:
 Question: How many articles are in the knowledge base?
 Cypher: MATCH (a:Article)
 RETURN count(a) AS article_count
@@ -519,87 +434,38 @@ Cypher: MATCH (w:Webinar)
 WITH count(w) AS webinar_count
 MATCH (v:Video)
 RETURN webinar_count, count(v) AS video_count
-"""
 
+Guidelines:
+1. Use MATCH for read queries only (no CREATE, MERGE, DELETE)
+2. Use toLower() for case-insensitive matching
+3. Use CONTAINS for partial text matching
+4. Return meaningful property values, not just node counts
+5. Limit results to 25 unless aggregating
+6. For media queries (webinars, videos, images), traverse from Article
+7. For media listing queries, use COLLECT(DISTINCT ...) to aggregate
+   source articles and avoid duplicate rows
 
-# =============================================================================
-# AGENT REASONING PROMPT (ROADMAP — future ReAct-style agent migration)
-# This prompt enables a dynamic tool-calling agent loop, replacing the current
-# fixed LangGraph DAG (RAG→Research→Synthesis) with LLM-driven tool selection.
-# Wire when migrating from fixed orchestrator to ReAct agent architecture.
-# =============================================================================
+Generate only the Cypher query, no explanation."""
 
-AGENT_REASONING_SYSTEM: Final[str] = """You are an intelligent Requirements Management assistant \
-with access to specialized tools.
-
-Your goal is to answer questions about requirements management, traceability, standards, \
-and related concepts by selecting and using the appropriate tools.
-
-## Available Tools
-
-1. **graph_search** - Search the knowledge base using hybrid vector + graph retrieval
-   - Use for: explanations, concepts, best practices, how-to questions
-   - Returns: ranked content chunks with citations
-
-2. **text2cypher** - Convert questions to Cypher queries for structured data
-   - Use for: counts, lists, enumerations, specific lookups
-   - Returns: query results from the knowledge graph
-
-3. **explore_entity** - Deep dive into a specific entity
-   - Use for: understanding relationships, finding related content
-   - Returns: entity details, related entities, article mentions
-
-4. **lookup_standard** - Get information about industry standards
-   - Use for: specific standard details (ISO 26262, DO-178C, etc.)
-   - Returns: standard info, applicable industries, related standards
-
-5. **search_standards** - Search for standards by criteria
-   - Use for: finding relevant standards for a domain
-   - Returns: list of matching standards
-
-6. **search_definitions** - Search terminology definitions
-   - Use for: finding definitions of technical terms
-   - Returns: matching term definitions
-
-7. **lookup_term** - Get precise definition of a term
-   - Use for: exact term/acronym definitions
-   - Returns: term definition with source
-
-## Decision Guidelines
-
-1. **Start with the most likely tool** - Use graph_search for explanatory questions, \
-text2cypher for structured queries
-2. **Use multiple tools when needed** - Complex questions may require combining results
-3. **Iterate if context is insufficient** - If first results don't fully answer, try different tools
-4. **Know when to stop** - Don't over-iterate; 2-3 tool calls usually suffice
-5. **Synthesize clearly** - Combine tool results into a coherent, cited answer
-
-## Iteration Control
-
-- Maximum iterations: {max_iterations}
-- Current iteration: {iteration}
-- Stop when you have sufficient context to answer confidently
-
-Think step-by-step about which tool(s) will best answer the question."""
-
-AGENT_REASONING_TEMPLATE = ChatPromptTemplate.from_messages(
+TEXT2CYPHER_TEMPLATE = ChatPromptTemplate.from_messages(
     [
-        ("system", AGENT_REASONING_SYSTEM),
-        MessagesPlaceholder(variable_name="messages"),
+        ("system", TEXT2CYPHER_SYSTEM),
+        ("human", "Question: {question}\n\nCypher:"),
     ]
 )
 
-AGENT_REASONING_METADATA = PromptMetadata(
+TEXT2CYPHER_METADATA = PromptMetadata(
     version="1.0.0",
-    description="Main agent loop prompt for tool selection and reasoning",
-    input_variables=["max_iterations", "iteration", "messages"],
-    output_format="text",
+    description="Converts natural language questions to Cypher queries",
+    input_variables=["schema", "question"],
+    output_format="cypher",
     evaluation_criteria=[
-        "tool_selection_accuracy",
-        "iteration_efficiency",
-        "reasoning_quality",
+        "syntactic_validity",
+        "semantic_correctness",
+        "result_accuracy",
+        "read_only_compliance",
     ],
-    tags=["agentic", "reasoning", "tool_selection"],
+    tags=["text2cypher", "graph", "query_generation"],
 )
 
 
@@ -928,6 +794,172 @@ COREFERENCE_RESOLVER_METADATA = PromptMetadata(
 
 
 # =============================================================================
+# EVALUATION PROMPTS — LLM-as-judge (RAGAS-style)
+# Used by ragas_evaluators.py for offline evaluation via langsmith.evaluate()
+# =============================================================================
+
+EVAL_FAITHFULNESS_SYSTEM: Final[str] = """You are evaluating the faithfulness of an answer \
+to its source context.
+
+Given:
+- **Context**: {context}
+- **Question**: {question}
+- **Answer**: {answer}
+
+## Task
+
+Determine whether every claim in the answer is supported by the context.
+
+## Step-by-step
+
+1. Extract each distinct claim from the answer.
+2. For each claim, check if it is SUPPORTED, PARTIALLY SUPPORTED, or NOT SUPPORTED by the context.
+3. Calculate: score = fully_supported / total_claims (partially supported counts as 0.5).
+
+## Output
+
+Respond with ONLY a JSON object:
+{{"claims": [{{"claim": "...", "verdict": "supported|partial|unsupported"}}], \
+"score": <float 0.0-1.0>, "reasoning": "<brief explanation>"}}"""
+
+EVAL_FAITHFULNESS_TEMPLATE = ChatPromptTemplate.from_messages(
+    [
+        ("system", EVAL_FAITHFULNESS_SYSTEM),
+        ("human", "Evaluate faithfulness:"),
+    ]
+)
+
+EVAL_FAITHFULNESS_METADATA = PromptMetadata(
+    version="2.0.0",
+    description="LLM-as-judge: evaluates answer faithfulness via claim-level verification",
+    input_variables=["context", "question", "answer"],
+    output_format="json",
+    tags=["evaluation", "ragas", "faithfulness"],
+)
+
+
+EVAL_ANSWER_RELEVANCY_SYSTEM: Final[str] = """You are evaluating the relevancy of an answer \
+to a question.
+
+Given:
+- **Question**: {question}
+- **Answer**: {answer}
+
+## Task
+
+Determine whether the answer directly and completely addresses the question.
+
+## Step-by-step
+
+1. Identify the core information need of the question.
+2. Check if the answer addresses that need directly.
+3. Check for irrelevant content that dilutes the answer.
+4. Score based on: directness + completeness - irrelevance.
+
+## Output
+
+Respond with ONLY a JSON object:
+{{"score": <float 0.0-1.0>, "reasoning": "<brief explanation>"}}"""
+
+EVAL_ANSWER_RELEVANCY_TEMPLATE = ChatPromptTemplate.from_messages(
+    [
+        ("system", EVAL_ANSWER_RELEVANCY_SYSTEM),
+        ("human", "Evaluate relevancy:"),
+    ]
+)
+
+EVAL_ANSWER_RELEVANCY_METADATA = PromptMetadata(
+    version="2.0.0",
+    description="LLM-as-judge: evaluates answer relevancy to the question",
+    input_variables=["question", "answer"],
+    output_format="json",
+    tags=["evaluation", "ragas", "relevancy"],
+)
+
+
+EVAL_CONTEXT_PRECISION_SYSTEM: Final[str] = """You are evaluating the precision of retrieved \
+contexts for a question.
+
+Given:
+- **Question**: {question}
+- **Retrieved Contexts**: {contexts}
+
+## Task
+
+Determine what proportion of the retrieved contexts are relevant to answering the question.
+
+## Step-by-step
+
+1. For each retrieved context chunk, determine if it is RELEVANT or IRRELEVANT to the question.
+2. A context is relevant if it contains information useful for answering the question.
+3. Calculate: score = relevant_contexts / total_contexts.
+
+## Output
+
+Respond with ONLY a JSON object:
+{{"verdicts": [{{"context_index": 0, "relevant": true|false, "reason": "..."}}], \
+"score": <float 0.0-1.0>, "reasoning": "<brief explanation>"}}"""
+
+EVAL_CONTEXT_PRECISION_TEMPLATE = ChatPromptTemplate.from_messages(
+    [
+        ("system", EVAL_CONTEXT_PRECISION_SYSTEM),
+        ("human", "Evaluate context precision:"),
+    ]
+)
+
+EVAL_CONTEXT_PRECISION_METADATA = PromptMetadata(
+    version="2.0.0",
+    description="LLM-as-judge: evaluates context precision via per-chunk relevance verdicts",
+    input_variables=["question", "contexts"],
+    output_format="json",
+    tags=["evaluation", "ragas", "precision"],
+)
+
+
+EVAL_CONTEXT_RECALL_SYSTEM: Final[str] = """You are evaluating context recall against a \
+ground truth answer.
+
+Given:
+- **Question**: {question}
+- **Retrieved Contexts**: {contexts}
+- **Ground Truth Answer**: {ground_truth}
+
+## Task — Atomic Fact Decomposition
+
+Determine what proportion of facts in the ground truth are supported by the retrieved contexts.
+
+## Step-by-step
+
+1. Decompose the ground truth into atomic facts (single, indivisible claims).
+2. For each atomic fact, check if it is SUPPORTED by any of the retrieved contexts.
+3. Calculate: recall = supported_facts / total_facts.
+
+## Output
+
+Respond with ONLY a JSON object:
+{{"facts": [{{"fact": "...", "supported": true|false}}], \
+"score": <float 0.0-1.0>, "reasoning": "<brief explanation>"}}"""
+
+EVAL_CONTEXT_RECALL_TEMPLATE = ChatPromptTemplate.from_messages(
+    [
+        ("system", EVAL_CONTEXT_RECALL_SYSTEM),
+        ("human", "Evaluate context recall:"),
+    ]
+)
+
+EVAL_CONTEXT_RECALL_METADATA = PromptMetadata(
+    version="2.0.0",
+    description=(
+        "LLM-as-judge: evaluates context recall via atomic fact decomposition "
+        "(expected improvement over holistic comparison)"
+    ),
+    input_variables=["question", "contexts", "ground_truth"],
+    output_format="json",
+    tags=["evaluation", "ragas", "recall"],
+)
+
+
+# =============================================================================
 # PROMPT DEFINITIONS REGISTRY
 # =============================================================================
 
@@ -982,12 +1014,32 @@ PROMPT_DEFINITIONS: Final[dict[PromptName, PromptDefinition]] = {
         template=COREFERENCE_RESOLVER_TEMPLATE,
         metadata=COREFERENCE_RESOLVER_METADATA,
     ),
+    # Evaluation prompts (LLM-as-judge)
+    PromptName.EVAL_FAITHFULNESS: PromptDefinition(
+        name=PromptName.EVAL_FAITHFULNESS,
+        template=EVAL_FAITHFULNESS_TEMPLATE,
+        metadata=EVAL_FAITHFULNESS_METADATA,
+    ),
+    PromptName.EVAL_ANSWER_RELEVANCY: PromptDefinition(
+        name=PromptName.EVAL_ANSWER_RELEVANCY,
+        template=EVAL_ANSWER_RELEVANCY_TEMPLATE,
+        metadata=EVAL_ANSWER_RELEVANCY_METADATA,
+    ),
+    PromptName.EVAL_CONTEXT_PRECISION: PromptDefinition(
+        name=PromptName.EVAL_CONTEXT_PRECISION,
+        template=EVAL_CONTEXT_PRECISION_TEMPLATE,
+        metadata=EVAL_CONTEXT_PRECISION_METADATA,
+    ),
+    PromptName.EVAL_CONTEXT_RECALL: PromptDefinition(
+        name=PromptName.EVAL_CONTEXT_RECALL,
+        template=EVAL_CONTEXT_RECALL_TEMPLATE,
+        metadata=EVAL_CONTEXT_RECALL_METADATA,
+    ),
 }
 
 
 __all__ = [
     "PROMPT_DEFINITIONS",
-    "TEXT2CYPHER_EXAMPLES",
     "PromptDefinition",
     "PromptMetadata",
     "PromptName",

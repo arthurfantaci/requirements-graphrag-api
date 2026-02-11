@@ -24,7 +24,7 @@ from langgraph.graph import END, START, StateGraph
 
 from requirements_graphrag_api.core.agentic.state import CriticEvaluation, SynthesisState
 from requirements_graphrag_api.evaluation.cost_analysis import get_global_cost_tracker
-from requirements_graphrag_api.prompts import PromptName, get_prompt_sync
+from requirements_graphrag_api.prompts import PromptName, get_prompt
 
 if TYPE_CHECKING:
     from requirements_graphrag_api.config import AppConfig
@@ -45,6 +45,17 @@ def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
     Returns:
         Compiled Synthesis subgraph.
     """
+    # Shared LLM instances — avoids re-creating httpx clients per node call
+    synth_llm = ChatOpenAI(
+        model=config.chat_model,
+        temperature=0.3,
+        api_key=config.openai_api_key,
+    )
+    critic_llm = ChatOpenAI(
+        model=config.chat_model,
+        temperature=0.2,
+        api_key=config.openai_api_key,
+    )
 
     # -------------------------------------------------------------------------
     # Node: draft_answer
@@ -74,14 +85,8 @@ def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
             }
 
         try:
-            prompt_template = get_prompt_sync(PromptName.SYNTHESIS)
-            llm = ChatOpenAI(
-                model=config.chat_model,
-                temperature=0.3,
-                api_key=config.openai_api_key,
-            )
-
-            chain = prompt_template | llm
+            prompt_template = await get_prompt(PromptName.SYNTHESIS)
+            chain = prompt_template | synth_llm
             response = await chain.ainvoke(
                 {
                     "context": context,
@@ -171,14 +176,8 @@ def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
 
         try:
             # Get detailed critique using CRITIC prompt
-            critic_template = get_prompt_sync(PromptName.CRITIC)
-            llm = ChatOpenAI(
-                model=config.chat_model,
-                temperature=0.2,
-                api_key=config.openai_api_key,
-            )
-
-            critic_chain = critic_template | llm
+            critic_template = await get_prompt(PromptName.CRITIC)
+            critic_chain = critic_template | critic_llm
             critic_response = await critic_chain.ainvoke(
                 {
                     "context": context,
@@ -205,8 +204,8 @@ def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
                 guidance += f"\nConsider: {critic_data.get('followup_query')}"
 
             # Regenerate with guidance
-            synth_template = get_prompt_sync(PromptName.SYNTHESIS)
-            synth_chain = synth_template | llm
+            synth_template = await get_prompt(PromptName.SYNTHESIS)
+            synth_chain = synth_template | synth_llm
 
             # Augment context with previous draft and critique
             augmented_context = f"""{context}

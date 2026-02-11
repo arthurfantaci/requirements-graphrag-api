@@ -34,18 +34,12 @@ Note:
 """
 
 from enum import StrEnum
-from functools import wraps
-from typing import TYPE_CHECKING, ParamSpec, TypeVar
+from typing import TYPE_CHECKING
 
 from fastapi import HTTPException, Request, status
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from requirements_graphrag_api.auth.api_key import APIKeyInfo
-
-P = ParamSpec("P")
-T = TypeVar("T")
 
 
 class Scope(StrEnum):
@@ -225,80 +219,3 @@ def require_scopes(*required_scopes: Scope, allow_anonymous: bool = False) -> Sc
             ...
     """
     return ScopeChecker(*required_scopes, allow_anonymous=allow_anonymous)
-
-
-def require_scope(*required_scopes: Scope) -> "Callable[[Callable[P, T]], Callable[P, T]]":
-    """Decorator to require specific scopes for an endpoint.
-
-    This decorator wraps an endpoint function to check scopes before execution.
-    It expects the request object to have client info set by AuthMiddleware.
-
-    Note: For new code, prefer using the `require_scopes` dependency instead,
-    as it integrates better with FastAPI's dependency injection.
-
-    Args:
-        *required_scopes: Scopes required for access.
-
-    Returns:
-        Decorator function.
-
-    Example:
-        @router.post("/chat")
-        @require_scope(Scope.CHAT)
-        async def chat_endpoint(request: Request):
-            client = get_client_from_request(request)
-            ...
-    """
-
-    def decorator(func: "Callable[P, T]") -> "Callable[P, T]":
-        @wraps(func)
-        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            # Find request in args or kwargs
-            request: Request | None = None
-            for arg in args:
-                if isinstance(arg, Request):
-                    request = arg
-                    break
-            if request is None:
-                request = kwargs.get("request")
-
-            if request is None:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail={
-                        "error": "internal_error",
-                        "message": "Request object not found in endpoint arguments.",
-                    },
-                )
-
-            client = get_client_from_request(request)
-
-            if client is None:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail={
-                        "error": "authentication_required",
-                        "message": "Authentication required for this endpoint.",
-                    },
-                    headers={"WWW-Authenticate": "ApiKey"},
-                )
-
-            # Check if client has required scopes
-            has_scopes, missing = check_scopes(client.scopes, required_scopes)
-
-            if not has_scopes:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail={
-                        "error": "insufficient_scope",
-                        "message": f"Missing required scopes: {', '.join(sorted(missing))}",
-                        "required": [str(s) for s in required_scopes],
-                        "granted": list(client.scopes),
-                    },
-                )
-
-            return await func(*args, **kwargs)
-
-        return wrapper  # type: ignore[return-value]
-
-    return decorator

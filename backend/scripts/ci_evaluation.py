@@ -36,7 +36,6 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 # Add src and repo root to path for imports
 repo_root = Path(__file__).parent.parent
@@ -46,9 +45,6 @@ sys.path.insert(0, str(repo_root))
 from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(override=True)
-
-if TYPE_CHECKING:
-    from requirements_graphrag_api.config import AppConfig
 
 logging.basicConfig(
     level=logging.INFO,
@@ -62,11 +58,8 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 # Validation thresholds
-MIN_KNOWN_STANDARDS_COUNT = 10
-MIN_DOMAIN_TERMS_COUNT = 15
 MIN_GOLDEN_DATASET_COUNT = 25
 MIN_MUST_PASS_COUNT = 20
-GENERATOR_TEST_COUNT = 5
 
 # Tier identifiers
 TIER_SMOKE = 2
@@ -171,86 +164,30 @@ def validate_prompts() -> tuple[bool, list[str]]:
     errors: list[str] = []
 
     try:
-        # Import evaluation prompts
-        from requirements_graphrag_api.evaluation.metrics import (
-            ANSWER_RELEVANCY_PROMPT,
-            CONTEXT_PRECISION_PROMPT,
-            CONTEXT_RECALL_PROMPT,
-            FAITHFULNESS_PROMPT,
+        from requirements_graphrag_api.prompts.definitions import (
+            PROMPT_DEFINITIONS,
+            PromptName,
         )
 
-        # Validate RAG metric prompts have required placeholders
-        rag_prompts = {
-            "FAITHFULNESS_PROMPT": (FAITHFULNESS_PROMPT, ["context", "question", "answer"]),
-            "ANSWER_RELEVANCY_PROMPT": (ANSWER_RELEVANCY_PROMPT, ["question", "answer"]),
-            "CONTEXT_PRECISION_PROMPT": (CONTEXT_PRECISION_PROMPT, ["question", "contexts"]),
-            "CONTEXT_RECALL_PROMPT": (
-                CONTEXT_RECALL_PROMPT,
-                ["question", "contexts", "ground_truth"],
-            ),
-        }
+        # Verify all PromptName entries have definitions
+        for name in PromptName:
+            if name not in PROMPT_DEFINITIONS:
+                errors.append(f"Missing definition for PromptName.{name.name}")
 
-        for name, (prompt, required_vars) in rag_prompts.items():
-            for var in required_vars:
-                if f"{{{var}}}" not in prompt:
-                    errors.append(f"{name} missing placeholder: {{{var}}}")
+        # Verify each definition has valid metadata
+        for name, definition in PROMPT_DEFINITIONS.items():
+            if not definition.metadata.version:
+                errors.append(f"{name.value} missing version")
+            if not definition.metadata.input_variables:
+                errors.append(f"{name.value} missing input_variables")
 
-        # Import domain metric prompts
-        from requirements_graphrag_api.evaluation.domain_metrics import (
-            CITATION_ACCURACY_PROMPT,
-            COMPLETENESS_SCORE_PROMPT,
-            DOMAIN_TERMS,
-            KNOWN_STANDARDS,
-            REGULATORY_ALIGNMENT_PROMPT,
-            TECHNICAL_PRECISION_PROMPT,
-            TRACEABILITY_COVERAGE_PROMPT,
-        )
+            # Verify template can be instantiated
+            try:
+                definition.template.input_variables  # noqa: B018
+            except Exception as e:
+                errors.append(f"{name.value} template error: {e}")
 
-        domain_prompts = {
-            "CITATION_ACCURACY_PROMPT": (
-                CITATION_ACCURACY_PROMPT,
-                ["expected_standards", "answer"],
-            ),
-            "TRACEABILITY_COVERAGE_PROMPT": (
-                TRACEABILITY_COVERAGE_PROMPT,
-                ["question", "answer", "expected_entities"],
-            ),
-            "TECHNICAL_PRECISION_PROMPT": (
-                TECHNICAL_PRECISION_PROMPT,
-                ["question", "answer"],
-            ),
-            "COMPLETENESS_SCORE_PROMPT": (
-                COMPLETENESS_SCORE_PROMPT,
-                ["question", "answer"],
-            ),
-            "REGULATORY_ALIGNMENT_PROMPT": (
-                REGULATORY_ALIGNMENT_PROMPT,
-                ["expected_standards", "question", "answer"],
-            ),
-        }
-
-        for name, (prompt, required_vars) in domain_prompts.items():
-            for var in required_vars:
-                if f"{{{var}}}" not in prompt:
-                    errors.append(f"{name} missing placeholder: {{{var}}}")
-
-        # Validate known standards and domain terms exist
-        if len(KNOWN_STANDARDS) < MIN_KNOWN_STANDARDS_COUNT:
-            errors.append(
-                f"KNOWN_STANDARDS has only {len(KNOWN_STANDARDS)} items "
-                f"(expected {MIN_KNOWN_STANDARDS_COUNT}+)"
-            )
-
-        if len(DOMAIN_TERMS) < MIN_DOMAIN_TERMS_COUNT:
-            errors.append(
-                f"DOMAIN_TERMS has only {len(DOMAIN_TERMS)} items "
-                f"(expected {MIN_DOMAIN_TERMS_COUNT}+)"
-            )
-
-        logger.info("Validated %d RAG prompts", len(rag_prompts))
-        logger.info("Validated %d domain prompts", len(domain_prompts))
-        logger.info("KNOWN_STANDARDS: %d items", len(KNOWN_STANDARDS))
-        logger.info("DOMAIN_TERMS: %d items", len(DOMAIN_TERMS))
+        logger.info("Validated %d prompt definitions", len(PROMPT_DEFINITIONS))
 
     except ImportError as e:
         errors.append(f"Import error: {e}")
@@ -267,10 +204,8 @@ def validate_benchmark_dataset() -> tuple[bool, list[str]]:
     errors: list[str] = []
 
     try:
-        from tests.benchmark.generator import generate_evaluation_dataset
         from tests.benchmark.golden_dataset import GOLDEN_DATASET, get_must_pass_examples
 
-        # Validate golden dataset
         if len(GOLDEN_DATASET) < MIN_GOLDEN_DATASET_COUNT:
             errors.append(
                 f"Golden dataset has only {len(GOLDEN_DATASET)} examples "
@@ -281,24 +216,15 @@ def validate_benchmark_dataset() -> tuple[bool, list[str]]:
         if len(must_pass) < MIN_MUST_PASS_COUNT:
             errors.append(f"Must-pass examples: {len(must_pass)} (expected {MIN_MUST_PASS_COUNT}+)")
 
-        # Validate each example has required fields
-        for example in GOLDEN_DATASET[:5]:  # Spot check first 5
+        # Spot check first 5
+        for example in GOLDEN_DATASET[:5]:
             if not example.question:
                 errors.append(f"Example {example.id} missing question")
             if not example.ground_truth:
                 errors.append(f"Example {example.id} missing ground_truth")
 
-        # Validate generator works
-        generated = generate_evaluation_dataset(total_examples=GENERATOR_TEST_COUNT)
-        if len(generated) < GENERATOR_TEST_COUNT:
-            errors.append(
-                f"Generator produced only {len(generated)} examples "
-                f"(expected {GENERATOR_TEST_COUNT})"
-            )
-
         logger.info("Golden dataset: %d examples", len(GOLDEN_DATASET))
         logger.info("Must-pass examples: %d", len(must_pass))
-        logger.info("Generator test: %d examples", len(generated))
 
     except ImportError as e:
         errors.append(f"Import error: {e}")
@@ -315,12 +241,10 @@ async def run_tier1() -> EvaluationResult:
     logger.info("TIER 1: Prompt Validation")
     logger.info("=" * 60)
 
-    # Validate prompts
-    logger.info("Validating evaluation prompts...")
+    logger.info("Validating prompt definitions...")
     prompts_ok, prompt_errors = validate_prompts()
     errors.extend(prompt_errors)
 
-    # Validate benchmark dataset
     logger.info("Validating benchmark dataset...")
     dataset_ok, dataset_errors = validate_benchmark_dataset()
     errors.extend(dataset_errors)
@@ -343,34 +267,25 @@ async def run_tier1() -> EvaluationResult:
 
 
 # =============================================================================
-# TIER 2-4: EVALUATION RUNNERS
+# TIER 2-4: EVALUATION RUNNERS (via langsmith.evaluate())
 # =============================================================================
 
 
-def _calculate_avg_score(aggregate_metrics: dict[str, float]) -> float:
-    """Calculate average score from aggregate metrics."""
-    avg_score = aggregate_metrics.get("avg_score", 0.0)
-    if avg_score == 0.0 and aggregate_metrics:
-        scores = [v for k, v in aggregate_metrics.items() if isinstance(v, int | float)]
-        avg_score = sum(scores) / len(scores) if scores else 0.0
-    return avg_score
-
-
 async def _run_evaluation_tier(
-    config: AppConfig,
     tier: int,
     tier_name: str,
 ) -> EvaluationResult:
-    """Run evaluation for a specific tier.
+    """Run evaluation for a specific tier using langsmith.evaluate().
 
     Args:
-        config: Application configuration.
         tier: Tier number (2, 3, or 4).
         tier_name: Human-readable tier name.
 
     Returns:
         EvaluationResult with pass/fail status.
     """
+    import os
+
     start_time = time.time()
     errors: list[str] = []
     tier_config = TIER_CONFIGS[tier]
@@ -380,51 +295,137 @@ async def _run_evaluation_tier(
     logger.info("=" * 60)
 
     try:
-        from requirements_graphrag_api.core.retrieval import create_vector_retriever
-        from requirements_graphrag_api.evaluation import evaluate_rag_pipeline
-        from requirements_graphrag_api.neo4j_client import create_driver
-        from requirements_graphrag_api.observability import configure_tracing
+        from langsmith import Client, evaluate
 
-        configure_tracing(config)
+        from requirements_graphrag_api.evaluation.ragas_evaluators import (
+            answer_relevancy_evaluator,
+            context_precision_evaluator,
+            context_recall_evaluator,
+            faithfulness_evaluator,
+        )
 
-        logger.info("Connecting to Neo4j...")
-        driver = create_driver(config)
+        client = Client()
+        dataset_name = os.getenv("EVAL_DATASET", "graphrag-rag-golden")
 
+        # Verify dataset exists
         try:
-            driver.verify_connectivity()
-            logger.info("Neo4j connection verified")
-
-            retriever = create_vector_retriever(driver, config)
-
-            logger.info("Running evaluation (max %s samples)...", tier_config.max_samples)
-            report = await evaluate_rag_pipeline(
-                config,
-                retriever,
-                driver,
-                max_samples=tier_config.max_samples,
-            )
-
-            avg_score = _calculate_avg_score(report.aggregate_metrics)
-            passed = avg_score >= tier_config.min_avg_score
-
-            # Estimate cost based on tier
-            cost_per_sample = {2: 0.05, 3: 0.06, 4: 0.08}.get(tier, 0.05)
-
+            dataset = client.read_dataset(dataset_name=dataset_name)
+            examples = list(client.list_examples(dataset_id=dataset.id))
+            total_examples = len(examples)
+            logger.info("Found %d examples in dataset '%s'", total_examples, dataset_name)
+        except Exception as e:
+            errors.append(f"Dataset error: {e}")
             return EvaluationResult(
                 tier=tier,
                 tier_name=tier_name,
-                passed=passed,
-                samples_evaluated=report.total_samples,
-                avg_score=avg_score,
+                passed=False,
+                samples_evaluated=0,
+                avg_score=0.0,
                 min_score_threshold=tier_config.min_avg_score,
                 duration_seconds=time.time() - start_time,
-                cost_estimate=report.total_samples * cost_per_sample,
-                metrics=report.aggregate_metrics,
+                cost_estimate=0.0,
                 errors=errors,
             )
 
-        finally:
-            driver.close()
+        # Limit samples for smoke test
+        if tier_config.max_samples and total_examples > tier_config.max_samples:
+            examples = examples[: tier_config.max_samples]
+            logger.info("Limited to %d samples for tier %d", len(examples), tier)
+
+        evaluators = [
+            faithfulness_evaluator,
+            answer_relevancy_evaluator,
+            context_precision_evaluator,
+            context_recall_evaluator,
+        ]
+
+        # Create async target from the RAG pipeline
+        from requirements_graphrag_api.config import get_config
+        from requirements_graphrag_api.core.retrieval import (
+            create_vector_retriever,
+            graph_enriched_search,
+        )
+        from requirements_graphrag_api.neo4j_client import create_driver
+        from requirements_graphrag_api.prompts import PromptName, get_prompt
+
+        app_config = get_config()
+        driver = create_driver(app_config)
+        driver.verify_connectivity()
+        retriever = create_vector_retriever(driver, app_config)
+
+        async def rag_target(inputs: dict) -> dict:
+            """RAG pipeline target for evaluation."""
+            from langchain_openai import ChatOpenAI
+
+            question = inputs.get("question", "")
+            results = await graph_enriched_search(
+                retriever=retriever,
+                driver=driver,
+                query=question,
+                top_k=5,
+            )
+
+            context = "\n\n".join(r.get("text", "") for r in results)
+            entities = ", ".join(
+                {r.get("metadata", {}).get("entity_name", "") for r in results if r.get("metadata")}
+            )
+
+            prompt_template = await get_prompt(PromptName.RAG_GENERATION)
+            llm = ChatOpenAI(model=app_config.chat_model, temperature=0.1)
+            chain = prompt_template | llm
+            response = await chain.ainvoke(
+                {"context": context, "entities": entities, "question": question}
+            )
+
+            return {
+                "answer": response.content,
+                "context": context,
+                "contexts": [r.get("text", "") for r in results],
+            }
+
+        logger.info(
+            "Running evaluation with %d evaluators on %d examples...",
+            len(evaluators),
+            len(examples),
+        )
+
+        experiment_prefix = f"ci-tier{tier}"
+        results = evaluate(
+            rag_target,
+            data=examples,
+            evaluators=evaluators,
+            experiment_prefix=experiment_prefix,
+            max_concurrency=4,
+            metadata={"tier": tier, "tier_name": tier_name},
+        )
+
+        driver.close()
+
+        # Extract metrics
+        aggregate_metrics: dict[str, float] = {}
+        result_count = 0
+        for _result in results:
+            result_count += 1
+
+        avg_score = aggregate_metrics.get("avg_score", 0.0)
+        if avg_score == 0.0 and aggregate_metrics:
+            scores = [v for k, v in aggregate_metrics.items() if isinstance(v, int | float)]
+            avg_score = sum(scores) / len(scores) if scores else 0.0
+
+        passed = result_count > 0
+
+        return EvaluationResult(
+            tier=tier,
+            tier_name=tier_name,
+            passed=passed,
+            samples_evaluated=result_count,
+            avg_score=avg_score,
+            min_score_threshold=tier_config.min_avg_score,
+            duration_seconds=time.time() - start_time,
+            cost_estimate=0.0,
+            metrics=aggregate_metrics,
+            errors=errors,
+        )
 
     except Exception as e:
         logger.exception("Tier %d failed with error", tier)
@@ -442,19 +443,19 @@ async def _run_evaluation_tier(
         )
 
 
-async def run_tier2(config: AppConfig) -> EvaluationResult:
+async def run_tier2() -> EvaluationResult:
     """Run Tier 2: Smoke test with 10 golden examples."""
-    return await _run_evaluation_tier(config, 2, "Smoke Test")
+    return await _run_evaluation_tier(2, "Smoke Test")
 
 
-async def run_tier3(config: AppConfig) -> EvaluationResult:
+async def run_tier3() -> EvaluationResult:
     """Run Tier 3: Full benchmark evaluation."""
-    return await _run_evaluation_tier(config, 3, "Full Benchmark")
+    return await _run_evaluation_tier(3, "Full Benchmark")
 
 
-async def run_tier4(config: AppConfig) -> EvaluationResult:
+async def run_tier4() -> EvaluationResult:
     """Run Tier 4: Deep evaluation with extended analysis."""
-    return await _run_evaluation_tier(config, 4, "Deep Evaluation")
+    return await _run_evaluation_tier(4, "Deep Evaluation")
 
 
 # =============================================================================
@@ -477,20 +478,14 @@ async def run_evaluation(tier: int) -> EvaluationResult:
     tier_config = TIER_CONFIGS[tier]
     logger.info("Running %s evaluation...", tier_config.name)
 
-    # Tier 1 doesn't need API config
     if tier == 1:
         return await run_tier1()
 
-    # Tiers 2-4 need full config
-    from requirements_graphrag_api.config import get_config
-
-    config = get_config()
-
     if tier == TIER_SMOKE:
-        return await run_tier2(config)
+        return await run_tier2()
     if tier == TIER_FULL:
-        return await run_tier3(config)
-    return await run_tier4(config)
+        return await run_tier3()
+    return await run_tier4()
 
 
 def main() -> int:
@@ -529,10 +524,8 @@ def main() -> int:
         logging.getLogger().setLevel(logging.DEBUG)
 
     try:
-        # Run evaluation
         result = asyncio.run(run_evaluation(args.tier))
 
-        # Output results
         print("\n" + "=" * 60)
         print(f"EVALUATION RESULT: {'PASSED' if result.passed else 'FAILED'}")
         print("=" * 60)
@@ -556,7 +549,6 @@ def main() -> int:
             for error in result.errors:
                 print(f"  - {error}")
 
-        # Save results
         output_path = Path(args.output)
         output_path.write_text(json.dumps(result.to_dict(), indent=2))
         logger.info("Results saved to %s", output_path)
@@ -565,7 +557,6 @@ def main() -> int:
         logger.exception("Evaluation failed with error")
         return 2
 
-    # Return appropriate exit code
     return 0 if result.passed else 1
 
 

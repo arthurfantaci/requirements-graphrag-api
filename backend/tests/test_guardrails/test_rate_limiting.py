@@ -13,7 +13,6 @@ from requirements_graphrag_api.middleware.rate_limit import (
     HEALTH_RATE_LIMIT,
     SEARCH_RATE_LIMIT,
     _parse_retry_after,
-    get_endpoint_limit,
     get_rate_limit_key,
     get_rate_limiter,
 )
@@ -95,30 +94,6 @@ class TestEndpointLimits:
     def test_health_limit(self):
         assert "120" in HEALTH_RATE_LIMIT
         assert "minute" in HEALTH_RATE_LIMIT
-
-
-class TestGetEndpointLimit:
-    """Test endpoint limit lookup."""
-
-    def test_chat_endpoint(self):
-        limit = get_endpoint_limit("/chat")
-        assert "minute" in limit
-
-    def test_search_endpoint(self):
-        limit = get_endpoint_limit("/search/vector")
-        assert "minute" in limit
-
-    def test_feedback_endpoint(self):
-        limit = get_endpoint_limit("/feedback")
-        assert limit == FEEDBACK_RATE_LIMIT
-
-    def test_health_endpoint(self):
-        limit = get_endpoint_limit("/health")
-        assert limit == HEALTH_RATE_LIMIT
-
-    def test_unknown_endpoint_gets_default(self):
-        limit = get_endpoint_limit("/unknown/endpoint")
-        assert "minute" in limit
 
 
 class TestRetryAfterParsing:
