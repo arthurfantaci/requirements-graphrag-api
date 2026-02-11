@@ -7,6 +7,10 @@
           {
             "type": "command",
             "command": "$(git rev-parse --show-toplevel)/.claude/hooks/validate-bash.sh \"$TOOL_INPUT\""
+          },
+          {
+            "type": "command",
+            "command": "$(git rev-parse --show-toplevel)/.claude/hooks/check-pr-closing-keyword.sh \"$TOOL_INPUT\""
           }
         ]
       }
