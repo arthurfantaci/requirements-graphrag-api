@@ -295,10 +295,15 @@ async def _run_evaluation_tier(
     logger.info("=" * 60)
 
     try:
-        from langsmith import Client, evaluate
+        from datetime import UTC, datetime
+
+        from langsmith import Client, aevaluate
 
         from requirements_graphrag_api.evaluation.ragas_evaluators import (
+            answer_correctness_evaluator,
             answer_relevancy_evaluator,
+            answer_semantic_similarity_evaluator,
+            context_entity_recall_evaluator,
             context_precision_evaluator,
             context_recall_evaluator,
             faithfulness_evaluator,
@@ -335,8 +340,11 @@ async def _run_evaluation_tier(
         evaluators = [
             faithfulness_evaluator,
             answer_relevancy_evaluator,
+            answer_correctness_evaluator,
+            answer_semantic_similarity_evaluator,
             context_precision_evaluator,
             context_recall_evaluator,
+            context_entity_recall_evaluator,
         ]
 
         # Create async target from the RAG pipeline
@@ -350,82 +358,89 @@ async def _run_evaluation_tier(
 
         app_config = get_config()
         driver = create_driver(app_config)
-        driver.verify_connectivity()
-        retriever = create_vector_retriever(driver, app_config)
+        try:
+            driver.verify_connectivity()
+            retriever = create_vector_retriever(driver, app_config)
 
-        async def rag_target(inputs: dict) -> dict:
-            """RAG pipeline target for evaluation."""
-            from langchain_openai import ChatOpenAI
+            async def rag_target(inputs: dict) -> dict:
+                """RAG pipeline target for evaluation."""
+                from langchain_openai import ChatOpenAI
 
-            question = inputs.get("question", "")
-            results = await graph_enriched_search(
-                retriever=retriever,
-                driver=driver,
-                query=question,
-                top_k=5,
+                question = inputs.get("question", "")
+                results = await graph_enriched_search(
+                    retriever=retriever,
+                    driver=driver,
+                    query=question,
+                    limit=5,
+                )
+
+                contexts = [r.get("content", "") for r in results]
+                context = "\n\n".join(contexts)
+                entities = ", ".join(
+                    {
+                        r.get("metadata", {}).get("entity_name", "")
+                        for r in results
+                        if r.get("metadata")
+                    }
+                )
+
+                prompt_template = await get_prompt(PromptName.RAG_GENERATION)
+                llm = ChatOpenAI(model=app_config.chat_model, temperature=0.1)
+                chain = prompt_template | llm
+                response = await chain.ainvoke(
+                    {"context": context, "entities": entities, "question": question}
+                )
+
+                return {
+                    "answer": response.content,
+                    "contexts": contexts,
+                    "intent": "explanatory",
+                }
+
+            logger.info(
+                "Running evaluation with %d evaluators on %d examples...",
+                len(evaluators),
+                len(examples),
             )
 
-            context = "\n\n".join(r.get("text", "") for r in results)
-            entities = ", ".join(
-                {r.get("metadata", {}).get("entity_name", "") for r in results if r.get("metadata")}
+            timestamp = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
+            experiment_prefix = f"ci-tier{tier}-{timestamp}"
+            results = await aevaluate(
+                rag_target,
+                data=examples,
+                evaluators=evaluators,
+                experiment_prefix=experiment_prefix,
+                max_concurrency=2,
+                metadata={"tier": tier, "tier_name": tier_name},
             )
 
-            prompt_template = await get_prompt(PromptName.RAG_GENERATION)
-            llm = ChatOpenAI(model=app_config.chat_model, temperature=0.1)
-            chain = prompt_template | llm
-            response = await chain.ainvoke(
-                {"context": context, "entities": entities, "question": question}
+            # Extract metrics
+            aggregate_metrics: dict[str, float] = {}
+            result_count = 0
+            async for _result in results:
+                result_count += 1
+
+            avg_score = aggregate_metrics.get("avg_score", 0.0)
+            if avg_score == 0.0 and aggregate_metrics:
+                scores = [v for k, v in aggregate_metrics.items() if isinstance(v, int | float)]
+                avg_score = sum(scores) / len(scores) if scores else 0.0
+
+            passed = result_count > 0
+
+            return EvaluationResult(
+                tier=tier,
+                tier_name=tier_name,
+                passed=passed,
+                samples_evaluated=result_count,
+                avg_score=avg_score,
+                min_score_threshold=tier_config.min_avg_score,
+                duration_seconds=time.time() - start_time,
+                cost_estimate=0.0,
+                metrics=aggregate_metrics,
+                errors=errors,
             )
-
-            return {
-                "answer": response.content,
-                "context": context,
-                "contexts": [r.get("text", "") for r in results],
-            }
-
-        logger.info(
-            "Running evaluation with %d evaluators on %d examples...",
-            len(evaluators),
-            len(examples),
-        )
-
-        experiment_prefix = f"ci-tier{tier}"
-        results = evaluate(
-            rag_target,
-            data=examples,
-            evaluators=evaluators,
-            experiment_prefix=experiment_prefix,
-            max_concurrency=4,
-            metadata={"tier": tier, "tier_name": tier_name},
-        )
-
-        driver.close()
-
-        # Extract metrics
-        aggregate_metrics: dict[str, float] = {}
-        result_count = 0
-        for _result in results:
-            result_count += 1
-
-        avg_score = aggregate_metrics.get("avg_score", 0.0)
-        if avg_score == 0.0 and aggregate_metrics:
-            scores = [v for k, v in aggregate_metrics.items() if isinstance(v, int | float)]
-            avg_score = sum(scores) / len(scores) if scores else 0.0
-
-        passed = result_count > 0
-
-        return EvaluationResult(
-            tier=tier,
-            tier_name=tier_name,
-            passed=passed,
-            samples_evaluated=result_count,
-            avg_score=avg_score,
-            min_score_threshold=tier_config.min_avg_score,
-            duration_seconds=time.time() - start_time,
-            cost_estimate=0.0,
-            metrics=aggregate_metrics,
-            errors=errors,
-        )
+        finally:
+            driver.close()
 
     except Exception as e:
         logger.exception("Tier %d failed with error", tier)

@@ -1,9 +1,7 @@
 """TypedDict state definitions for the agentic RAG system.
 
 This module defines all state types used across the LangGraph implementation:
-- AgentState: Core agent state with messages and tool results
 - RAGState: State for the RAG retrieval subgraph
-- ResearchState: State for entity exploration subgraph
 - SynthesisState: State for answer synthesis subgraph
 - OrchestratorState: Main orchestrator state composing subgraph states
 
@@ -74,30 +72,6 @@ class CriticEvaluation:
 
 
 # =============================================================================
-# ENTITY INFO TYPE
-# =============================================================================
-
-
-@dataclass(frozen=True, slots=True)
-class EntityInfo:
-    """Information about an explored entity.
-
-    Attributes:
-        name: Entity name.
-        entity_type: Type of entity (Tool, Concept, Standard, etc.).
-        description: Entity description or display name.
-        related_entities: List of related entity names.
-        mentioned_in: List of article titles where mentioned.
-    """
-
-    name: str
-    entity_type: str
-    description: str = ""
-    related_entities: list[str] = field(default_factory=list)
-    mentioned_in: list[str] = field(default_factory=list)
-
-
-# =============================================================================
 # DOCUMENT GRADING MODEL (for retrieval quality gate)
 # =============================================================================
 
@@ -154,38 +128,6 @@ class RAGState(TypedDict, total=False):
 
 
 # =============================================================================
-# RESEARCH SUBGRAPH STATE
-# =============================================================================
-
-
-class ResearchState(TypedDict, total=False):
-    """State for the entity exploration subgraph.
-
-    This subgraph handles deep entity exploration for complex queries.
-
-    Required:
-        query: The original user query.
-        context: Initial context from RAG retrieval.
-
-    Optional:
-        identified_entities: Entities identified for exploration.
-        explored_entities: Entities that have been explored.
-        entity_contexts: Detailed information for each explored entity.
-        exploration_complete: Whether exploration is complete.
-    """
-
-    # Required
-    query: str
-    context: str
-
-    # Populated during subgraph execution
-    identified_entities: list[str]
-    explored_entities: Annotated[list[str], operator.add]
-    entity_contexts: Annotated[list[EntityInfo], operator.add]
-    exploration_complete: bool
-
-
-# =============================================================================
 # SYNTHESIS SUBGRAPH STATE
 # =============================================================================
 
@@ -214,9 +156,6 @@ class SynthesisState(TypedDict, total=False):
     # Multi-turn conversation context
     previous_context: str
 
-    # Research subgraph entity info (for {entities} prompt variable)
-    entities_str: str
-
     # Populated during subgraph execution
     draft_answer: str
     critique: CriticEvaluation
@@ -236,7 +175,7 @@ class OrchestratorState(TypedDict, total=False):
     This is the top-level state for the composed agentic graph.
     It includes fields from all subgraphs plus orchestration control.
 
-    The orchestrator routes between subgraphs based on query complexity
+    The orchestrator routes between subgraphs based on retrieval quality
     and manages the overall agent execution flow.
 
     Required:
@@ -244,17 +183,14 @@ class OrchestratorState(TypedDict, total=False):
         query: The current user query being processed.
 
     Shared with subgraphs:
-        context: Retrieved context (shared with RAG, Research, Synthesis).
+        context: Retrieved context (shared with RAG, Synthesis).
         expanded_queries: From RAG subgraph.
         ranked_results: From RAG subgraph.
-        entity_contexts: From Research subgraph.
         final_answer: From Synthesis subgraph.
         citations: From Synthesis subgraph.
 
     Orchestration control:
         current_phase: Current execution phase.
-        iteration_count: Total iterations across all phases.
-        max_iterations: Maximum allowed iterations.
         error: Error message if something went wrong.
         run_id: LangSmith run ID for tracing correlation.
         thread_id: Conversation thread ID for persistence.
@@ -270,20 +206,14 @@ class OrchestratorState(TypedDict, total=False):
     context: str
     quality_pass: bool
 
-    # Shared with Research subgraph
-    entity_contexts: Annotated[list[EntityInfo], operator.add]
-
     # Shared with Synthesis subgraph
-    entities_str: str  # Research subgraph entity info for {entities} prompt var
     draft_answer: str
     critique: CriticEvaluation
     final_answer: str
     citations: list[str]
 
     # Orchestration control
-    current_phase: Literal["rag", "research", "synthesis", "complete", "error"]
-    iteration_count: int
-    max_iterations: int
+    current_phase: Literal["rag", "synthesis", "complete", "error"]
     error: str | None
 
     # Tracing and persistence
@@ -293,11 +223,9 @@ class OrchestratorState(TypedDict, total=False):
 
 __all__ = [
     "CriticEvaluation",
-    "EntityInfo",
     "GradeDocuments",
     "OrchestratorState",
     "RAGState",
-    "ResearchState",
     "RetrievedDocument",
     "SynthesisState",
 ]

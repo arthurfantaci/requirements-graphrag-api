@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from requirements_graphrag_api.core.agentic.state import EntityInfo, RetrievedDocument
+from requirements_graphrag_api.core.agentic.state import RetrievedDocument
 from requirements_graphrag_api.core.context import (
     FormattedContext,
     NormalizedDocument,
     format_context,
-    format_entity_info_for_synthesis,
 )
 
 # =============================================================================
@@ -405,47 +404,3 @@ class TestFormatContext:
         result = format_context(docs)
         assert "## Knowledge Graph Context" not in result.context
         assert "[Source 1: S1]" in result.context
-
-
-# =============================================================================
-# format_entity_info_for_synthesis tests
-# =============================================================================
-
-
-class TestFormatEntityInfoForSynthesis:
-    """Tests for format_entity_info_for_synthesis."""
-
-    def test_formats_entities(self) -> None:
-        """Produces formatted entity info string."""
-        entities = [
-            EntityInfo(
-                name="Jama Connect",
-                entity_type="Tool",
-                description="Requirements management tool",
-                related_entities=["DOORS", "Polarion"],
-                mentioned_in=["Article A", "Article B"],
-            ),
-            EntityInfo(
-                name="Traceability",
-                entity_type="Concept",
-                description="Ability to trace requirements",
-            ),
-        ]
-        result = format_entity_info_for_synthesis(entities)
-        assert "**Jama Connect** (Tool)" in result
-        assert "Requirements management tool" in result
-        assert "Related: DOORS, Polarion" in result
-        assert "Mentioned in: Article A, Article B" in result
-        assert "**Traceability** (Concept)" in result
-
-    def test_empty_list(self) -> None:
-        """Returns empty string for empty list."""
-        assert format_entity_info_for_synthesis([]) == ""
-
-    def test_entity_without_optional_fields(self) -> None:
-        """Handles entity with only required fields."""
-        entities = [EntityInfo(name="Test", entity_type="Concept")]
-        result = format_entity_info_for_synthesis(entities)
-        assert "**Test** (Concept)" in result
-        assert "Related:" not in result
-        assert "Mentioned in:" not in result

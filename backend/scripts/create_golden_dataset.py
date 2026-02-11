@@ -12,7 +12,7 @@ Usage:
 
 The golden dataset contains curated question-answer pairs with:
 - Expected answers for ground truth comparison
-- Expected sources for context recall evaluation
+- Expected entities for context entity recall evaluation
 - Intent classification for routing evaluation
 - Difficulty and domain metadata for analysis
 
@@ -51,7 +51,7 @@ DATASET_DESCRIPTION = """Golden evaluation dataset for GraphRAG RAG pipeline.
 Contains curated examples with:
 - Questions spanning core requirements management concepts
 - Human-verified expected answers
-- Source article references for recall evaluation
+- Expected entities for context entity recall evaluation
 - Intent classification labels
 - Difficulty ratings for stratified analysis
 
@@ -63,7 +63,7 @@ pipeline quality assessment.
 # GOLDEN DATASET EXAMPLES
 # Each example includes:
 # - inputs: question (required for RAG pipeline)
-# - outputs: expected_answer, expected_sources, intent
+# - outputs: expected_answer, expected_entities, intent
 # - metadata: difficulty, domain for filtering/analysis
 # =============================================================================
 
@@ -80,9 +80,9 @@ GOLDEN_EXAMPLES: list[dict[str, Any]] = [
                 "understand dependencies, and verify that all requirements are "
                 "properly implemented and tested."
             ),
-            "expected_sources": [
-                "Requirements Traceability Fundamentals",
-                "Introduction to Requirements Management",
+            "expected_entities": [
+                "requirements traceability",
+                "traceability matrix",
             ],
             "intent": "explanatory",
         },
@@ -98,9 +98,10 @@ GOLDEN_EXAMPLES: list[dict[str, Any]] = [
                 "matrices, change management, collaboration features, and reporting. "
                 "Examples include Jama Connect, IBM DOORS, and Helix RM."
             ),
-            "expected_sources": [
-                "Requirements Management Tools Overview",
-                "Choosing the Right RM Tool",
+            "expected_entities": [
+                "requirements management",
+                "Jama Connect",
+                "IBM DOORS",
             ],
             "intent": "explanatory",
         },
@@ -117,9 +118,8 @@ GOLDEN_EXAMPLES: list[dict[str, Any]] = [
                 "testing against requirements. Validation involves user acceptance testing "
                 "and ensuring the product solves the intended problem."
             ),
-            "expected_sources": [
-                "Verification and Validation in Requirements Engineering",
-                "V-Model Development Process",
+            "expected_entities": [
+                "verification and validation",
             ],
             "intent": "explanatory",
         },
@@ -139,9 +139,9 @@ GOLDEN_EXAMPLES: list[dict[str, Any]] = [
                 "update links during change management. 6) Use traceability reports for "
                 "impact analysis and coverage verification."
             ),
-            "expected_sources": [
-                "Implementing Traceability",
-                "Traceability Best Practices",
+            "expected_entities": [
+                "bidirectional traceability",
+                "coverage analysis",
             ],
             "intent": "explanatory",
         },
@@ -159,9 +159,9 @@ GOLDEN_EXAMPLES: list[dict[str, Any]] = [
                 "in functional requirements. 8) Include acceptance criteria. 9) Assign "
                 "unique identifiers for traceability. 10) Review with stakeholders."
             ),
-            "expected_sources": [
-                "Writing Effective Requirements",
-                "Requirements Quality Guidelines",
+            "expected_entities": [
+                "requirements",
+                "acceptance criteria",
             ],
             "intent": "explanatory",
         },
@@ -179,9 +179,9 @@ GOLDEN_EXAMPLES: list[dict[str, Any]] = [
                 "impact analysis, approval workflows, version control, and communication "
                 "to affected parties."
             ),
-            "expected_sources": [
-                "Requirements Change Management",
-                "Managing Requirements Changes",
+            "expected_entities": [
+                "change management",
+                "impact analysis",
             ],
             "intent": "explanatory",
         },
@@ -200,9 +200,10 @@ GOLDEN_EXAMPLES: list[dict[str, Any]] = [
                 "bidirectional traceability, verification and validation evidence, "
                 "and formal safety analysis documentation."
             ),
-            "expected_sources": [
-                "ISO 26262 Overview",
-                "Automotive Functional Safety",
+            "expected_entities": [
+                "ISO 26262",
+                "ASIL",
+                "functional safety",
             ],
             "intent": "explanatory",
         },
@@ -220,9 +221,10 @@ GOLDEN_EXAMPLES: list[dict[str, Any]] = [
                 "requirements documentation, traceability, risk analysis, and "
                 "verification/validation evidence."
             ),
-            "expected_sources": [
-                "Medical Device Software Standards",
-                "IEC 62304 Requirements",
+            "expected_entities": [
+                "IEC 62304",
+                "ISO 14971",
+                "medical device",
             ],
             "intent": "explanatory",
         },
@@ -246,9 +248,10 @@ GOLDEN_EXAMPLES: list[dict[str, Any]] = [
                 "analysis. 7) Create verification/validation strategy. 8) Plan for "
                 "regulatory audits with documentation. 9) Train team on processes and tools."
             ),
-            "expected_sources": [
-                "Regulated Industry Requirements",
-                "Compliance-Ready Requirements Process",
+            "expected_entities": [
+                "ISO 26262",
+                "IEC 62304",
+                "DO-178C",
             ],
             "intent": "explanatory",
         },
@@ -270,9 +273,9 @@ GOLDEN_EXAMPLES: list[dict[str, Any]] = [
                 "communication. Tools like Cameo, Rhapsody, and Capella support MBSE. "
                 "Challenges include learning curve and tool adoption."
             ),
-            "expected_sources": [
-                "Introduction to MBSE",
-                "MBSE and Requirements Management",
+            "expected_entities": [
+                "MBSE",
+                "SysML",
             ],
             "intent": "explanatory",
         },
@@ -283,7 +286,7 @@ GOLDEN_EXAMPLES: list[dict[str, Any]] = [
         "inputs": {"question": "List all webinars in the knowledge base."},
         "outputs": {
             "expected_answer": "[List of webinars from database]",
-            "expected_sources": [],
+            "expected_entities": [],
             "intent": "structured",
         },
         "metadata": {"difficulty": "easy", "domain": "data_query"},
@@ -292,7 +295,7 @@ GOLDEN_EXAMPLES: list[dict[str, Any]] = [
         "inputs": {"question": "How many articles mention requirements traceability?"},
         "outputs": {
             "expected_answer": "[Count from database]",
-            "expected_sources": [],
+            "expected_entities": [],
             "intent": "structured",
         },
         "metadata": {"difficulty": "easy", "domain": "data_query"},
@@ -301,7 +304,7 @@ GOLDEN_EXAMPLES: list[dict[str, Any]] = [
         "inputs": {"question": "Which standards are covered in the knowledge base?"},
         "outputs": {
             "expected_answer": "[List of standards from database]",
-            "expected_sources": [],
+            "expected_entities": [],
             "intent": "structured",
         },
         "metadata": {"difficulty": "easy", "domain": "data_query"},
@@ -310,7 +313,7 @@ GOLDEN_EXAMPLES: list[dict[str, Any]] = [
         "inputs": {"question": "What are the top 5 most mentioned tools?"},
         "outputs": {
             "expected_answer": "[Ranked list from database]",
-            "expected_sources": [],
+            "expected_entities": [],
             "intent": "structured",
         },
         "metadata": {"difficulty": "medium", "domain": "data_query"},
@@ -327,9 +330,9 @@ GOLDEN_EXAMPLES: list[dict[str, Any]] = [
                 "industries including automotive, aerospace, medical devices, and "
                 "industrial equipment for managing complex product development."
             ),
-            "expected_sources": [
-                "Jama Connect Overview",
-                "RM Tools Comparison",
+            "expected_entities": [
+                "Jama Connect",
+                "requirements management",
             ],
             "intent": "explanatory",
         },
@@ -350,9 +353,9 @@ GOLDEN_EXAMPLES: list[dict[str, Any]] = [
                 "formal inspection, walkthrough. 7) Review traceability links along with "
                 "requirements. 8) Document decisions and action items."
             ),
-            "expected_sources": [
-                "Requirements Review Best Practices",
-                "Effective Requirements Reviews",
+            "expected_entities": [
+                "review status",
+                "approval workflow",
             ],
             "intent": "explanatory",
         },
