@@ -6,6 +6,7 @@ Updated Data Model (2026-01):
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Request
@@ -28,12 +29,16 @@ async def health_check(request: Request) -> dict[str, Any]:
     # Check Neo4j connectivity
     neo4j_status = "not configured"
     if driver:
-        try:
-            with driver.session() as session:
-                session.run("RETURN 1 AS connected")
-            neo4j_status = "connected"
-        except Exception:
-            neo4j_status = "disconnected"
+
+        def _ping() -> str:
+            try:
+                with driver.session() as session:
+                    session.run("RETURN 1 AS connected")
+                return "connected"
+            except Exception:
+                return "disconnected"
+
+        neo4j_status = await asyncio.to_thread(_ping)
 
     return {
         "status": "healthy" if neo4j_status == "connected" else "degraded",

@@ -106,31 +106,32 @@ async def generate_cypher(
     logger.info("Generating Cypher for: '%s'", question)
 
     # Get schema from database
-    schema_info = ""
-    try:
-        with driver.session() as session:
-            # Get node labels and counts (5s timeout for schema introspection)
-            labels_result = session.run(
-                Query(
-                    """
-                    CALL db.labels() YIELD label
-                    CALL {
-                        WITH label
-                        MATCH (n)
-                        WHERE label IN labels(n)
-                        RETURN count(n) AS count
-                    }
-                    RETURN label, count
-                    ORDER BY count DESC
-                    """,
-                    timeout=5.0,
+    def _fetch_schema() -> str:
+        try:
+            with driver.session() as session:
+                labels_result = session.run(
+                    Query(
+                        """
+                        CALL db.labels() YIELD label
+                        CALL {
+                            WITH label
+                            MATCH (n)
+                            WHERE label IN labels(n)
+                            RETURN count(n) AS count
+                        }
+                        RETURN label, count
+                        ORDER BY count DESC
+                        """,
+                        timeout=5.0,
+                    )
                 )
-            )
-            labels = [(r["label"], r["count"]) for r in labels_result]
-            schema_info = "Node counts: " + ", ".join(f"{lbl}({cnt})" for lbl, cnt in labels[:15])
-    except Exception as e:
-        logger.warning("Failed to get schema: %s", e)
-        schema_info = "Schema information unavailable"
+                labels = [(r["label"], r["count"]) for r in labels_result]
+                return "Node counts: " + ", ".join(f"{lbl}({cnt})" for lbl, cnt in labels[:15])
+        except Exception as e:
+            logger.warning("Failed to get schema: %s", e)
+            return "Schema information unavailable"
+
+    schema_info = await asyncio.to_thread(_fetch_schema)
 
     # Get prompt from catalog (uses cache if available)
     prompt_template = await get_prompt(PromptName.TEXT2CYPHER)
@@ -299,7 +300,9 @@ async def text2cypher_query(
                 response["row_count"] = 0
                 break
 
-            results, exec_error = _execute_cypher(driver, cypher, timeout=neo4j_timeout)
+            results, exec_error = await asyncio.to_thread(
+                _execute_cypher, driver, cypher, timeout=neo4j_timeout
+            )
             if exec_error:
                 logger.warning("Query execution failed: %s", exec_error)
                 response["error"] = exec_error
