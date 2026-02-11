@@ -1,18 +1,17 @@
-"""Main orchestrator graph composing all subgraphs.
+"""Main orchestrator graph composing RAG and Synthesis subgraphs.
 
 This module defines the top-level StateGraph that:
 1. Analyzes query complexity and routes appropriately
-2. Composes RAG, Research, and Synthesis subgraphs
-3. Manages iteration limits and termination conditions
-4. Integrates with PostgresSaver for checkpoint persistence
+2. Composes RAG and Synthesis subgraphs
+3. Integrates with PostgresSaver for checkpoint persistence
 
 Flow:
-    START -> initialize -> run_rag -> should_proceed? -> [research?] -> synthesis -> END
+    START -> initialize -> run_rag -> [quality gate] -> synthesis -> END
                                           ↓ (no relevant docs)
                                      format_fallback -> END
 
 The orchestrator uses the INTENT_CLASSIFIER prompt for initial query analysis,
-then routes through the appropriate subgraphs based on complexity.
+then routes through the appropriate subgraphs based on retrieval quality.
 
 Usage:
     from requirements_graphrag_api.core.agentic.orchestrator import create_orchestrator_graph
@@ -32,19 +31,16 @@ from langgraph.graph import END, START, StateGraph
 from requirements_graphrag_api.core.agentic.state import (
     OrchestratorState,
     RAGState,
-    ResearchState,
     RetrievedDocument,
     SynthesisState,
 )
 from requirements_graphrag_api.core.agentic.subgraphs import (
     create_rag_subgraph,
-    create_research_subgraph,
     create_synthesis_subgraph,
 )
 from requirements_graphrag_api.core.context import (
     NormalizedDocument,
     format_context,
-    format_entity_info_for_synthesis,
 )
 
 if TYPE_CHECKING:
@@ -55,23 +51,6 @@ if TYPE_CHECKING:
     from requirements_graphrag_api.config import AppConfig
 
 logger = logging.getLogger(__name__)
-
-# Constants
-DEFAULT_MAX_ITERATIONS = 3
-RESEARCH_ENTITY_THRESHOLD = 2  # Min entities to trigger research
-COMPARISON_KEYWORDS = frozenset(
-    [
-        "compare",
-        "comparison",
-        "versus",
-        "vs",
-        "difference between",
-        "differences",
-        "similarities",
-        "contrast",
-        "relationship between",
-    ]
-)
 
 
 def create_orchestrator_graph(
@@ -94,7 +73,6 @@ def create_orchestrator_graph(
     """
     # Create subgraphs
     rag_subgraph = create_rag_subgraph(config, driver, retriever)
-    research_subgraph = create_research_subgraph(config, driver)
     synthesis_subgraph = create_synthesis_subgraph(config)
 
     # -------------------------------------------------------------------------
@@ -128,8 +106,6 @@ def create_orchestrator_graph(
         return {
             "query": query,
             "current_phase": "rag",
-            "iteration_count": 0,
-            "max_iterations": DEFAULT_MAX_ITERATIONS,
         }
 
     # -------------------------------------------------------------------------
@@ -177,8 +153,7 @@ def create_orchestrator_graph(
                 "expanded_queries": expanded_queries,
                 "context": context,
                 "quality_pass": quality_pass,
-                "current_phase": "research",
-                "iteration_count": state.get("iteration_count", 0) + 1,
+                "current_phase": "synthesis",
             }
 
         except Exception:
@@ -186,50 +161,6 @@ def create_orchestrator_graph(
             return {
                 "current_phase": "error",
                 "error": "RAG retrieval failed",
-            }
-
-    # -------------------------------------------------------------------------
-    # Node: run_research
-    # -------------------------------------------------------------------------
-    async def run_research(state: OrchestratorState) -> dict[str, Any]:
-        """Execute the Research subgraph for entity exploration.
-
-        Invokes the Research subgraph if context warrants deeper exploration.
-        """
-        query = state["query"]
-        context = state.get("context", "")
-
-        logger.info("Running Research subgraph")
-
-        # Prepare Research state
-        research_input: ResearchState = {
-            "query": query,
-            "context": context,
-        }
-
-        try:
-            # Invoke Research subgraph
-            research_result = await research_subgraph.ainvoke(research_input)
-
-            # Extract entity contexts
-            entity_contexts = research_result.get("entity_contexts", [])
-
-            # Format entities for the {entities} prompt variable
-            entities_str = format_entity_info_for_synthesis(entity_contexts)
-
-            logger.info("Research complete: %d entities explored", len(entity_contexts))
-
-            return {
-                "entity_contexts": entity_contexts,
-                "entities_str": entities_str,
-                "current_phase": "synthesis",
-            }
-
-        except Exception:
-            logger.exception("Research subgraph failed")
-            # Continue to synthesis even if research fails
-            return {
-                "current_phase": "synthesis",
             }
 
     # -------------------------------------------------------------------------
@@ -260,7 +191,6 @@ def create_orchestrator_graph(
             "query": query,
             "context": context,
             "previous_context": previous_context,
-            "entities_str": state.get("entities_str", ""),
         }
 
         try:
@@ -304,7 +234,7 @@ def create_orchestrator_graph(
     async def format_fallback(state: OrchestratorState) -> dict[str, Any]:
         """Format a fallback response when quality gate fails.
 
-        Skips research and synthesis entirely, returning a structured
+        Skips synthesis entirely, returning a structured
         low-confidence message to the user.
         """
         query = state.get("query", "the topic")
@@ -328,60 +258,17 @@ def create_orchestrator_graph(
     # -------------------------------------------------------------------------
     def route_after_rag(
         state: OrchestratorState,
-    ) -> Literal["format_fallback", "run_research", "run_synthesis"]:
-        """Route after RAG: check for relevant docs, then research decision.
+    ) -> Literal["format_fallback", "run_synthesis"]:
+        """Route after RAG: quality gate based on retrieval results.
 
         Routes to fallback only when zero relevant documents remain after
-        retrieval. When relevant docs exist (even a small fraction), proceeds
-        to synthesis — the ranked_results list contains deduplicated results
-        sorted by score from dedupe_and_rank.
+        retrieval. When relevant docs exist, proceeds directly to synthesis.
         """
         ranked_results = state.get("ranked_results", [])
         if not ranked_results:
             logger.info("Quality gate: no relevant documents — routing to fallback")
             return "format_fallback"
-
-        context = state.get("context", "")
-        query = state.get("query", "")
-        iteration_count = state.get("iteration_count", 0)
-        max_iterations = state.get("max_iterations", DEFAULT_MAX_ITERATIONS)
-
-        # Skip research if we're at iteration limit
-        if iteration_count >= max_iterations:
-            logger.info("Skipping research: max iterations reached")
-            return "run_synthesis"
-
-        # Skip research if we have very few results
-        if len(ranked_results) < RESEARCH_ENTITY_THRESHOLD:
-            logger.info("Skipping research: insufficient results for entity exploration")
-            return "run_synthesis"
-
-        # Skip research if context is too short
-        if len(context) < 200:
-            logger.info("Skipping research: context too short")
-            return "run_synthesis"
-
-        # Skip research for simple queries: short + no comparison keywords
-        query_lower = query.lower()
-        word_count = len(query.split())
-        has_comparison = any(kw in query_lower for kw in COMPARISON_KEYWORDS)
-
-        if word_count < 12 and not has_comparison:
-            # Also skip if top retrieval score is high (confident context)
-            top_score = 0.0
-            if ranked_results:
-                first = ranked_results[0]
-                top_score = first.score if hasattr(first, "score") else first.get("score", 0)
-            if top_score > 0.85:
-                logger.info(
-                    "Skipping research: simple query (%d words, top_score=%.2f)",
-                    word_count,
-                    top_score,
-                )
-                return "run_synthesis"
-
-        logger.info("Proceeding to research phase")
-        return "run_research"
+        return "run_synthesis"
 
     # -------------------------------------------------------------------------
     # Conditional edge: check_error
@@ -401,7 +288,6 @@ def create_orchestrator_graph(
     builder.add_node("initialize", initialize)
     builder.add_node("run_rag", run_rag)
     builder.add_node("format_fallback", format_fallback)
-    builder.add_node("run_research", run_research)
     builder.add_node("run_synthesis", run_synthesis)
 
     # Add edges
@@ -414,9 +300,8 @@ def create_orchestrator_graph(
     builder.add_conditional_edges(
         "run_rag",
         route_after_rag,
-        ["format_fallback", "run_research", "run_synthesis"],
+        ["format_fallback", "run_synthesis"],
     )
-    builder.add_edge("run_research", "run_synthesis")
     builder.add_edge("run_synthesis", END)
     builder.add_edge("format_fallback", END)
 

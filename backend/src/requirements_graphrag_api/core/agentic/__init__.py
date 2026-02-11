@@ -1,11 +1,11 @@
 """Agentic RAG implementation using LangGraph.
 
 This is the ONLY active path for EXPLANATORY queries. The orchestrator
-composes subgraphs for retrieval, research, and synthesis.
+composes subgraphs for retrieval and synthesis.
 
 Architecture:
 - State: TypedDict definitions for graph state management
-- Subgraphs: Modular subgraphs for RAG, Research, and Synthesis
+- Subgraphs: Modular subgraphs for RAG and Synthesis
 - Orchestrator: Main composed graph coordinating subgraphs
 - Streaming: SSE streaming utilities for real-time responses
 - Checkpoints: PostgresSaver configuration for conversation persistence
@@ -36,10 +36,8 @@ from requirements_graphrag_api.core.agentic.orchestrator import (
 )
 from requirements_graphrag_api.core.agentic.state import (
     CriticEvaluation,
-    EntityInfo,
     OrchestratorState,
     RAGState,
-    ResearchState,
     RetrievedDocument,
     SynthesisState,
 )
@@ -53,10 +51,8 @@ __all__ = [
     "AgenticEvent",
     "AgenticEventType",
     "CriticEvaluation",
-    "EntityInfo",
     "OrchestratorState",
     "RAGState",
-    "ResearchState",
     "RetrievedDocument",
     "SynthesisState",
     "async_checkpointer_context",

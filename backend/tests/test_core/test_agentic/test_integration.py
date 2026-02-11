@@ -32,7 +32,6 @@ from requirements_graphrag_api.core.agentic import (
 )
 from requirements_graphrag_api.core.agentic.state import (
     CriticEvaluation,
-    EntityInfo,
     RetrievedDocument,
 )
 
@@ -65,9 +64,6 @@ def mock_subgraphs():
             "requirements_graphrag_api.core.agentic.orchestrator.create_rag_subgraph"
         ) as mock_rag,
         patch(
-            "requirements_graphrag_api.core.agentic.orchestrator.create_research_subgraph"
-        ) as mock_research,
-        patch(
             "requirements_graphrag_api.core.agentic.orchestrator.create_synthesis_subgraph"
         ) as mock_synthesis,
     ):
@@ -99,22 +95,6 @@ def mock_subgraphs():
         )
         mock_rag.return_value = rag_graph
 
-        # Research subgraph mock
-        research_graph = MagicMock()
-        research_graph.ainvoke = AsyncMock(
-            return_value={
-                "entity_contexts": [
-                    EntityInfo(
-                        name="Traceability Matrix",
-                        entity_type="Concept",
-                        description="A grid mapping requirements to test cases.",
-                    ),
-                ],
-                "exploration_complete": True,
-            }
-        )
-        mock_research.return_value = research_graph
-
         # Synthesis subgraph mock
         synthesis_graph = MagicMock()
         synthesis_graph.ainvoke = AsyncMock(
@@ -136,7 +116,6 @@ def mock_subgraphs():
 
         yield {
             "rag": mock_rag,
-            "research": mock_research,
             "synthesis": mock_synthesis,
         }
 

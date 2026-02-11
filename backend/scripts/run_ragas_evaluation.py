@@ -27,6 +27,7 @@ Usage:
 Requires:
 - LANGSMITH_API_KEY
 - OPENAI_API_KEY
+- NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD
 - Golden dataset created in LangSmith (run create_golden_dataset.py first)
 """
 
@@ -43,6 +44,11 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from neo4j import Driver
+    from neo4j_graphrag.retrievers import VectorRetriever
+
+    from requirements_graphrag_api.config import AppConfig
 
 from dotenv import load_dotenv
 
@@ -63,73 +69,76 @@ DEFAULT_EXPERIMENT_PREFIX = "ragas-eval"
 DEFAULT_MODEL = "gpt-4o-mini"
 
 
+def _setup_infrastructure() -> tuple[AppConfig, Driver, VectorRetriever]:
+    """Set up Neo4j driver and vector retriever for real retrieval.
+
+    Returns:
+        Tuple of (config, driver, retriever).
+    """
+    from requirements_graphrag_api.config import get_config
+    from requirements_graphrag_api.core.retrieval import create_vector_retriever
+    from requirements_graphrag_api.neo4j_client import create_driver
+
+    config = get_config()
+    driver = create_driver(config)
+    retriever = create_vector_retriever(driver, config)
+    return config, driver, retriever
+
+
 async def create_rag_target(
+    driver: Driver,
+    retriever: VectorRetriever,
     model: str = DEFAULT_MODEL,
 ) -> Callable[[dict[str, Any]], dict[str, Any]]:
     """Create the RAG pipeline target function for evaluation.
 
-    This function will be called for each example in the dataset.
-    It must accept the same input structure as the dataset examples.
+    Uses real graph_enriched_search for context retrieval.
 
     Args:
+        driver: Neo4j driver for graph queries.
+        retriever: Vector retriever for semantic search.
         model: Model name to use for generation.
 
     Returns:
         Async function that takes inputs and returns outputs.
     """
-    from langchain_core.output_parsers import StrOutputParser
     from langchain_openai import ChatOpenAI
 
+    from requirements_graphrag_api.core.retrieval import graph_enriched_search
     from requirements_graphrag_api.prompts import PromptName, get_prompt
 
     prompt_template = await get_prompt(PromptName.RAG_GENERATION)
     llm = ChatOpenAI(model=model, temperature=0.1)
 
     async def rag_target(inputs: dict[str, Any]) -> dict[str, Any]:
-        """RAG pipeline target function.
-
-        For evaluation, we simulate the RAG pipeline with mock context.
-        In production, this would call the full retrieval pipeline.
+        """RAG pipeline target function with real retrieval.
 
         Args:
             inputs: Dict with 'question' key.
 
         Returns:
-            Dict with 'answer' and 'contexts' keys.
+            Dict with 'answer', 'contexts', and 'intent' keys.
         """
         question = inputs.get("question", "")
 
-        # For evaluation, we use a simplified context
-        # In production, this would call graph_enriched_search
-        mock_context = f"""
-        Context for: {question}
+        results = await graph_enriched_search(retriever, driver, question, limit=6)
 
-        Requirements management is the process of documenting, analyzing,
-        tracing, prioritizing, and agreeing on requirements and then
-        controlling change and communicating to relevant stakeholders.
+        contexts = [r["content"] for r in results]
+        context = "\n\n".join(contexts)
 
-        Traceability is the ability to trace requirements throughout the
-        product development lifecycle, linking them to design, implementation,
-        and test artifacts.
-
-        Key standards include ISO 26262 for automotive, IEC 62304 for medical
-        devices, and DO-178C for aerospace software.
-        """
-
-        chain = prompt_template | llm | StrOutputParser()
-
-        answer = await chain.ainvoke(
+        chain = prompt_template | llm
+        response = await chain.ainvoke(
             {
-                "context": mock_context,
-                "entities": "Requirements Management, Traceability, Standards",
+                "context": context,
+                "entities": "",
                 "question": question,
             }
         )
 
         return {
-            "answer": answer,
-            "context": mock_context,
-            "contexts": [mock_context],
+            "answer": response.content,
+            "contexts": contexts,
+            "intent": "explanatory",
         }
 
     return rag_target
@@ -139,28 +148,31 @@ def run_evaluation(
     dataset_name: str = DEFAULT_DATASET,
     experiment_name: str | None = None,
     model: str = DEFAULT_MODEL,
-    max_concurrency: int = 4,
+    max_concurrency: int = 2,
     *,
     filter_intent: str | None = None,
     verbose: bool = False,
 ) -> dict[str, Any]:
-    """Run RAGAS evaluation using langsmith.evaluate().
+    """Run RAGAS evaluation using langsmith.aevaluate().
 
     Args:
         dataset_name: Name of the LangSmith dataset to evaluate against.
         experiment_name: Custom experiment name (auto-generated if None).
         model: Model to use for RAG generation.
-        max_concurrency: Maximum concurrent evaluations.
+        max_concurrency: Maximum concurrent evaluations (default 2 to avoid Neo4j pool exhaustion).
         filter_intent: Filter examples by intent (e.g., 'explanatory', 'structured').
         verbose: If True, print detailed output.
 
     Returns:
         Dict with experiment results summary.
     """
-    from langsmith import Client, evaluate
+    from langsmith import Client, aevaluate
 
     from requirements_graphrag_api.evaluation.ragas_evaluators import (
+        answer_correctness_evaluator,
         answer_relevancy_evaluator,
+        answer_semantic_similarity_evaluator,
+        context_entity_recall_evaluator,
         context_precision_evaluator,
         context_recall_evaluator,
         faithfulness_evaluator,
@@ -211,20 +223,18 @@ def run_evaluation(
             logger.error("No examples found with intent='%s'", filter_intent)
             return {"error": f"No examples with intent={filter_intent}"}
 
-    # Create synchronous wrapper for the async target
-    async def async_target(inputs: dict[str, Any]) -> dict[str, Any]:
-        target_fn = await create_rag_target(model)
-        return await target_fn(inputs)
-
-    def sync_target(inputs: dict[str, Any]) -> dict[str, Any]:
-        return asyncio.run(async_target(inputs))
-
-    # Define evaluators
+    # Use aevaluate() — the async-native evaluation runner (langsmith>=0.3.13).
+    # It handles async targets and async evaluators on a single event loop,
+    # avoiding the ThreadPoolExecutor "no current event loop" issue that
+    # plagues the sync evaluate() with async evaluators.
     evaluators = [
         faithfulness_evaluator,
         answer_relevancy_evaluator,
+        answer_correctness_evaluator,
+        answer_semantic_similarity_evaluator,
         context_precision_evaluator,
         context_recall_evaluator,
+        context_entity_recall_evaluator,
     ]
 
     # Run evaluation with LangSmith
@@ -241,12 +251,18 @@ def run_evaluation(
         eval_metadata["filter_intent"] = filter_intent
         eval_metadata["filtered_count"] = len(examples)
 
-    try:
+    # Set up Neo4j infrastructure
+    _config, driver, retriever = _setup_infrastructure()
+
+    async def _run() -> dict[str, Any]:
+        # Create the async target with real retrieval
+        target_fn = await create_rag_target(driver, retriever, model)
+
         # Use filtered examples if filter applied, otherwise use dataset name
         data_source = examples if filter_intent else dataset_name
 
-        results = evaluate(
-            sync_target,
+        results = await aevaluate(
+            target_fn,
             data=data_source,
             evaluators=evaluators,
             experiment_prefix=experiment_name,
@@ -255,7 +271,7 @@ def run_evaluation(
         )
 
         # Extract summary metrics
-        summary = {
+        summary: dict[str, Any] = {
             "experiment_name": experiment_name,
             "dataset": dataset_name,
             "model": model,
@@ -263,11 +279,10 @@ def run_evaluation(
             "results": [],
         }
 
-        if hasattr(results, "__iter__"):
-            for result in results:
-                if verbose:
-                    logger.info("Result: %s", result)
-                summary["results"].append(str(result))
+        async for result in results:
+            if verbose:
+                logger.info("Result: %s", result)
+            summary["results"].append(str(result))
 
         logger.info("\n" + "=" * 60)
         logger.info("EVALUATION COMPLETE")
@@ -278,9 +293,13 @@ def run_evaluation(
 
         return summary
 
+    try:
+        return asyncio.run(_run())
     except Exception as e:
         logger.error("Evaluation failed: %s", e)
         return {"error": str(e)}
+    finally:
+        driver.close()
 
 
 def list_datasets() -> None:
@@ -306,7 +325,7 @@ def main(
     dataset_name: str = DEFAULT_DATASET,
     experiment_name: str | None = None,
     model: str = DEFAULT_MODEL,
-    max_concurrency: int = 4,
+    max_concurrency: int = 2,
     *,
     filter_intent: str | None = None,
     dry_run: bool = False,
@@ -337,6 +356,10 @@ def main(
         logger.error("OPENAI_API_KEY not set")
         return 1
 
+    if not os.getenv("NEO4J_URI"):
+        logger.error("NEO4J_URI not set (required for real retrieval)")
+        return 1
+
     if list_datasets_flag:
         list_datasets()
         return 0
@@ -349,7 +372,11 @@ def main(
         logger.info("  Model: %s", model)
         if filter_intent:
             logger.info("  Filter: intent=%s", filter_intent)
-        logger.info("  Evaluators: faithfulness, answer_relevancy, context_precision, recall")
+        logger.info(
+            "  Evaluators: faithfulness, answer_relevancy, answer_correctness, "
+            "answer_semantic_similarity, context_precision, context_recall, "
+            "context_entity_recall"
+        )
         return 0
 
     result = run_evaluation(
@@ -389,8 +416,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max-concurrency",
         type=int,
-        default=4,
-        help="Maximum concurrent evaluations (default: 4)",
+        default=2,
+        help="Maximum concurrent evaluations (default: 2, limited by Neo4j pool)",
     )
     parser.add_argument(
         "--filter-intent",

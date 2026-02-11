@@ -22,7 +22,6 @@ from requirements_graphrag_api.core.context import (
     FormattedContext,
     NormalizedDocument,
     format_context,
-    format_entity_info_for_synthesis,
 )
 from requirements_graphrag_api.core.definitions import (
     StreamEvent,
@@ -68,7 +67,6 @@ __all__ = [
     "create_vector_retriever",
     "explore_entity",
     "format_context",
-    "format_entity_info_for_synthesis",
     "generate_cypher",
     "get_entities_from_chunks",
     "get_related_entities",

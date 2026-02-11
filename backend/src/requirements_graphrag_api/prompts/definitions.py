@@ -24,7 +24,6 @@ class PromptName(StrEnum):
     """
 
     INTENT_CLASSIFIER = "graphrag-intent-classifier"
-    CRITIC = "graphrag-critic"
     QUERY_UPDATER = "graphrag-query-updater"
     RAG_GENERATION = "graphrag-rag-generation"
     TEXT2CYPHER = "graphrag-text2cypher"
@@ -38,13 +37,13 @@ class PromptName(StrEnum):
     # Agentic prompts
     QUERY_EXPANSION = "graphrag-query-expansion"
     SYNTHESIS = "graphrag-synthesis"
-    ENTITY_SELECTOR = "graphrag-entity-selector"
-
     # Evaluation prompts (LLM-as-judge)
     EVAL_FAITHFULNESS = "graphrag-eval-faithfulness"
     EVAL_ANSWER_RELEVANCY = "graphrag-eval-answer-relevancy"
     EVAL_CONTEXT_PRECISION = "graphrag-eval-context-precision"
     EVAL_CONTEXT_RECALL = "graphrag-eval-context-recall"
+    EVAL_ANSWER_CORRECTNESS = "graphrag-eval-answer-correctness"
+    EVAL_CONTEXT_ENTITY_RECALL = "graphrag-eval-context-entity-recall"
 
 
 @dataclass(frozen=True)
@@ -179,54 +178,6 @@ INTENT_CLASSIFIER_METADATA = PromptMetadata(
 
 
 # =============================================================================
-# CRITIC PROMPT
-# Evaluates whether context is sufficient to answer the question
-# =============================================================================
-
-CRITIC_SYSTEM: Final[str] = """You are a quality evaluator for a Requirements Management RAG system.
-
-Your task is to assess whether the retrieved context is sufficient to answer the user's question.
-
-Evaluate:
-1. **Relevance**: Does the context address the question?
-2. **Completeness**: Are all aspects of the question covered?
-3. **Confidence**: How confident are you that a good answer can be generated?
-
-Context:
-{context}
-
-Respond with a JSON object:
-{{
-    "answerable": true/false,
-    "confidence": 0.0-1.0,
-    "completeness": "complete" | "partial" | "insufficient",
-    "missing_aspects": ["list of missing information if any"],
-    "followup_query": "suggested query to fill gaps (if needed)",
-    "reasoning": "Brief explanation of your assessment"
-}}"""
-
-CRITIC_TEMPLATE = ChatPromptTemplate.from_messages(
-    [
-        ("system", CRITIC_SYSTEM),
-        ("human", "Question: {question}"),
-    ]
-)
-
-CRITIC_METADATA = PromptMetadata(
-    version="1.0.0",
-    description="Evaluates retrieval quality and context sufficiency",
-    input_variables=["context", "question"],
-    output_format="json",
-    evaluation_criteria=[
-        "calibrated_confidence",
-        "accurate_completeness",
-        "useful_followup_queries",
-    ],
-    tags=["evaluation", "agentic", "quality"],
-)
-
-
-# =============================================================================
 # QUERY UPDATER PROMPT
 # Updates remaining questions with context from answered parts
 # =============================================================================
@@ -269,7 +220,7 @@ QUERY_UPDATER_METADATA = PromptMetadata(
         "pronoun_resolution",
         "question_clarity",
     ],
-    tags=["query_refinement", "agentic", "multi-turn"],
+    tags=["query_refinement", "multi-turn"],
 )
 
 
@@ -542,7 +493,7 @@ QUERY_EXPANSION_METADATA = PromptMetadata(
 
 # =============================================================================
 # SYNTHESIS PROMPT
-# Generates final answer with self-critique (uses CRITIC internally)
+# Generates final answer with inline self-critique
 # =============================================================================
 
 SYNTHESIS_SYSTEM: Final[str] = """You are a Requirements Management expert synthesizing \
@@ -552,9 +503,6 @@ Your task is to generate a comprehensive, accurate answer and then critically ev
 
 ## Retrieved Context
 {context}
-
-## Related Entities (from deep graph exploration)
-{entities}
 
 ## Previous Conversation (if multi-turn)
 {previous_context}
@@ -603,7 +551,7 @@ SYNTHESIS_TEMPLATE = ChatPromptTemplate.from_messages(
 SYNTHESIS_METADATA = PromptMetadata(
     version="1.1.0",
     description="Synthesizes answers with self-critique and citations",
-    input_variables=["context", "entities", "previous_context", "question"],
+    input_variables=["context", "previous_context", "question"],
     output_format="json",
     evaluation_criteria=[
         "faithfulness",
@@ -612,75 +560,6 @@ SYNTHESIS_METADATA = PromptMetadata(
         "self_critique_calibration",
     ],
     tags=["agentic", "synthesis", "critic", "citation"],
-)
-
-
-# =============================================================================
-# ENTITY SELECTOR PROMPT
-# Selects entities for deep exploration from context
-# =============================================================================
-
-ENTITY_SELECTOR_SYSTEM: Final[str] = """You are an entity analysis specialist for a \
-Requirements Management knowledge base.
-
-Your task is to identify entities from the context that warrant deeper exploration \
-to better answer the question.
-
-## Entity Types in Knowledge Base
-
-- **Standard**: Industry standards (ISO 26262, DO-178C, IEC 62304, etc.)
-- **Tool**: Requirements management tools (Jama Connect, DOORS, etc.)
-- **Concept**: Domain concepts (traceability, verification, validation, etc.)
-- **Methodology**: Development methodologies (Agile, V-Model, MBSE, etc.)
-- **Industry**: Industries (automotive, aerospace, medical, etc.)
-
-## Selection Criteria
-
-Select entities that:
-1. Are central to answering the question
-2. Appear in the context but lack sufficient detail
-3. Have relationships that would enrich the answer
-4. The user might want to learn more about
-
-Do NOT select:
-- Entities already well-explained in context
-- Generic terms that aren't specific entities
-- More than 3 entities (focus on most important)
-
-## Current Context
-{context}
-
-## Output Format
-
-{{
-    "entities": [
-        {{"name": "...", "type": "Standard|Tool|Concept|...", "reason": "why explore"}},
-        ...
-    ],
-    "exploration_priority": "high|medium|low",
-    "reasoning": "Brief explanation of selection"
-}}
-
-If no entities need exploration, return empty list with reasoning."""
-
-ENTITY_SELECTOR_TEMPLATE = ChatPromptTemplate.from_messages(
-    [
-        ("system", ENTITY_SELECTOR_SYSTEM),
-        ("human", "Question: {question}\n\nSelect entities to explore:"),
-    ]
-)
-
-ENTITY_SELECTOR_METADATA = PromptMetadata(
-    version="1.0.0",
-    description="Identifies entities that warrant deeper exploration",
-    input_variables=["context", "question"],
-    output_format="json",
-    evaluation_criteria=[
-        "entity_relevance",
-        "selection_precision",
-        "exploration_value",
-    ],
-    tags=["agentic", "entity_selection", "research"],
 )
 
 
@@ -959,6 +838,105 @@ EVAL_CONTEXT_RECALL_METADATA = PromptMetadata(
 )
 
 
+EVAL_ANSWER_CORRECTNESS_SYSTEM: Final[str] = """You are evaluating the factual correctness of \
+an answer against a ground truth answer.
+
+Given:
+- **Question**: {question}
+- **Answer**: {answer}
+- **Ground Truth**: {ground_truth}
+
+## Task
+
+Decompose both the answer and ground truth into atomic claims, then classify each.
+
+## Step-by-step
+
+1. Extract atomic claims from the **answer** (each a single factual assertion).
+2. Extract atomic claims from the **ground truth**.
+3. For each answer claim, classify as:
+   - **TP** (True Positive): claim is supported by the ground truth
+   - **FP** (False Positive): claim is NOT in the ground truth or contradicts it
+4. For each ground truth claim, classify as:
+   - **TP**: already covered by an answer claim
+   - **FN** (False Negative): NOT present in the answer
+
+## Output
+
+Respond with ONLY a JSON object:
+{{"answer_claims": [{{"claim": "...", "classification": "TP|FP"}}], \
+"ground_truth_claims": [{{"claim": "...", "classification": "TP|FN"}}], \
+"tp": <int>, "fp": <int>, "fn": <int>, \
+"reasoning": "<brief explanation>"}}"""
+
+EVAL_ANSWER_CORRECTNESS_TEMPLATE = ChatPromptTemplate.from_messages(
+    [
+        ("system", EVAL_ANSWER_CORRECTNESS_SYSTEM),
+        ("human", "Evaluate answer correctness:"),
+    ]
+)
+
+EVAL_ANSWER_CORRECTNESS_METADATA = PromptMetadata(
+    version="1.0.0",
+    description=(
+        "LLM-as-judge: decomposes answer and ground truth into atomic claims for F1 scoring"
+    ),
+    input_variables=["question", "answer", "ground_truth"],
+    output_format="json",
+    tags=["evaluation", "ragas", "correctness"],
+)
+
+
+EVAL_CONTEXT_ENTITY_RECALL_SYSTEM: Final[str] = """You are extracting named entities from text \
+about requirements management and engineering.
+
+Given:
+- **Text**: {text}
+
+## Task
+
+Extract all named entities from the text.
+
+## Entity Types to Extract
+
+- **Standards**: ISO 26262, IEC 62304, DO-178C, CMMI, ASPICE, etc.
+- **Tools**: Jama Connect, IBM DOORS, Helix RM, Cameo, Rhapsody, Capella, etc.
+- **Organizations**: ISO, IEC, FDA, SAE, INCOSE, etc.
+- **Methodologies**: MBSE, V-Model, Agile, FMEA, FTA, etc.
+- **Domain concepts**: traceability, requirements decomposition, impact analysis, etc.
+- **Industries**: automotive, aerospace, medical devices, etc.
+
+## Normalization Rules
+
+- Use the most complete form (e.g., "ISO 26262" not "26262")
+- Merge variations (e.g., "MBSE" and "Model-Based Systems Engineering" → "MBSE")
+- Lowercase for general concepts (e.g., "traceability", "impact analysis")
+- Original case for proper nouns and standards (e.g., "ISO 26262", "Jama Connect")
+
+## Output
+
+Respond with ONLY a JSON object:
+{{"entities": ["Entity 1", "Entity 2", ...]}}"""
+
+EVAL_CONTEXT_ENTITY_RECALL_TEMPLATE = ChatPromptTemplate.from_messages(
+    [
+        ("system", EVAL_CONTEXT_ENTITY_RECALL_SYSTEM),
+        ("human", "Extract entities:"),
+    ]
+)
+
+EVAL_CONTEXT_ENTITY_RECALL_METADATA = PromptMetadata(
+    version="1.0.0",
+    description=(
+        "LLM entity extraction for context entity recall evaluation "
+        "(called twice: context + ground truth)"
+    ),
+    input_variables=["text"],
+    output_format="json",
+    tags=["evaluation", "ragas", "entity_recall"],
+)
+
+
 # =============================================================================
 # PROMPT DEFINITIONS REGISTRY
 # =============================================================================
@@ -968,11 +946,6 @@ PROMPT_DEFINITIONS: Final[dict[PromptName, PromptDefinition]] = {
         name=PromptName.INTENT_CLASSIFIER,
         template=INTENT_CLASSIFIER_TEMPLATE,
         metadata=INTENT_CLASSIFIER_METADATA,
-    ),
-    PromptName.CRITIC: PromptDefinition(
-        name=PromptName.CRITIC,
-        template=CRITIC_TEMPLATE,
-        metadata=CRITIC_METADATA,
     ),
     PromptName.QUERY_UPDATER: PromptDefinition(
         name=PromptName.QUERY_UPDATER,
@@ -998,11 +971,6 @@ PROMPT_DEFINITIONS: Final[dict[PromptName, PromptDefinition]] = {
         name=PromptName.SYNTHESIS,
         template=SYNTHESIS_TEMPLATE,
         metadata=SYNTHESIS_METADATA,
-    ),
-    PromptName.ENTITY_SELECTOR: PromptDefinition(
-        name=PromptName.ENTITY_SELECTOR,
-        template=ENTITY_SELECTOR_TEMPLATE,
-        metadata=ENTITY_SELECTOR_METADATA,
     ),
     PromptName.CONVERSATIONAL: PromptDefinition(
         name=PromptName.CONVERSATIONAL,
@@ -1034,6 +1002,16 @@ PROMPT_DEFINITIONS: Final[dict[PromptName, PromptDefinition]] = {
         name=PromptName.EVAL_CONTEXT_RECALL,
         template=EVAL_CONTEXT_RECALL_TEMPLATE,
         metadata=EVAL_CONTEXT_RECALL_METADATA,
+    ),
+    PromptName.EVAL_ANSWER_CORRECTNESS: PromptDefinition(
+        name=PromptName.EVAL_ANSWER_CORRECTNESS,
+        template=EVAL_ANSWER_CORRECTNESS_TEMPLATE,
+        metadata=EVAL_ANSWER_CORRECTNESS_METADATA,
+    ),
+    PromptName.EVAL_CONTEXT_ENTITY_RECALL: PromptDefinition(
+        name=PromptName.EVAL_CONTEXT_ENTITY_RECALL,
+        template=EVAL_CONTEXT_ENTITY_RECALL_TEMPLATE,
+        metadata=EVAL_CONTEXT_ENTITY_RECALL_METADATA,
     ),
 }
 

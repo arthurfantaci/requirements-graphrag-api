@@ -13,9 +13,7 @@ Event Types (backward-compatible with existing frontend):
 - error: Error event with details
 
 Agentic-specific events:
-- phase: Current execution phase (rag, research, synthesis)
-- progress: Subgraph progress update
-- entities: Explored entity information
+- phase: Current execution phase (rag, synthesis)
 
 SSE Format:
     data: {json_data}
@@ -60,9 +58,7 @@ class AgenticEventType(StrEnum):
     ERROR = "error"  # {"error": "..."}
 
     # Agentic-specific events
-    PHASE = "phase"  # {"phase": "rag|research|synthesis", "message": "..."}
-    PROGRESS = "progress"  # {"step": "...", "detail": "..."}
-    ENTITIES = "entities"  # {"entities": [...]}
+    PHASE = "phase"  # {"phase": "rag|synthesis", "message": "..."}
 
 
 @dataclass(slots=True)
@@ -158,25 +154,6 @@ def create_phase_event(phase: str, message: str | None = None) -> AgenticEvent:
     )
 
 
-def create_progress_event(step: str, detail: str | None = None) -> AgenticEvent:
-    """Create a progress event for subgraph updates."""
-    data: dict[str, Any] = {"step": step}
-    if detail:
-        data["detail"] = detail
-    return AgenticEvent(
-        event_type=AgenticEventType.PROGRESS,
-        data=data,
-    )
-
-
-def create_entities_event(entities: list[dict[str, Any]]) -> AgenticEvent:
-    """Create an entities event with explored entity information."""
-    return AgenticEvent(
-        event_type=AgenticEventType.ENTITIES,
-        data={"entities": entities},
-    )
-
-
 async def stream_agentic_events(
     graph: StateGraph,
     initial_state: OrchestratorState,
@@ -187,7 +164,7 @@ async def stream_agentic_events(
     r"""Stream SSE events from agentic graph execution.
 
     This async generator yields SSE-formatted strings as the orchestrator
-    processes queries through RAG, Research, and Synthesis subgraphs.
+    processes queries through RAG and Synthesis subgraphs.
 
     Args:
         graph: Compiled orchestrator graph.
@@ -235,9 +212,6 @@ async def stream_agentic_events(
                 if "run_rag" in event_name and last_phase != "rag":
                     last_phase = "rag"
                     yield create_phase_event("rag", "Searching knowledge base...").to_sse()
-                elif "run_research" in event_name and last_phase != "research":
-                    last_phase = "research"
-                    yield create_phase_event("research", "Exploring related entities...").to_sse()
                 elif "run_synthesis" in event_name and last_phase != "synthesis":
                     last_phase = "synthesis"
                     yield create_phase_event("synthesis", "Generating answer...").to_sse()
@@ -368,32 +342,6 @@ async def stream_agentic_events(
                         source_count = len(sources)
                     sources_emitted = True
 
-            # Emit entities when research completes
-            if event_kind == "on_chain_end" and "run_research" in event_name:
-                output = event_data.get("output", {})
-                entity_contexts = output.get("entity_contexts", [])
-
-                if entity_contexts:
-                    entities = []
-                    for entity in entity_contexts:
-                        if hasattr(entity, "name"):
-                            entities.append(
-                                {
-                                    "name": entity.name,
-                                    "type": entity.entity_type,
-                                    "description": entity.description,
-                                }
-                            )
-                        elif isinstance(entity, dict):
-                            entities.append(
-                                {
-                                    "name": entity.get("name", ""),
-                                    "type": entity.get("entity_type", ""),
-                                    "description": entity.get("description", ""),
-                                }
-                            )
-                    yield create_entities_event(entities).to_sse()
-
             # Capture fallback answer when quality gate fails
             if event_kind == "on_chain_end" and "format_fallback" in event_name:
                 output = event_data.get("output", {})
@@ -438,10 +386,8 @@ __all__ = [
     "AgenticEvent",
     "AgenticEventType",
     "create_done_event",
-    "create_entities_event",
     "create_error_event",
     "create_phase_event",
-    "create_progress_event",
     "create_routing_event",
     "create_sources_event",
     "create_token_event",

@@ -20,13 +20,9 @@ from requirements_graphrag_api.core.agentic.checkpoints import (
     get_thread_id_from_config,
 )
 from requirements_graphrag_api.core.agentic.orchestrator import (
-    COMPARISON_KEYWORDS,
-    DEFAULT_MAX_ITERATIONS,
-    RESEARCH_ENTITY_THRESHOLD,
     create_orchestrator_graph,
 )
 from requirements_graphrag_api.core.agentic.state import (
-    EntityInfo,
     OrchestratorState,
     RetrievedDocument,
 )
@@ -139,55 +135,11 @@ class TestOrchestratorGraph:
             "messages": [HumanMessage(content="test query")],
             "query": "test query",
             "current_phase": "rag",
-            "iteration_count": 0,
-            "max_iterations": 3,
         }
 
         assert state["query"] == "test query"
         assert state["current_phase"] == "rag"
         assert len(state["messages"]) == 1
-
-    def test_should_research_skips_few_results(self):
-        """Test that research is skipped with few results."""
-        state: OrchestratorState = {
-            "messages": [],
-            "query": "test",
-            "ranked_results": [RetrievedDocument(content="x", source="s")],
-            "context": "A" * 500,  # Long enough context
-            "iteration_count": 0,
-            "max_iterations": DEFAULT_MAX_ITERATIONS,
-        }
-
-        # Few results -> skip research
-        assert len(state["ranked_results"]) < RESEARCH_ENTITY_THRESHOLD
-
-    def test_should_research_skips_short_context(self):
-        """Test that research is skipped with short context."""
-        state: OrchestratorState = {
-            "messages": [],
-            "query": "test",
-            "ranked_results": [RetrievedDocument(content="x", source="s") for _ in range(5)],
-            "context": "short",  # Too short
-            "iteration_count": 0,
-            "max_iterations": DEFAULT_MAX_ITERATIONS,
-        }
-
-        # Short context -> would skip research
-        assert len(state["context"]) < 200
-
-    def test_should_research_skips_max_iterations(self):
-        """Test that research is skipped at max iterations."""
-        state: OrchestratorState = {
-            "messages": [],
-            "query": "test",
-            "ranked_results": [RetrievedDocument(content="x", source="s") for _ in range(5)],
-            "context": "A" * 500,
-            "iteration_count": DEFAULT_MAX_ITERATIONS,  # At max
-            "max_iterations": DEFAULT_MAX_ITERATIONS,
-        }
-
-        # Max iterations -> would skip research
-        assert state["iteration_count"] >= state["max_iterations"]
 
 
 # =============================================================================
@@ -258,135 +210,6 @@ class TestOrchestratorIntegration:
                 assert result.get("query") == "What is requirements traceability?"
 
 
-class TestOrchestratorConstants:
-    """Tests for orchestrator constants."""
-
-    def test_default_max_iterations(self):
-        """Test default max iterations constant."""
-        assert DEFAULT_MAX_ITERATIONS == 3
-
-    def test_research_threshold(self):
-        """Test research entity threshold constant."""
-        assert RESEARCH_ENTITY_THRESHOLD == 2
-
-    def test_comparison_keywords_exist(self):
-        """Test that comparison keywords are defined."""
-        assert "compare" in COMPARISON_KEYWORDS
-        assert "vs" in COMPARISON_KEYWORDS
-        assert "difference between" in COMPARISON_KEYWORDS
-
-
-class TestResearchSkipHeuristic:
-    """Tests for the should_research() heuristic that skips research for simple queries."""
-
-    # Realistic content long enough to pass the 200-char context threshold
-    _LONG_CONTENT = "A" * 100
-
-    @pytest.mark.asyncio
-    async def test_simple_query_high_score_skips_research(
-        self, mock_config: AppConfig, mock_driver, mock_retriever
-    ):
-        """Test that a short query with high retrieval score skips research."""
-        with (
-            patch(
-                "requirements_graphrag_api.core.agentic.orchestrator.create_rag_subgraph"
-            ) as mock_rag,
-            patch(
-                "requirements_graphrag_api.core.agentic.orchestrator.create_research_subgraph"
-            ) as mock_research,
-            patch(
-                "requirements_graphrag_api.core.agentic.orchestrator.create_synthesis_subgraph"
-            ) as mock_synth,
-        ):
-            c = self._LONG_CONTENT
-            # RAG returns high-confidence results (score > 0.85)
-            mock_rag_graph = MagicMock()
-            mock_rag_graph.ainvoke = AsyncMock(
-                return_value={
-                    "ranked_results": [
-                        RetrievedDocument(content=c, source="s", score=0.95),
-                        RetrievedDocument(content=c, source="t", score=0.90),
-                        RetrievedDocument(content=c, source="u", score=0.88),
-                    ],
-                    "expanded_queries": ["test"],
-                }
-            )
-            mock_rag.return_value = mock_rag_graph
-
-            mock_research_graph = MagicMock()
-            mock_research_graph.ainvoke = AsyncMock(return_value={"entity_contexts": []})
-            mock_research.return_value = mock_research_graph
-
-            mock_synth_graph = MagicMock()
-            mock_synth_graph.ainvoke = AsyncMock(
-                return_value={"final_answer": "Answer", "citations": []}
-            )
-            mock_synth.return_value = mock_synth_graph
-
-            graph = create_orchestrator_graph(mock_config, mock_driver, mock_retriever)
-            state: OrchestratorState = {
-                "messages": [HumanMessage(content="What is traceability?")],
-                "query": "What is traceability?",
-            }
-
-            await graph.ainvoke(state)
-
-            # Research subgraph should NOT have been called (short query + high score)
-            mock_research_graph.ainvoke.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_comparison_query_triggers_research(
-        self, mock_config: AppConfig, mock_driver, mock_retriever
-    ):
-        """Test that comparison queries proceed to research even when short."""
-        with (
-            patch(
-                "requirements_graphrag_api.core.agentic.orchestrator.create_rag_subgraph"
-            ) as mock_rag,
-            patch(
-                "requirements_graphrag_api.core.agentic.orchestrator.create_research_subgraph"
-            ) as mock_research,
-            patch(
-                "requirements_graphrag_api.core.agentic.orchestrator.create_synthesis_subgraph"
-            ) as mock_synth,
-        ):
-            c = self._LONG_CONTENT
-            mock_rag_graph = MagicMock()
-            mock_rag_graph.ainvoke = AsyncMock(
-                return_value={
-                    "ranked_results": [
-                        RetrievedDocument(content=c, source="s", score=0.95),
-                        RetrievedDocument(content=c, source="t", score=0.90),
-                        RetrievedDocument(content=c, source="u", score=0.88),
-                    ],
-                    "expanded_queries": ["test"],
-                }
-            )
-            mock_rag.return_value = mock_rag_graph
-
-            mock_research_graph = MagicMock()
-            mock_research_graph.ainvoke = AsyncMock(return_value={"entity_contexts": []})
-            mock_research.return_value = mock_research_graph
-
-            mock_synth_graph = MagicMock()
-            mock_synth_graph.ainvoke = AsyncMock(
-                return_value={"final_answer": "Answer", "citations": []}
-            )
-            mock_synth.return_value = mock_synth_graph
-
-            graph = create_orchestrator_graph(mock_config, mock_driver, mock_retriever)
-            # "compare" keyword should trigger research
-            state: OrchestratorState = {
-                "messages": [HumanMessage(content="Compare DOORS vs Jama")],
-                "query": "Compare DOORS vs Jama",
-            }
-
-            await graph.ainvoke(state)
-
-            # Research subgraph SHOULD have been called (comparison query)
-            mock_research_graph.ainvoke.assert_called_once()
-
-
 class TestPreviousContext:
     """Tests for previous_context flowing through orchestrator to synthesis (F4/F6)."""
 
@@ -399,7 +222,6 @@ class TestPreviousContext:
             patch(
                 "requirements_graphrag_api.core.agentic.orchestrator.create_rag_subgraph"
             ) as mock_rag,
-            patch("requirements_graphrag_api.core.agentic.orchestrator.create_research_subgraph"),
             patch(
                 "requirements_graphrag_api.core.agentic.orchestrator.create_synthesis_subgraph"
             ) as mock_synth,
@@ -450,7 +272,6 @@ class TestPreviousContext:
             patch(
                 "requirements_graphrag_api.core.agentic.orchestrator.create_rag_subgraph"
             ) as mock_rag,
-            patch("requirements_graphrag_api.core.agentic.orchestrator.create_research_subgraph"),
             patch(
                 "requirements_graphrag_api.core.agentic.orchestrator.create_synthesis_subgraph"
             ) as mock_synth,
@@ -498,7 +319,6 @@ class TestRunRagEnrichedContext:
             patch(
                 "requirements_graphrag_api.core.agentic.orchestrator.create_rag_subgraph"
             ) as mock_rag,
-            patch("requirements_graphrag_api.core.agentic.orchestrator.create_research_subgraph"),
             patch(
                 "requirements_graphrag_api.core.agentic.orchestrator.create_synthesis_subgraph"
             ) as mock_synth,
@@ -570,74 +390,3 @@ class TestRunRagEnrichedContext:
             assert "Traceability Matrix -> REQUIRES -> Baseline" in ctx
             # KG standards
             assert "ISO 19650" in ctx
-
-
-class TestEntitiesStrFlow:
-    """Tests that entities_str flows from research → orchestrator → synthesis."""
-
-    @pytest.mark.asyncio
-    async def test_research_entities_reach_synthesis(
-        self, mock_config: AppConfig, mock_driver, mock_retriever
-    ):
-        """Verify research EntityInfo objects are formatted and passed to synthesis."""
-        with (
-            patch(
-                "requirements_graphrag_api.core.agentic.orchestrator.create_rag_subgraph"
-            ) as mock_rag,
-            patch(
-                "requirements_graphrag_api.core.agentic.orchestrator.create_research_subgraph"
-            ) as mock_research,
-            patch(
-                "requirements_graphrag_api.core.agentic.orchestrator.create_synthesis_subgraph"
-            ) as mock_synth,
-        ):
-            c = "A" * 250  # Long enough content for research routing
-            mock_rag_graph = MagicMock()
-            mock_rag_graph.ainvoke = AsyncMock(
-                return_value={
-                    "ranked_results": [
-                        RetrievedDocument(content=c, source="s", score=0.7),
-                        RetrievedDocument(content=c, source="t", score=0.6),
-                        RetrievedDocument(content=c, source="u", score=0.5),
-                    ],
-                    "expanded_queries": ["compare DOORS vs Jama"],
-                }
-            )
-            mock_rag.return_value = mock_rag_graph
-
-            mock_research_graph = MagicMock()
-            mock_research_graph.ainvoke = AsyncMock(
-                return_value={
-                    "entity_contexts": [
-                        EntityInfo(
-                            name="Jama Connect",
-                            entity_type="Tool",
-                            description="Requirements management tool",
-                            related_entities=["DOORS", "Polarion"],
-                        ),
-                    ],
-                }
-            )
-            mock_research.return_value = mock_research_graph
-
-            mock_synth_graph = MagicMock()
-            mock_synth_graph.ainvoke = AsyncMock(
-                return_value={"final_answer": "Answer", "citations": []}
-            )
-            mock_synth.return_value = mock_synth_graph
-
-            graph = create_orchestrator_graph(mock_config, mock_driver, mock_retriever)
-            # Comparison query triggers research path
-            state: OrchestratorState = {
-                "messages": [HumanMessage(content="Compare DOORS vs Jama")],
-                "query": "Compare DOORS vs Jama",
-            }
-
-            await graph.ainvoke(state)
-
-            # Verify synthesis received entities_str from research
-            synth_call = mock_synth_graph.ainvoke.call_args[0][0]
-            entities = synth_call.get("entities_str", "")
-            assert "Jama Connect" in entities
-            assert "Tool" in entities
-            assert "Related: DOORS, Polarion" in entities

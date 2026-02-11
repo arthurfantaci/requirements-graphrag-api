@@ -10,9 +10,7 @@ a separate structure for SSE delivery but excluded from the context
 string to keep token usage focused on textual knowledge.
 
 Usage:
-    from requirements_graphrag_api.core.context import (
-        NormalizedDocument, format_context, format_entity_info_for_synthesis,
-    )
+    from requirements_graphrag_api.core.context import NormalizedDocument, format_context
 
     docs = [NormalizedDocument.from_retrieved_document(d) for d in ranked_results]
     formatted = format_context(docs)
@@ -26,7 +24,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from requirements_graphrag_api.core.agentic.state import EntityInfo, RetrievedDocument
+    from requirements_graphrag_api.core.agentic.state import RetrievedDocument
     from requirements_graphrag_api.core.definitions import Resource
 
 
@@ -352,37 +350,6 @@ def format_context(
     )
 
 
-def format_entity_info_for_synthesis(entity_contexts: list[EntityInfo]) -> str:
-    """Format research subgraph ``EntityInfo`` objects for the ``{entities}`` prompt variable.
-
-    This produces a structured text block distinct from the enrichment
-    data in ``{context}``.  Research entities come from deep graph
-    traversal in the research subgraph, not from per-chunk enrichment.
-
-    Args:
-        entity_contexts: Entity information from the research subgraph.
-
-    Returns:
-        Formatted string for the ``{entities}`` SYNTHESIS variable,
-        or empty string if no entities.
-    """
-    if not entity_contexts:
-        return ""
-
-    parts: list[str] = []
-    for entity in entity_contexts:
-        info = f"**{entity.name}** ({entity.entity_type})"
-        if entity.description:
-            info += f": {entity.description}"
-        if entity.related_entities:
-            info += f"\n  Related: {', '.join(entity.related_entities[:5])}"
-        if entity.mentioned_in:
-            info += f"\n  Mentioned in: {', '.join(entity.mentioned_in[:3])}"
-        parts.append(info)
-
-    return "\n\n".join(parts)
-
-
 # =============================================================================
 # PRIVATE HELPERS
 # =============================================================================
@@ -499,5 +466,4 @@ __all__ = [
     "FormattedContext",
     "NormalizedDocument",
     "format_context",
-    "format_entity_info_for_synthesis",
 ]

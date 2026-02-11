@@ -45,15 +45,10 @@ def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
     Returns:
         Compiled Synthesis subgraph.
     """
-    # Shared LLM instances — avoids re-creating httpx clients per node call
+    # Shared LLM instance — avoids re-creating httpx clients per node call
     synth_llm = ChatOpenAI(
         model=config.chat_model,
         temperature=0.3,
-        api_key=config.openai_api_key,
-    )
-    critic_llm = ChatOpenAI(
-        model=config.chat_model,
-        temperature=0.2,
         api_key=config.openai_api_key,
     )
 
@@ -90,7 +85,6 @@ def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
             response = await chain.ainvoke(
                 {
                     "context": context,
-                    "entities": state.get("entities_str", ""),
                     "previous_context": state.get("previous_context", ""),
                     "question": query,
                 }
@@ -161,10 +155,10 @@ def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
     # Node: revise
     # -------------------------------------------------------------------------
     async def revise(state: SynthesisState) -> dict[str, Any]:
-        """Revise the answer based on critique feedback.
+        """Revise the answer based on self-critique feedback.
 
-        Uses the CRITIC prompt to get more detailed feedback, then
-        regenerates with that guidance.
+        Uses the critique from the initial SYNTHESIS response to guide
+        a second pass, augmenting context with the draft and feedback.
         """
         query = state["query"]
         context = state.get("context", "")
@@ -175,33 +169,13 @@ def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
         logger.info("Revising answer (revision %d)", revision_count + 1)
 
         try:
-            # Get detailed critique using CRITIC prompt
-            critic_template = await get_prompt(PromptName.CRITIC)
-            critic_chain = critic_template | critic_llm
-            critic_response = await critic_chain.ainvoke(
-                {
-                    "context": context,
-                    "question": query,
-                }
-            )
-            get_global_cost_tracker().record_from_response(
-                config.chat_model, critic_response, operation="critic"
-            )
-            critic_result = critic_response.content
-
-            # Parse critic feedback
-            try:
-                critic_data = json.loads(critic_result)
-            except json.JSONDecodeError:
-                critic_data = {}
-
-            # Build revision guidance
+            # Build revision guidance from self-critique
             missing = critique.missing_aspects if critique else []
             guidance = ""
             if missing:
                 guidance = f"\n\nAddress these gaps: {', '.join(missing)}"
-            if critic_data.get("followup_query"):
-                guidance += f"\nConsider: {critic_data.get('followup_query')}"
+            if critique and critique.followup_query:
+                guidance += f"\nConsider: {critique.followup_query}"
 
             # Regenerate with guidance
             synth_template = await get_prompt(PromptName.SYNTHESIS)
@@ -213,7 +187,7 @@ def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
 ## Previous Draft (needs improvement)
 {draft}
 
-## Critic Feedback
+## Revision Guidance
 {guidance}
 
 Focus on improving completeness and addressing the gaps identified above."""
@@ -221,7 +195,6 @@ Focus on improving completeness and addressing the gaps identified above."""
             synth_response = await synth_chain.ainvoke(
                 {
                     "context": augmented_context,
-                    "entities": state.get("entities_str", ""),
                     "previous_context": state.get("previous_context", ""),
                     "question": query,
                 }

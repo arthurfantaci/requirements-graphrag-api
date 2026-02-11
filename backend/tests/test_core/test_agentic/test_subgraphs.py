@@ -17,15 +17,12 @@ import pytest
 
 from requirements_graphrag_api.core.agentic.state import (
     CriticEvaluation,
-    EntityInfo,
     RAGState,
-    ResearchState,
     RetrievedDocument,
     SynthesisState,
 )
 from requirements_graphrag_api.core.agentic.subgraphs import (
     create_rag_subgraph,
-    create_research_subgraph,
     create_synthesis_subgraph,
 )
 from tests.conftest import create_ai_message_mock
@@ -184,70 +181,6 @@ class TestRAGSubgraph:
 
 
 # =============================================================================
-# RESEARCH SUBGRAPH TESTS
-# =============================================================================
-
-
-class TestResearchSubgraph:
-    """Tests for the Research entity exploration subgraph."""
-
-    def test_subgraph_creation(self, mock_config: AppConfig, mock_driver):
-        """Test that Research subgraph can be created and compiled."""
-        graph = create_research_subgraph(mock_config, mock_driver)
-        assert graph is not None
-        assert hasattr(graph, "invoke")
-
-    def test_research_state_structure(self):
-        """Test that ResearchState has expected structure."""
-        state: ResearchState = {
-            "query": "test query",
-            "context": "some context",
-            "identified_entities": ["Entity1", "Entity2"],
-            "explored_entities": ["Entity1"],
-            "entity_contexts": [
-                EntityInfo(
-                    name="Entity1",
-                    entity_type="Concept",
-                    description="Test entity",
-                    related_entities=["Entity2"],
-                    mentioned_in=["Article 1"],
-                )
-            ],
-            "exploration_complete": False,
-        }
-        assert state["query"] == "test query"
-        assert len(state["identified_entities"]) == 2
-        assert state["entity_contexts"][0].name == "Entity1"
-
-    def test_should_continue_exploring_empty(self):
-        """Test exploration logic with no entities."""
-        # When no entities are identified, should not explore
-        state: ResearchState = {
-            "query": "test",
-            "context": "ctx",
-            "identified_entities": [],
-            "explored_entities": [],
-            "exploration_complete": True,
-        }
-        # exploration_complete=True means we should stop
-        assert state.get("exploration_complete") is True
-
-    def test_should_continue_exploring_with_remaining(self):
-        """Test exploration logic with remaining entities."""
-        state: ResearchState = {
-            "query": "test",
-            "context": "ctx",
-            "identified_entities": ["E1", "E2", "E3"],
-            "explored_entities": ["E1"],
-            "exploration_complete": False,
-        }
-        # There are still E2, E3 to explore
-        remaining = [e for e in state["identified_entities"] if e not in state["explored_entities"]]
-        assert len(remaining) == 2
-        assert state.get("exploration_complete") is False
-
-
-# =============================================================================
 # SYNTHESIS SUBGRAPH TESTS
 # =============================================================================
 
@@ -365,13 +298,6 @@ class TestStateDataclasses:
         assert critique.followup_query is None
         assert critique.reasoning == ""
 
-    def test_entity_info_defaults(self):
-        """Test EntityInfo default values."""
-        entity = EntityInfo(name="Test", entity_type="Concept")
-        assert entity.description == ""
-        assert entity.related_entities == []
-        assert entity.mentioned_in == []
-
 
 # =============================================================================
 # INTEGRATION-STYLE TESTS (with mocks)
@@ -400,18 +326,3 @@ class TestSubgraphIntegration:
         assert result["draft_answer"] == "I don't have enough context to answer this question."
         assert result["critique"].answerable is False
         assert result["critique"].confidence == 0.0
-
-    @pytest.mark.asyncio
-    async def test_research_no_context(self, mock_config: AppConfig, mock_driver):
-        """Test research handles missing context gracefully."""
-        graph = create_research_subgraph(mock_config, mock_driver)
-
-        initial_state: ResearchState = {
-            "query": "What is requirements traceability?",
-            "context": "",  # Empty context
-        }
-
-        result = await graph.ainvoke(initial_state)
-
-        assert result["identified_entities"] == []
-        assert result["exploration_complete"] is True
