@@ -151,10 +151,7 @@ indent-style = "space"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = ["-ra", "-q", "--strict-markers"]
-markers = [
-    "integration: marks tests as integration tests",
-]
+addopts = ["-ra", "-q"]
 
 [tool.coverage.run]
 source = ["src/requirements_graphrag_api"]
