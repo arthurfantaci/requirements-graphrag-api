@@ -1,10 +1,20 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 /**
  * Feedback modal for collecting optional details
  */
 export function FeedbackModal({ isOpen, isPositive, onSubmit, onCancel }) {
   const [details, setDetails] = useState('')
+
+  // Close on Escape key
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onCancel()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, onCancel])
 
   if (!isOpen) return null
 
@@ -28,12 +38,13 @@ export function FeedbackModal({ isOpen, isPositive, onSubmit, onCancel }) {
       <div className="absolute inset-0 bg-black/30" onClick={handleCancel} />
 
       {/* Modal */}
-      <div className="relative bg-ivory-light rounded-lg shadow-xl w-full max-w-md mx-4">
+      <div role="dialog" aria-modal="true" aria-label="Feedback" className="relative bg-ivory-light rounded-lg shadow-xl w-full max-w-md mx-4">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-black/10">
           <h2 className="text-lg font-semibold text-charcoal">Feedback</h2>
           <button
             onClick={handleCancel}
+            aria-label="Close"
             className="text-charcoal-muted hover:text-charcoal-light transition-colors"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -52,6 +63,7 @@ export function FeedbackModal({ isOpen, isPositive, onSubmit, onCancel }) {
             onChange={(e) => setDetails(e.target.value)}
             placeholder={placeholder}
             rows={4}
+            autoFocus
             className="w-full px-3 py-2 border border-black/15 rounded-lg focus:outline-none focus:ring-2 focus:ring-terracotta focus:border-transparent resize-none"
           />
           <p className="mt-3 text-xs text-charcoal-muted">
