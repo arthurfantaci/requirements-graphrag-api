@@ -3,9 +3,9 @@
 # - Tier 4: Deep evaluation nightly
 name: Evaluation
 
-# Grant permissions for creating issues on failure
+# Grant permissions for creating issues and commit comments
 permissions:
-  contents: read
+  contents: write
   issues: write
 
 on:
@@ -100,8 +100,13 @@ jobs:
             ${results.errors.length > 0 ? '\n**Errors:**\n' + results.errors.map(e => `- ${e}`).join('\n') : ''}
             `;
 
-            // Create a release comment or update release notes
-            console.log(body);
+            // Post results as a commit comment on the tagged commit
+            await github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+              body: body,
+            });
 
   # Tier 4: Deep Evaluation (nightly)
   deep-evaluation:
