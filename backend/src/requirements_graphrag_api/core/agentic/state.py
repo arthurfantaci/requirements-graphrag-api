@@ -147,7 +147,7 @@ class RAGState(TypedDict, total=False):
     ranked_results: list[RetrievedDocument]
     retrieval_metadata: dict[str, Any]
 
-    # Quality gate (populated by grade_documents node)
+    # Quality gate (populated by dedupe_and_rank node)
     relevant_count: int
     total_count: int
     quality_pass: bool

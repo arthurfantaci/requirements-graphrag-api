@@ -52,6 +52,7 @@ from requirements_graphrag_api.core.agentic import (
     stream_agentic_events,
 )
 from requirements_graphrag_api.core.conversation import stream_conversational_events
+from requirements_graphrag_api.evaluation.cost_analysis import get_global_cost_tracker
 from requirements_graphrag_api.guardrails import (
     InjectionRisk,
     TopicClassification,
@@ -670,7 +671,6 @@ async def _generate_explanatory_events(
         refined_query = safe_message
         if request.conversation_history:
             try:
-                from langchain_core.output_parsers import StrOutputParser
                 from langchain_openai import ChatOpenAI
 
                 previous_answers = "\n".join(
@@ -683,10 +683,14 @@ async def _generate_explanatory_events(
                     temperature=0.1,
                     api_key=config.openai_api_key,
                 )
-                chain = updater_template | llm | StrOutputParser()
-                refined_query = await chain.ainvoke(
+                chain = updater_template | llm
+                response = await chain.ainvoke(
                     {"previous_answers": previous_answers, "question": safe_message}
                 )
+                get_global_cost_tracker().record_from_response(
+                    config.conversational_model, response, operation="query_updater"
+                )
+                refined_query = response.content
                 if refined_query and refined_query.strip():
                     refined_query = refined_query.strip()
                     logger.info(
@@ -783,7 +787,6 @@ async def _resolve_coreferences(
 
     try:
         async with asyncio.timeout(5.0):
-            from langchain_core.output_parsers import StrOutputParser
             from langchain_openai import ChatOpenAI
 
             history_text = "\n".join(
@@ -797,8 +800,12 @@ async def _resolve_coreferences(
                 temperature=0,
                 api_key=config.openai_api_key,
             )
-            chain = template | llm | StrOutputParser()
-            resolved = await chain.ainvoke({"history": history_text, "question": safe_message})
+            chain = template | llm
+            response = await chain.ainvoke({"history": history_text, "question": safe_message})
+            get_global_cost_tracker().record_from_response(
+                config.conversational_model, response, operation="coreference"
+            )
+            resolved = response.content
 
             if resolved and resolved.strip():
                 resolved = resolved.strip()

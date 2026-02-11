@@ -125,10 +125,10 @@ class TestRAGSubgraph:
         assert len(state["expanded_queries"]) == 2
 
     @pytest.mark.asyncio
-    async def test_grade_documents_passes_all_docs_through(
+    async def test_dedupe_and_rank_sets_quality_gate(
         self, mock_config: AppConfig, mock_driver, mock_retriever
     ):
-        """grade_documents is a pass-through — all ranked docs are kept (#147)."""
+        """dedupe_and_rank sets quality_pass, relevant_count, total_count."""
         search_results = [
             {
                 "text": "Traceability overview",
@@ -176,7 +176,7 @@ class TestRAGSubgraph:
             graph = create_rag_subgraph(mock_config, mock_driver, mock_retriever)
             result = await graph.ainvoke({"query": "list all webinars about traceability"})
 
-        # All 3 docs pass through — no LLM grading
+        # All 3 docs kept — quality gate passes
         assert len(result["ranked_results"]) == 3
         assert result["relevant_count"] == 3
         assert result["total_count"] == 3

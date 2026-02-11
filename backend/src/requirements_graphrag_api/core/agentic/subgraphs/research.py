@@ -53,6 +53,13 @@ def create_research_subgraph(
     # Import here to avoid circular imports
     from requirements_graphrag_api.core.retrieval import explore_entity
 
+    # Shared LLM instance — avoids re-creating httpx client per node call
+    entity_llm = ChatOpenAI(
+        model=config.chat_model,
+        temperature=0.2,
+        api_key=config.openai_api_key,
+    )
+
     # -------------------------------------------------------------------------
     # Node: identify_entities
     # -------------------------------------------------------------------------
@@ -75,13 +82,7 @@ def create_research_subgraph(
 
         try:
             prompt_template = await get_prompt(PromptName.ENTITY_SELECTOR)
-            llm = ChatOpenAI(
-                model=config.chat_model,
-                temperature=0.2,
-                api_key=config.openai_api_key,
-            )
-
-            chain = prompt_template | llm
+            chain = prompt_template | entity_llm
             response = await chain.ainvoke(
                 {
                     "context": context,

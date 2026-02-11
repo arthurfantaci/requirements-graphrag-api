@@ -45,6 +45,17 @@ def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
     Returns:
         Compiled Synthesis subgraph.
     """
+    # Shared LLM instances — avoids re-creating httpx clients per node call
+    synth_llm = ChatOpenAI(
+        model=config.chat_model,
+        temperature=0.3,
+        api_key=config.openai_api_key,
+    )
+    critic_llm = ChatOpenAI(
+        model=config.chat_model,
+        temperature=0.2,
+        api_key=config.openai_api_key,
+    )
 
     # -------------------------------------------------------------------------
     # Node: draft_answer
@@ -75,13 +86,7 @@ def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
 
         try:
             prompt_template = await get_prompt(PromptName.SYNTHESIS)
-            llm = ChatOpenAI(
-                model=config.chat_model,
-                temperature=0.3,
-                api_key=config.openai_api_key,
-            )
-
-            chain = prompt_template | llm
+            chain = prompt_template | synth_llm
             response = await chain.ainvoke(
                 {
                     "context": context,
@@ -172,13 +177,7 @@ def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
         try:
             # Get detailed critique using CRITIC prompt
             critic_template = await get_prompt(PromptName.CRITIC)
-            llm = ChatOpenAI(
-                model=config.chat_model,
-                temperature=0.2,
-                api_key=config.openai_api_key,
-            )
-
-            critic_chain = critic_template | llm
+            critic_chain = critic_template | critic_llm
             critic_response = await critic_chain.ainvoke(
                 {
                     "context": context,
@@ -206,7 +205,7 @@ def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
 
             # Regenerate with guidance
             synth_template = await get_prompt(PromptName.SYNTHESIS)
-            synth_chain = synth_template | llm
+            synth_chain = synth_template | synth_llm
 
             # Augment context with previous draft and critique
             augmented_context = f"""{context}

@@ -332,9 +332,9 @@ def create_orchestrator_graph(
         """Route after RAG: check for relevant docs, then research decision.
 
         Routes to fallback only when zero relevant documents remain after
-        grading. When relevant docs exist (even a small fraction), proceeds
-        to synthesis — the ranked_results list is already filtered to only
-        relevant docs by grade_documents.
+        retrieval. When relevant docs exist (even a small fraction), proceeds
+        to synthesis — the ranked_results list contains deduplicated results
+        sorted by score from dedupe_and_rank.
         """
         ranked_results = state.get("ranked_results", [])
         if not ranked_results:
