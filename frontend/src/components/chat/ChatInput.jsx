@@ -21,6 +21,7 @@ export function ChatInput({ onSend, disabled }) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Ask a question about requirements management..."
+          aria-label="Ask a question about requirements management"
           className="flex-1 px-4 py-3 border border-black/15 rounded-lg focus:outline-none focus:ring-2 focus:ring-terracotta focus:border-transparent"
           disabled={disabled}
         />
