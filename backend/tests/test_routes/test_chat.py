@@ -165,8 +165,8 @@ class TestChatEndpointStreaming:
         events = create_mock_agentic_sse_events()
 
         with (
-            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
-            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+            patch("requirements_graphrag_api.routes.handlers.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.handlers.stream_agentic_events") as mock_stream,
         ):
             mock_stream.return_value = mock_agentic_stream_generator(events)
 
@@ -183,8 +183,8 @@ class TestChatEndpointStreaming:
         events = create_mock_agentic_sse_events()
 
         with (
-            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
-            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+            patch("requirements_graphrag_api.routes.handlers.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.handlers.stream_agentic_events") as mock_stream,
         ):
             mock_stream.return_value = mock_agentic_stream_generator(events)
 
@@ -201,8 +201,8 @@ class TestChatEndpointStreaming:
         events = create_mock_agentic_sse_events()
 
         with (
-            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
-            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+            patch("requirements_graphrag_api.routes.handlers.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.handlers.stream_agentic_events") as mock_stream,
         ):
             mock_stream.return_value = mock_agentic_stream_generator(events)
 
@@ -226,8 +226,8 @@ class TestChatEndpointStreaming:
         events = create_mock_agentic_sse_events(answer="Test answer")
 
         with (
-            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
-            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+            patch("requirements_graphrag_api.routes.handlers.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.handlers.stream_agentic_events") as mock_stream,
         ):
             mock_stream.return_value = mock_agentic_stream_generator(events)
 
@@ -251,8 +251,8 @@ class TestChatEndpointStreaming:
         events = create_mock_agentic_sse_events()
 
         with (
-            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
-            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+            patch("requirements_graphrag_api.routes.handlers.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.handlers.stream_agentic_events") as mock_stream,
         ):
             mock_stream.return_value = mock_agentic_stream_generator(events)
 
@@ -276,8 +276,8 @@ class TestChatEndpointStreaming:
         events = create_mock_agentic_sse_events(answer="One two three")
 
         with (
-            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
-            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+            patch("requirements_graphrag_api.routes.handlers.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.handlers.stream_agentic_events") as mock_stream,
         ):
             mock_stream.return_value = mock_agentic_stream_generator(events)
 
@@ -300,8 +300,8 @@ class TestChatEndpointStreaming:
         events = create_mock_agentic_sse_events(answer="Follow up answer")
 
         with (
-            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
-            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+            patch("requirements_graphrag_api.routes.handlers.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.handlers.stream_agentic_events") as mock_stream,
         ):
             mock_stream.return_value = mock_agentic_stream_generator(events)
 
@@ -331,8 +331,8 @@ class TestChatEndpointStreaming:
         events = create_mock_agentic_sse_events(answer="Follow up")
 
         with (
-            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
-            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+            patch("requirements_graphrag_api.routes.handlers.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.handlers.stream_agentic_events") as mock_stream,
         ):
             mock_stream.return_value = mock_agentic_stream_generator(events)
 
@@ -402,8 +402,8 @@ class TestChatEndpointStreaming:
         events = create_mock_agentic_sse_events()
 
         with (
-            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
-            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+            patch("requirements_graphrag_api.routes.handlers.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.handlers.stream_agentic_events") as mock_stream,
         ):
             mock_stream.return_value = mock_agentic_stream_generator(events)
 
@@ -428,8 +428,8 @@ class TestChatEndpointStreaming:
         events = create_mock_agentic_sse_events(sources=[], entities=[])
 
         with (
-            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
-            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+            patch("requirements_graphrag_api.routes.handlers.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.handlers.stream_agentic_events") as mock_stream,
         ):
             mock_stream.return_value = mock_agentic_stream_generator(events)
 
@@ -454,8 +454,8 @@ class TestChatEndpointStreaming:
         error_events = [f"data: {json.dumps({'error': 'Something went wrong'})}\n\n"]
 
         with (
-            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
-            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+            patch("requirements_graphrag_api.routes.handlers.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.handlers.stream_agentic_events") as mock_stream,
         ):
             mock_stream.return_value = mock_agentic_stream_generator(error_events)
 
@@ -486,8 +486,8 @@ class TestChatMessageModel:
         events = create_mock_agentic_sse_events()
 
         with (
-            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
-            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+            patch("requirements_graphrag_api.routes.handlers.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.handlers.stream_agentic_events") as mock_stream,
         ):
             mock_stream.return_value = mock_agentic_stream_generator(events)
 
@@ -508,8 +508,8 @@ class TestChatMessageModel:
         events = create_mock_agentic_sse_events()
 
         with (
-            patch("requirements_graphrag_api.routes.chat.create_orchestrator_graph"),
-            patch("requirements_graphrag_api.routes.chat.stream_agentic_events") as mock_stream,
+            patch("requirements_graphrag_api.routes.handlers.create_orchestrator_graph"),
+            patch("requirements_graphrag_api.routes.handlers.stream_agentic_events") as mock_stream,
         ):
             mock_stream.return_value = mock_agentic_stream_generator(events)
 
@@ -560,7 +560,7 @@ class TestConversationalRouting:
     def test_force_intent_conversational_accepted(self, client: TestClient) -> None:
         """Test force_intent=conversational returns 200 with correct events."""
         with patch(
-            "requirements_graphrag_api.routes.chat.stream_conversational_events"
+            "requirements_graphrag_api.routes.handlers.stream_conversational_events"
         ) as mock_stream:
             answer = "Your first question was about traceability."
 
@@ -613,7 +613,7 @@ class TestConversationalRouting:
         proceeds to token rendering (added in chat.py _generate_conversational_events).
         """
         with patch(
-            "requirements_graphrag_api.routes.chat.stream_conversational_events"
+            "requirements_graphrag_api.routes.handlers.stream_conversational_events"
         ) as mock_stream:
 
             async def mock_events(*_args, **_kwargs):
@@ -649,7 +649,7 @@ class TestConversationalRouting:
     def test_conversational_done_has_run_id(self, client: TestClient) -> None:
         """Test done event includes run_id when available."""
         with patch(
-            "requirements_graphrag_api.routes.chat.stream_conversational_events"
+            "requirements_graphrag_api.routes.handlers.stream_conversational_events"
         ) as mock_stream:
 
             async def mock_events(*_args, **_kwargs):
@@ -689,25 +689,26 @@ class TestCoreferenceResolution:
     @pytest.mark.asyncio
     async def test_no_history_returns_original(self) -> None:
         """Test passthrough when no conversation history."""
-        from requirements_graphrag_api.routes.chat import _resolve_coreferences
+        from requirements_graphrag_api.routes.handlers import resolve_coreferences
 
         config = MagicMock()
-        result = await _resolve_coreferences(config, "List all webinars", None)
+        result = await resolve_coreferences(config, "List all webinars", None)
         assert result == "List all webinars"
 
     @pytest.mark.asyncio
     async def test_empty_history_returns_original(self) -> None:
         """Test passthrough with empty history list."""
-        from requirements_graphrag_api.routes.chat import _resolve_coreferences
+        from requirements_graphrag_api.routes.handlers import resolve_coreferences
 
         config = MagicMock()
-        result = await _resolve_coreferences(config, "List all webinars", [])
+        result = await resolve_coreferences(config, "List all webinars", [])
         assert result == "List all webinars"
 
     @pytest.mark.asyncio
     async def test_resolves_pronoun_with_history(self) -> None:
         """Test that pronouns are resolved using conversation history."""
-        from requirements_graphrag_api.routes.chat import ChatMessage, _resolve_coreferences
+        from requirements_graphrag_api.routes.chat import ChatMessage
+        from requirements_graphrag_api.routes.handlers import resolve_coreferences
 
         config = MagicMock()
         config.conversational_model = "gpt-4o-mini"
@@ -730,13 +731,13 @@ class TestCoreferenceResolution:
 
         with (
             patch(
-                "requirements_graphrag_api.routes.chat.get_prompt",
+                "requirements_graphrag_api.routes.handlers.get_prompt",
                 new_callable=AsyncMock,
                 return_value=mock_prompt,
             ),
             patch("langchain_openai.ChatOpenAI"),
         ):
-            result = await _resolve_coreferences(
+            result = await resolve_coreferences(
                 config, "Are there any webinars related to that industry?", history
             )
             assert result == resolved_text
@@ -744,7 +745,8 @@ class TestCoreferenceResolution:
     @pytest.mark.asyncio
     async def test_llm_error_returns_original(self) -> None:
         """Test graceful fallback on LLM error."""
-        from requirements_graphrag_api.routes.chat import ChatMessage, _resolve_coreferences
+        from requirements_graphrag_api.routes.chat import ChatMessage
+        from requirements_graphrag_api.routes.handlers import resolve_coreferences
 
         config = MagicMock()
         config.conversational_model = "gpt-4o-mini"
@@ -759,19 +761,20 @@ class TestCoreferenceResolution:
 
         with (
             patch(
-                "requirements_graphrag_api.routes.chat.get_prompt",
+                "requirements_graphrag_api.routes.handlers.get_prompt",
                 new_callable=AsyncMock,
                 return_value=mock_prompt,
             ),
             patch("langchain_openai.ChatOpenAI"),
         ):
-            result = await _resolve_coreferences(config, "those two industries", history)
+            result = await resolve_coreferences(config, "those two industries", history)
             assert result == "those two industries"
 
     @pytest.mark.asyncio
     async def test_empty_llm_response_returns_original(self) -> None:
         """Test fallback when LLM returns empty string."""
-        from requirements_graphrag_api.routes.chat import ChatMessage, _resolve_coreferences
+        from requirements_graphrag_api.routes.chat import ChatMessage
+        from requirements_graphrag_api.routes.handlers import resolve_coreferences
 
         config = MagicMock()
         config.conversational_model = "gpt-4o-mini"
@@ -788,11 +791,11 @@ class TestCoreferenceResolution:
 
         with (
             patch(
-                "requirements_graphrag_api.routes.chat.get_prompt",
+                "requirements_graphrag_api.routes.handlers.get_prompt",
                 new_callable=AsyncMock,
                 return_value=mock_prompt,
             ),
             patch("langchain_openai.ChatOpenAI"),
         ):
-            result = await _resolve_coreferences(config, "those two industries", history)
+            result = await resolve_coreferences(config, "those two industries", history)
             assert result == "those two industries"
