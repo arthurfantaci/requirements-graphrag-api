@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from 'react'
 import { API_URL, API_KEY } from '../utils/api'
+import { useSSEMetrics } from './useSSEMetrics'
 
 /**
  * Generate a unique conversation ID (UUID v4)
@@ -49,6 +50,7 @@ function createAssistantMessage() {
 export function useSSEChat() {
   const [messages, setMessages] = useState([])
   const [isLoading, setIsLoading] = useState(false)
+  const { startStream, recordEvent: recordMetricEvent, finishStream } = useSSEMetrics()
 
   // Generate a stable conversation ID for this session
   const conversationId = useMemo(() => generateConversationId(), [])
@@ -75,6 +77,7 @@ export function useSSEChat() {
    */
   const processEvent = useCallback(
     (eventType, data) => {
+      recordMetricEvent(eventType, data)
       switch (eventType) {
         case 'routing':
           // Set the query intent (explanatory or structured)
@@ -136,7 +139,7 @@ export function useSSEChat() {
           break
       }
     },
-    [updateLastMessage]
+    [updateLastMessage, recordMetricEvent]
   )
 
   /**
@@ -193,6 +196,7 @@ export function useSSEChat() {
           .filter((m) => m.content && m.content.trim() && m.status !== 'streaming')
           .map((m) => ({ role: m.role, content: m.content }))
 
+        startStream()
         const response = await fetch(`${API_URL}/chat`, {
           method: 'POST',
           headers: {
@@ -239,22 +243,26 @@ export function useSSEChat() {
           }
         }
 
-        // Ensure message is marked as complete
+        // Finalize metrics and mark message as complete
+        const metrics = finishStream()
         updateLastMessage((msg) => ({
           ...msg,
           status: msg.status === 'streaming' ? 'complete' : msg.status,
+          metrics,
         }))
       } catch (error) {
+        const metrics = finishStream()
         updateLastMessage({
           status: 'error',
           error: error.message || 'Failed to get response',
           content: 'Sorry, there was an error processing your request.',
+          metrics,
         })
       } finally {
         setIsLoading(false)
       }
     },
-    [messages, isLoading, conversationId, parseSSELine, processEvent, updateLastMessage]
+    [messages, isLoading, conversationId, parseSSELine, processEvent, updateLastMessage, startStream, finishStream]
   )
 
   return {
