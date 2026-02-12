@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { Analytics } from '@vercel/analytics/react'
+import { SpeedInsights } from '@vercel/speed-insights/react'
 import { useSSEChat } from './hooks/useSSEChat'
 import { MessageList, ChatInput, WelcomeScreen } from './components/chat'
 import { Sidebar } from './components/sidebar'
@@ -118,6 +120,8 @@ function App() {
           </footer>
         </div>
       </div>
+      <Analytics />
+      <SpeedInsights />
     </div>
   )
 }
