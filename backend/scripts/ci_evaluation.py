@@ -198,17 +198,23 @@ def validate_prompts() -> tuple[bool, list[str]]:
 def validate_benchmark_dataset() -> tuple[bool, list[str]]:
     """Validate benchmark dataset structure.
 
+    Uses the centralized golden dataset from the evaluation module
+    (Hub-First pattern: same local fallback used when LangSmith is unreachable).
+
     Returns:
         Tuple of (passed, errors).
     """
     errors: list[str] = []
 
     try:
-        from tests.benchmark.golden_dataset import GOLDEN_DATASET, get_must_pass_examples
+        from requirements_graphrag_api.evaluation.golden_dataset import (
+            GOLDEN_EXAMPLES,
+            get_must_pass_examples,
+        )
 
-        if len(GOLDEN_DATASET) < MIN_GOLDEN_DATASET_COUNT:
+        if len(GOLDEN_EXAMPLES) < MIN_GOLDEN_DATASET_COUNT:
             errors.append(
-                f"Golden dataset has only {len(GOLDEN_DATASET)} examples "
+                f"Golden dataset has only {len(GOLDEN_EXAMPLES)} examples "
                 f"(expected {MIN_GOLDEN_DATASET_COUNT}+)"
             )
 
@@ -217,13 +223,13 @@ def validate_benchmark_dataset() -> tuple[bool, list[str]]:
             errors.append(f"Must-pass examples: {len(must_pass)} (expected {MIN_MUST_PASS_COUNT}+)")
 
         # Spot check first 5
-        for example in GOLDEN_DATASET[:5]:
+        for example in GOLDEN_EXAMPLES[:5]:
             if not example.question:
                 errors.append(f"Example {example.id} missing question")
-            if not example.ground_truth:
-                errors.append(f"Example {example.id} missing ground_truth")
+            if not example.expected_answer:
+                errors.append(f"Example {example.id} missing expected_answer")
 
-        logger.info("Golden dataset: %d examples", len(GOLDEN_DATASET))
+        logger.info("Golden dataset: %d examples", len(GOLDEN_EXAMPLES))
         logger.info("Must-pass examples: %d", len(must_pass))
 
     except ImportError as e:
@@ -299,6 +305,7 @@ async def _run_evaluation_tier(
 
         from langsmith import Client, aevaluate
 
+        from requirements_graphrag_api.evaluation.golden_dataset import DATASET_NAME
         from requirements_graphrag_api.evaluation.ragas_evaluators import (
             answer_correctness_evaluator,
             answer_relevancy_evaluator,
@@ -310,7 +317,7 @@ async def _run_evaluation_tier(
         )
 
         client = Client()
-        dataset_name = os.getenv("EVAL_DATASET", "graphrag-rag-golden")
+        dataset_name = os.getenv("EVAL_DATASET", DATASET_NAME)
 
         # Verify dataset exists
         try:

@@ -1,20 +1,27 @@
 #!/usr/bin/env python
-"""Create a golden dataset in LangSmith for RAGAS evaluation.
+"""Manage the golden dataset in LangSmith (Hub-First workflow).
 
-This script demonstrates LangSmith dataset management concepts:
-- Creating datasets programmatically with Client.create_dataset()
-- Adding examples with structured inputs/outputs
-- Using metadata for categorization and filtering
-- Dataset versioning best practices
+This script provides bidirectional sync between the local fallback
+and the LangSmith dataset:
+
+- push:   Local → LangSmith (seed or reset the remote dataset)
+- export: LangSmith → Local (sync remote edits back to version control)
+
+The source of truth is LangSmith. Users edit examples in the UI,
+and this script syncs changes back to the local fallback file.
 
 Usage:
-    uv run python scripts/create_golden_dataset.py [--dry-run]
+    # Push local examples to LangSmith (initial seed or reset)
+    uv run python scripts/create_golden_dataset.py --push
 
-The golden dataset contains curated question-answer pairs with:
-- Expected answers for ground truth comparison
-- Expected entities for context entity recall evaluation
-- Intent classification for routing evaluation
-- Difficulty and domain metadata for analysis
+    # Export LangSmith dataset to local fallback (for version control)
+    uv run python scripts/create_golden_dataset.py --export
+
+    # Dry run (show what would happen)
+    uv run python scripts/create_golden_dataset.py --push --dry-run
+
+    # List datasets
+    uv run python scripts/create_golden_dataset.py --list
 
 Requires LANGSMITH_API_KEY environment variable.
 """
@@ -26,12 +33,12 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
 
 if TYPE_CHECKING:
-    from langsmith import Client
+    from requirements_graphrag_api.evaluation.golden_dataset import GoldenExample
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -44,461 +51,335 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Dataset configuration
-DATASET_NAME = "graphrag-rag-golden"
-DATASET_DESCRIPTION = """Golden evaluation dataset for GraphRAG RAG pipeline.
 
-Contains curated examples with:
-- Questions spanning core requirements management concepts
-- Human-verified expected answers
-- Expected entities for context entity recall evaluation
-- Intent classification labels
-- Difficulty ratings for stratified analysis
+def push_to_langsmith(*, dry_run: bool = False) -> str | None:
+    """Push local golden examples to LangSmith.
 
-Use with langsmith.evaluate() and RAGAS evaluators for comprehensive
-pipeline quality assessment.
-"""
-
-# =============================================================================
-# GOLDEN DATASET EXAMPLES
-# Each example includes:
-# - inputs: question (required for RAG pipeline)
-# - outputs: expected_answer, expected_entities, intent
-# - metadata: difficulty, domain for filtering/analysis
-# =============================================================================
-
-GOLDEN_EXAMPLES: list[dict[str, Any]] = [
-    # Core Concepts - Easy
-    {
-        "inputs": {"question": "What is requirements traceability?"},
-        "outputs": {
-            "expected_answer": (
-                "Requirements traceability is the ability to trace requirements "
-                "throughout the product development lifecycle. It establishes and "
-                "maintains links between requirements, design elements, implementation, "
-                "and test cases. This enables teams to track requirement origins, "
-                "understand dependencies, and verify that all requirements are "
-                "properly implemented and tested."
-            ),
-            "expected_entities": [
-                "requirements traceability",
-                "traceability matrix",
-            ],
-            "intent": "explanatory",
-        },
-        "metadata": {"difficulty": "easy", "domain": "core_concepts"},
-    },
-    {
-        "inputs": {"question": "What is a requirements management tool?"},
-        "outputs": {
-            "expected_answer": (
-                "A requirements management tool is software that helps teams capture, "
-                "organize, track, and manage requirements throughout a product's lifecycle. "
-                "These tools provide capabilities like requirements authoring, traceability "
-                "matrices, change management, collaboration features, and reporting. "
-                "Examples include Jama Connect, IBM DOORS, and Helix RM."
-            ),
-            "expected_entities": [
-                "requirements management",
-                "Jama Connect",
-                "IBM DOORS",
-            ],
-            "intent": "explanatory",
-        },
-        "metadata": {"difficulty": "easy", "domain": "tools"},
-    },
-    {
-        "inputs": {"question": "What is the difference between verification and validation?"},
-        "outputs": {
-            "expected_answer": (
-                "Verification confirms that the product is built correctly according to "
-                "specifications ('Are we building the product right?'). Validation confirms "
-                "that the right product is being built to meet user needs ('Are we building "
-                "the right product?'). Verification involves reviews, inspections, and "
-                "testing against requirements. Validation involves user acceptance testing "
-                "and ensuring the product solves the intended problem."
-            ),
-            "expected_entities": [
-                "verification and validation",
-            ],
-            "intent": "explanatory",
-        },
-        "metadata": {"difficulty": "easy", "domain": "core_concepts"},
-    },
-    # Core Concepts - Medium
-    {
-        "inputs": {"question": "How do I implement bidirectional traceability in my project?"},
-        "outputs": {
-            "expected_answer": (
-                "To implement bidirectional traceability: 1) Define trace link types "
-                "(derives from, satisfies, verifies, implements). 2) Establish links "
-                "from high-level requirements to derived requirements (forward traceability) "
-                "and from implementation/tests back to requirements (backward traceability). "
-                "3) Use a requirements management tool to maintain links. 4) Create "
-                "traceability matrices to visualize coverage. 5) Regularly review and "
-                "update links during change management. 6) Use traceability reports for "
-                "impact analysis and coverage verification."
-            ),
-            "expected_entities": [
-                "bidirectional traceability",
-                "coverage analysis",
-            ],
-            "intent": "explanatory",
-        },
-        "metadata": {"difficulty": "medium", "domain": "processes"},
-    },
-    {
-        "inputs": {"question": "What are best practices for writing good requirements?"},
-        "outputs": {
-            "expected_answer": (
-                "Best practices for writing requirements include: 1) Be atomic - one "
-                "requirement per statement. 2) Be unambiguous - use precise language. "
-                "3) Be verifiable - each requirement must be testable. 4) Be complete - "
-                "include all necessary information. 5) Be consistent - no contradictions. "
-                "6) Use 'shall' for mandatory requirements. 7) Avoid implementation details "
-                "in functional requirements. 8) Include acceptance criteria. 9) Assign "
-                "unique identifiers for traceability. 10) Review with stakeholders."
-            ),
-            "expected_entities": [
-                "requirements",
-                "acceptance criteria",
-            ],
-            "intent": "explanatory",
-        },
-        "metadata": {"difficulty": "medium", "domain": "processes"},
-    },
-    {
-        "inputs": {"question": "Why is change management important in requirements?"},
-        "outputs": {
-            "expected_answer": (
-                "Change management is critical because requirements evolve throughout "
-                "a project. Without proper change management: 1) Scope creep goes "
-                "uncontrolled. 2) Impact of changes isn't analyzed. 3) Stakeholders "
-                "aren't informed. 4) Traceability breaks down. 5) Testing coverage gaps "
-                "emerge. Effective change management includes change request processes, "
-                "impact analysis, approval workflows, version control, and communication "
-                "to affected parties."
-            ),
-            "expected_entities": [
-                "change management",
-                "impact analysis",
-            ],
-            "intent": "explanatory",
-        },
-        "metadata": {"difficulty": "medium", "domain": "processes"},
-    },
-    # Standards - Medium
-    {
-        "inputs": {"question": "What is ISO 26262 and how does it relate to requirements?"},
-        "outputs": {
-            "expected_answer": (
-                "ISO 26262 is the international standard for functional safety of "
-                "electrical and electronic systems in road vehicles. It defines "
-                "Automotive Safety Integrity Levels (ASIL A-D) and requires rigorous "
-                "requirements management including: functional safety requirements, "
-                "technical safety requirements, hardware/software safety requirements, "
-                "bidirectional traceability, verification and validation evidence, "
-                "and formal safety analysis documentation."
-            ),
-            "expected_entities": [
-                "ISO 26262",
-                "ASIL",
-                "functional safety",
-            ],
-            "intent": "explanatory",
-        },
-        "metadata": {"difficulty": "medium", "domain": "standards"},
-    },
-    {
-        "inputs": {"question": "What standards apply to medical device software development?"},
-        "outputs": {
-            "expected_answer": (
-                "Key standards for medical device software include: IEC 62304 "
-                "(Medical device software lifecycle), which defines software safety "
-                "classes A/B/C and required documentation. ISO 14971 for risk "
-                "management. FDA 21 CFR Part 820 (Quality System Regulation) for "
-                "US market. IEC 62366 for usability. These require comprehensive "
-                "requirements documentation, traceability, risk analysis, and "
-                "verification/validation evidence."
-            ),
-            "expected_entities": [
-                "IEC 62304",
-                "ISO 14971",
-                "medical device",
-            ],
-            "intent": "explanatory",
-        },
-        "metadata": {"difficulty": "medium", "domain": "standards"},
-    },
-    # Advanced Topics - Hard
-    {
-        "inputs": {
-            "question": (
-                "How do I set up a requirements management process for a regulated industry?"
-            )
-        },
-        "outputs": {
-            "expected_answer": (
-                "Setting up RM for regulated industries requires: 1) Identify applicable "
-                "standards (ISO 26262, IEC 62304, DO-178C, etc.). 2) Define requirements "
-                "types and hierarchy (stakeholder, system, software, hardware). "
-                "3) Establish traceability strategy covering all lifecycle phases. "
-                "4) Implement formal review and approval workflows. 5) Select compliant "
-                "tooling with audit trails. 6) Define change control process with impact "
-                "analysis. 7) Create verification/validation strategy. 8) Plan for "
-                "regulatory audits with documentation. 9) Train team on processes and tools."
-            ),
-            "expected_entities": [
-                "ISO 26262",
-                "IEC 62304",
-                "DO-178C",
-            ],
-            "intent": "explanatory",
-        },
-        "metadata": {"difficulty": "hard", "domain": "processes"},
-    },
-    {
-        "inputs": {
-            "question": (
-                "What is Model-Based Systems Engineering and how does it help with requirements?"
-            )
-        },
-        "outputs": {
-            "expected_answer": (
-                "Model-Based Systems Engineering (MBSE) uses models as the primary "
-                "artifact for systems engineering instead of documents. For requirements, "
-                "MBSE provides: visual requirements representation (SysML diagrams), "
-                "formal consistency checking, automated traceability through model "
-                "relationships, simulation for early validation, and better stakeholder "
-                "communication. Tools like Cameo, Rhapsody, and Capella support MBSE. "
-                "Challenges include learning curve and tool adoption."
-            ),
-            "expected_entities": [
-                "MBSE",
-                "SysML",
-            ],
-            "intent": "explanatory",
-        },
-        "metadata": {"difficulty": "hard", "domain": "methodologies"},
-    },
-    # Structured Queries - for intent classification testing
-    {
-        "inputs": {"question": "List all webinars in the knowledge base."},
-        "outputs": {
-            "expected_answer": "[List of webinars from database]",
-            "expected_entities": [],
-            "intent": "structured",
-        },
-        "metadata": {"difficulty": "easy", "domain": "data_query"},
-    },
-    {
-        "inputs": {"question": "How many articles mention requirements traceability?"},
-        "outputs": {
-            "expected_answer": "[Count from database]",
-            "expected_entities": [],
-            "intent": "structured",
-        },
-        "metadata": {"difficulty": "easy", "domain": "data_query"},
-    },
-    {
-        "inputs": {"question": "Which standards are covered in the knowledge base?"},
-        "outputs": {
-            "expected_answer": "[List of standards from database]",
-            "expected_entities": [],
-            "intent": "structured",
-        },
-        "metadata": {"difficulty": "easy", "domain": "data_query"},
-    },
-    {
-        "inputs": {"question": "What are the top 5 most mentioned tools?"},
-        "outputs": {
-            "expected_answer": "[Ranked list from database]",
-            "expected_entities": [],
-            "intent": "structured",
-        },
-        "metadata": {"difficulty": "medium", "domain": "data_query"},
-    },
-    # Edge Cases
-    {
-        "inputs": {"question": "Tell me about Jama Connect."},
-        "outputs": {
-            "expected_answer": (
-                "Jama Connect is a requirements management and product development "
-                "platform. It provides requirements authoring, live traceability, "
-                "review and approval workflows, risk management integration, "
-                "test management, and collaboration features. It's used across "
-                "industries including automotive, aerospace, medical devices, and "
-                "industrial equipment for managing complex product development."
-            ),
-            "expected_entities": [
-                "Jama Connect",
-                "requirements management",
-            ],
-            "intent": "explanatory",
-        },
-        "metadata": {"difficulty": "medium", "domain": "tools"},
-    },
-    {
-        "inputs": {
-            "question": "I need to improve our requirements review process. Any suggestions?"
-        },
-        "outputs": {
-            "expected_answer": (
-                "To improve requirements reviews: 1) Use structured review checklists "
-                "covering completeness, consistency, and testability. 2) Conduct reviews "
-                "in small batches rather than large documents. 3) Include diverse "
-                "stakeholders (developers, testers, domain experts). 4) Use collaborative "
-                "review tools for asynchronous input. 5) Track review metrics (defects "
-                "found, review time). 6) Implement different review types: peer review, "
-                "formal inspection, walkthrough. 7) Review traceability links along with "
-                "requirements. 8) Document decisions and action items."
-            ),
-            "expected_entities": [
-                "review status",
-                "approval workflow",
-            ],
-            "intent": "explanatory",
-        },
-        "metadata": {"difficulty": "medium", "domain": "processes"},
-    },
-]
-
-
-def create_golden_dataset(
-    client: Client | None,
-    *,
-    dry_run: bool = False,
-) -> str | None:
-    """Create the golden dataset in LangSmith.
+    Creates the dataset if it doesn't exist, or warns if it does.
+    Use --force to delete and recreate.
 
     Args:
-        client: LangSmith client.
-        dry_run: If True, only log what would be created.
+        dry_run: If True, only log what would happen.
 
     Returns:
-        Dataset ID if created, None if dry run or error.
+        Dataset ID if created, None otherwise.
     """
+    from requirements_graphrag_api.evaluation.golden_dataset import (
+        DATASET_NAME,
+        GOLDEN_EXAMPLES,
+    )
+
     if dry_run:
-        logger.info("[DRY RUN] Would create dataset: %s", DATASET_NAME)
-        logger.info("  Description: %s", DATASET_DESCRIPTION[:100] + "...")
-        logger.info("  Examples: %d", len(GOLDEN_EXAMPLES))
-
-        # Show distribution
-        difficulties = {}
-        domains = {}
-        intents = {}
-        for ex in GOLDEN_EXAMPLES:
-            meta = ex.get("metadata", {})
-            difficulties[meta.get("difficulty", "unknown")] = (
-                difficulties.get(meta.get("difficulty", "unknown"), 0) + 1
-            )
-            domains[meta.get("domain", "unknown")] = (
-                domains.get(meta.get("domain", "unknown"), 0) + 1
-            )
-            intent = ex.get("outputs", {}).get("intent", "unknown")
-            intents[intent] = intents.get(intent, 0) + 1
-
-        logger.info("\n  Distribution:")
-        logger.info("    Difficulties: %s", difficulties)
-        logger.info("    Domains: %s", domains)
-        logger.info("    Intents: %s", intents)
+        logger.info("[DRY RUN] Would push %d examples to '%s'", len(GOLDEN_EXAMPLES), DATASET_NAME)
+        _log_distribution(GOLDEN_EXAMPLES)
         return None
 
-    if client is None:
-        return None
+    from langsmith import Client
+
+    client = Client()
 
     # Check if dataset already exists
     try:
         existing = client.read_dataset(dataset_name=DATASET_NAME)
+        examples = list(client.list_examples(dataset_id=existing.id))
         logger.info(
-            "Dataset '%s' already exists (id=%s). Skipping creation.",
+            "Dataset '%s' already exists with %d examples (id=%s).",
             DATASET_NAME,
+            len(examples),
             existing.id,
         )
+        logger.info("To reset, delete the dataset in LangSmith UI first, then re-run --push.")
         return str(existing.id)
     except Exception:
-        logger.debug("Dataset '%s' not found, will create it.", DATASET_NAME)
+        logger.debug("Dataset '%s' not found, creating it.", DATASET_NAME)
 
-    # Create dataset with metadata
-    logger.info("Creating dataset: %s", DATASET_NAME)
+    # Create dataset
     dataset = client.create_dataset(
         dataset_name=DATASET_NAME,
-        description=DATASET_DESCRIPTION,
+        description=(
+            "Golden evaluation dataset for GraphRAG RAG pipeline.\n\n"
+            "Contains curated examples with expected answers, entities, "
+            "intent classification, difficulty ratings, and must-pass flags.\n\n"
+            "Source of truth: LangSmith UI. Edit examples here, then run\n"
+            "  uv run python scripts/create_golden_dataset.py --export\n"
+            "to sync changes back to the local fallback."
+        ),
     )
-    logger.info("Created dataset with ID: %s", dataset.id)
+    logger.info("Created dataset '%s' (id=%s)", DATASET_NAME, dataset.id)
 
-    # Add examples with metadata
+    # Add examples
     successful = 0
-    for i, example in enumerate(GOLDEN_EXAMPLES):
+    for example in GOLDEN_EXAMPLES:
+        ls_format = example.to_langsmith()
         try:
             client.create_example(
-                inputs=example["inputs"],
-                outputs=example["outputs"],
+                inputs=ls_format["inputs"],
+                outputs=ls_format["outputs"],
                 dataset_id=dataset.id,
-                metadata=example.get("metadata"),
+                metadata=ls_format["metadata"],
             )
             successful += 1
-            logger.debug(
-                "Added example %d/%d: %s",
-                i + 1,
-                len(GOLDEN_EXAMPLES),
-                example["inputs"]["question"][:50],
-            )
         except Exception as e:
-            logger.error("Failed to add example %d: %s", i + 1, e)
+            logger.error("Failed to add example %s: %s", example.id, e)
 
     logger.info("Added %d/%d examples to dataset", successful, len(GOLDEN_EXAMPLES))
-    logger.info("View at: https://smith.langchain.com/datasets")
-
     return str(dataset.id)
 
 
-def main(dry_run: bool = False) -> int:
-    """Create the golden dataset.
+def export_from_langsmith(*, dry_run: bool = False) -> int:
+    """Export LangSmith dataset to local fallback file.
+
+    Pulls all examples from LangSmith and regenerates the local
+    GOLDEN_EXAMPLES tuple in golden_dataset.py.
 
     Args:
-        dry_run: If True, only log what would be created.
+        dry_run: If True, only log what would happen.
 
     Returns:
-        Exit code (0 for success).
+        Number of examples exported.
     """
+    from langsmith import Client
+
+    from requirements_graphrag_api.evaluation.golden_dataset import (
+        DATASET_NAME,
+        GoldenExample,
+    )
+
+    client = Client()
+    dataset = client.read_dataset(dataset_name=DATASET_NAME)
+    raw_examples = list(client.list_examples(dataset_id=dataset.id))
+
+    examples = [
+        GoldenExample.from_langsmith(
+            inputs=ex.inputs or {},
+            outputs=ex.outputs or {},
+            metadata=ex.metadata or {},
+        )
+        for ex in raw_examples
+    ]
+
+    # Sort by ID for stable ordering
+    examples.sort(key=lambda ex: ex.id)
+
+    logger.info("Pulled %d examples from LangSmith '%s'", len(examples), DATASET_NAME)
+
+    if dry_run:
+        logger.info("[DRY RUN] Would update local fallback with %d examples", len(examples))
+        for ex in examples:
+            logger.info("  %s: %s", ex.id, ex.question[:60])
+        return len(examples)
+
+    # Generate the Python code for the local fallback
+    target_file = (
+        Path(__file__).parent.parent
+        / "src"
+        / "requirements_graphrag_api"
+        / "evaluation"
+        / "golden_dataset.py"
+    )
+
+    _update_local_fallback(target_file, examples)
+    logger.info("Updated local fallback: %s (%d examples)", target_file.name, len(examples))
+    return len(examples)
+
+
+def _update_local_fallback(target_file: Path, examples: list[GoldenExample]) -> None:
+    """Regenerate the GOLDEN_EXAMPLES section of golden_dataset.py.
+
+    Replaces content between the LOCAL FALLBACK EXAMPLES markers.
+    """
+    content = target_file.read_text()
+
+    start_marker = "GOLDEN_EXAMPLES: tuple[GoldenExample, ...] = ("
+    end_marker = "\n)\n\n\n# ======"
+
+    start_idx = content.index(start_marker)
+    end_idx = content.index(end_marker, start_idx)
+
+    # Generate new examples code
+    examples_code = _generate_examples_code(examples)
+
+    new_content = (
+        content[: start_idx + len(start_marker)] + "\n" + examples_code + content[end_idx:]
+    )
+
+    target_file.write_text(new_content)
+
+
+_CATEGORY_ORDER = [
+    "definition",
+    "concept",
+    "process",
+    "standard",
+    "comparison",
+    "tools",
+    "data_query",
+]
+
+
+def _generate_examples_code(examples: list[GoldenExample]) -> str:
+    """Generate Python code for GOLDEN_EXAMPLES entries."""
+    lines: list[str] = []
+
+    # Group by category
+    categories: dict[str, list[GoldenExample]] = {}
+    for ex in examples:
+        categories.setdefault(ex.category, []).append(ex)
+
+    # Sort categories by canonical order for stable git diffs
+    sorted_cats = sorted(
+        categories.items(),
+        key=lambda item: (
+            _CATEGORY_ORDER.index(item[0]) if item[0] in _CATEGORY_ORDER else 999,
+            item[0],
+        ),
+    )
+
+    for category, cat_examples in sorted_cats:
+        lines.append(f"    # {'─' * 73}")
+        lines.append(f"    # {category.upper()}")
+        lines.append(f"    # {'─' * 73}")
+
+        for ex in cat_examples:
+            lines.append("    GoldenExample(")
+            lines.append(f'        id="{ex.id}",')
+
+            # Handle multi-line questions
+            if len(ex.question) > 60:
+                lines.append("        question=(")
+                lines.append(f'            "{ex.question}"')
+                lines.append("        ),")
+            else:
+                lines.append(f'        question="{ex.question}",')
+
+            # Expected answer (always multi-line)
+            lines.append("        expected_answer=(")
+            _wrap_string(lines, ex.expected_answer, indent=12)
+            lines.append("        ),")
+
+            if ex.expected_entities:
+                entities = ", ".join(f'"{e}"' for e in ex.expected_entities)
+                lines.append(f"        expected_entities=[{entities}],")
+
+            if ex.expected_standards:
+                standards = ", ".join(f'"{s}"' for s in ex.expected_standards)
+                lines.append(f"        expected_standards=[{standards}],")
+
+            if ex.intent != "explanatory":
+                lines.append(f'        intent="{ex.intent}",')
+
+            lines.append(f'        category="{ex.category}",')
+            lines.append(f'        difficulty="{ex.difficulty}",')
+
+            if ex.must_pass:
+                lines.append("        must_pass=True,")
+
+            lines.append("    ),")
+
+    return "\n".join(lines) + "\n"
+
+
+def _wrap_string(lines: list[str], text: str, *, indent: int) -> None:
+    """Wrap a long string into multiple quoted lines."""
+    pad = " " * indent
+    # Split into ~70 char segments at word boundaries
+    words = text.split()
+    current_line = ""
+    for word in words:
+        if len(current_line) + len(word) + 1 > 68:
+            lines.append(f'{pad}"{current_line} "')
+            current_line = word
+        else:
+            current_line = f"{current_line} {word}" if current_line else word
+    if current_line:
+        lines.append(f'{pad}"{current_line}"')
+
+
+def _log_distribution(examples: tuple) -> None:
+    """Log example distribution statistics."""
+    difficulties: dict[str, int] = {}
+    categories: dict[str, int] = {}
+    intents: dict[str, int] = {}
+
+    for ex in examples:
+        difficulties[ex.difficulty] = difficulties.get(ex.difficulty, 0) + 1
+        categories[ex.category] = categories.get(ex.category, 0) + 1
+        intents[ex.intent] = intents.get(ex.intent, 0) + 1
+
+    must_pass = sum(1 for ex in examples if ex.must_pass)
+    logger.info("  Total: %d (must_pass: %d)", len(examples), must_pass)
+    logger.info("  Difficulties: %s", difficulties)
+    logger.info("  Categories: %s", categories)
+    logger.info("  Intents: %s", intents)
+
+
+def list_datasets() -> None:
+    """List available datasets in LangSmith."""
+    from langsmith import Client
+
+    client = Client()
+    datasets = list(client.list_datasets())
+
+    print("\nAvailable Datasets:")
+    print("=" * 60)
+    for ds in datasets:
+        example_count = ""
+        try:
+            examples = list(client.list_examples(dataset_id=ds.id))
+            example_count = f" ({len(examples)} examples)"
+        except Exception:
+            logger.debug("Could not count examples for %s", ds.name)
+        print(f"  {ds.name}{example_count}")
+        if ds.description:
+            first_line = ds.description.strip().split("\n")[0]
+            print(f"    {first_line[:70]}")
+    print("=" * 60)
+
+
+def main() -> int:
+    """Main entry point."""
     if not os.getenv("LANGSMITH_API_KEY"):
         logger.error("LANGSMITH_API_KEY not set")
         return 1
 
-    client: Client | None = None
-    if not dry_run:
-        try:
-            from langsmith import Client as LangSmithClient
+    parser = argparse.ArgumentParser(description="Manage golden dataset (Hub-First workflow)")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
+        "--push",
+        action="store_true",
+        help="Push local examples to LangSmith (initial seed or reset)",
+    )
+    group.add_argument(
+        "--export",
+        action="store_true",
+        help="Export LangSmith dataset to local fallback file",
+    )
+    group.add_argument(
+        "--list",
+        "-l",
+        action="store_true",
+        dest="list_datasets",
+        help="List available LangSmith datasets",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would happen without making changes",
+    )
 
-            client = LangSmithClient()
-        except ImportError:
-            logger.error("langsmith package not installed. Run: pip install langsmith")
-            return 1
+    args = parser.parse_args()
 
-    logger.info("=" * 60)
-    logger.info("Creating Golden Dataset for RAGAS Evaluation")
-    logger.info("=" * 60)
+    if args.list_datasets:
+        list_datasets()
+        return 0
 
-    dataset_id = create_golden_dataset(client, dry_run=dry_run)
-
-    if dry_run:
-        logger.info("[DRY RUN] Would create dataset with %d examples", len(GOLDEN_EXAMPLES))
-    elif dataset_id:
-        logger.info("Dataset ready: %s", DATASET_NAME)
+    if args.push:
+        push_to_langsmith(dry_run=args.dry_run)
+    elif args.export:
+        export_from_langsmith(dry_run=args.dry_run)
 
     return 0
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Create golden dataset in LangSmith for RAGAS evaluation"
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Log what would be created without actually creating",
-    )
-    args = parser.parse_args()
-
-    sys.exit(main(dry_run=args.dry_run))
+    sys.exit(main())
