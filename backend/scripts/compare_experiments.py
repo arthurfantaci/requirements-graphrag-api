@@ -41,8 +41,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+from requirements_graphrag_api.evaluation.golden_dataset import DATASET_NAME  # noqa: E402
+
 # Configuration
-DEFAULT_DATASET = "graphrag-rag-golden"
+DEFAULT_DATASET = DATASET_NAME
 
 
 def list_experiments(dataset_name: str = DEFAULT_DATASET) -> list[dict[str, Any]]:

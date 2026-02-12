@@ -99,8 +99,10 @@ class AppConfig:
     # Neo4j driver settings optimized for serverless (Vercel/Lambda)
     neo4j_max_connection_pool_size: int = 5
     neo4j_connection_acquisition_timeout: float = 30.0
-    neo4j_liveness_check_timeout: float = 30.0  # Timeout for connection liveness checks
-    neo4j_max_connection_lifetime: int = 300  # Max seconds a connection can live (5 min)
+    neo4j_liveness_check_timeout: float = (
+        5.0  # Check idle connections after 5s (Railway drops idle TCP ~30-60s)
+    )
+    neo4j_max_connection_lifetime: int = 120  # Max seconds a connection can live (2 min)
     # LangSmith observability settings
     langsmith_api_key: str = ""
     langsmith_project: str = "graphrag-api-dev"
