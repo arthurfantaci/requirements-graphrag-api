@@ -301,6 +301,36 @@ def create_thread_metadata(conversation_id: str | None) -> dict[str, Any] | None
     return {"metadata": {"thread_id": conversation_id}}
 
 
+def configure_sentry() -> bool:
+    """Configure Sentry error tracking and performance monitoring.
+
+    Initializes Sentry SDK with FastAPI, LangChain, and LangGraph integrations.
+    No-op if SENTRY_DSN environment variable is not set.
+
+    Call this at module level before the FastAPI app is created.
+
+    Returns:
+        True if Sentry was initialized, False otherwise.
+    """
+    dsn = os.getenv("SENTRY_DSN", "")
+    if not dsn:
+        logger.info("Sentry disabled (SENTRY_DSN not set)")
+        return False
+
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=dsn,
+        traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "1.0")),
+        profiles_sample_rate=float(os.getenv("SENTRY_PROFILES_SAMPLE_RATE", "0.0")),
+        environment=os.getenv("SENTRY_ENVIRONMENT", "development"),
+        send_default_pii=False,
+    )
+    env = os.getenv("SENTRY_ENVIRONMENT", "development")
+    logger.info("Sentry initialized (environment=%s)", env)
+    return True
+
+
 def configure_tracing(config: AppConfig) -> bool:
     """Configure LangSmith tracing from application config.
 
@@ -375,6 +405,7 @@ def get_tracing_status() -> dict[str, str | bool]:
 __all__ = [
     "REDACTED",
     "SENSITIVE_FIELD_PATTERNS",
+    "configure_sentry",
     "configure_tracing",
     "create_thread_metadata",
     "disable_tracing",

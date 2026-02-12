@@ -41,7 +41,7 @@ from requirements_graphrag_api.middleware import (
     get_rate_limiter,
     rate_limit_exceeded_handler,
 )
-from requirements_graphrag_api.observability import configure_tracing
+from requirements_graphrag_api.observability import configure_sentry, configure_tracing
 from requirements_graphrag_api.routes import (
     chat_router,
     definitions_router,
@@ -56,6 +56,10 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
 logger = logging.getLogger(__name__)
+
+# Initialize Sentry before FastAPI app creation for maximum coverage.
+# No-op if SENTRY_DSN is not set (safe for local development).
+configure_sentry()
 
 
 @asynccontextmanager
