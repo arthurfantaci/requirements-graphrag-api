@@ -41,7 +41,11 @@ from requirements_graphrag_api.middleware import (
     get_rate_limiter,
     rate_limit_exceeded_handler,
 )
-from requirements_graphrag_api.observability import configure_sentry, configure_tracing
+from requirements_graphrag_api.observability import (
+    configure_otel,
+    configure_sentry,
+    configure_tracing,
+)
 from requirements_graphrag_api.routes import (
     chat_router,
     definitions_router,
@@ -60,6 +64,10 @@ logger = logging.getLogger(__name__)
 # Initialize Sentry before FastAPI app creation for maximum coverage.
 # No-op if SENTRY_DSN is not set (safe for local development).
 configure_sentry()
+
+# Add OTel LangSmith OTLP exporter (reuses Sentry's TracerProvider if available).
+# No-op if LANGSMITH_API_KEY is not set.
+configure_otel()
 
 
 @asynccontextmanager
@@ -208,6 +216,16 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+# Instrument FastAPI with OpenTelemetry (extracts W3C traceparent headers,
+# creates spans for each request). Spans flow to LangSmith OTLP + Sentry.
+try:
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+    FastAPIInstrumentor.instrument_app(app)
+    logger.info("FastAPI OTel instrumentation enabled")
+except ImportError:
+    pass
 
 # Register rate limit exception handler
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
