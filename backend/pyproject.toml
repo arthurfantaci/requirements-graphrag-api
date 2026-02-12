@@ -55,6 +55,7 @@ dependencies = [
     "langgraph>=1.0.7",
     "langgraph-checkpoint-postgres>=3.0.4",
     "psycopg-binary>=3.3.2",
+    "sentry-sdk[fastapi,langchain,langgraph]>=2.52.0",
 ]
 
 [project.optional-dependencies]
