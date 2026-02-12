@@ -331,6 +331,58 @@ def configure_sentry() -> bool:
     return True
 
 
+def configure_otel() -> bool:
+    """Configure OpenTelemetry with LangSmith OTLP export.
+
+    Adds a BatchSpanProcessor that exports spans to LangSmith's OTLP endpoint.
+    If Sentry is initialized first (recommended), its TracerProvider is reused
+    so spans flow to BOTH Sentry and LangSmith with the same trace IDs.
+
+    Call AFTER configure_sentry() and BEFORE FastAPI app creation.
+
+    Returns:
+        True if OTel was configured, False otherwise.
+    """
+    langsmith_api_key = os.getenv("LANGSMITH_API_KEY", "")
+    if not langsmith_api_key:
+        logger.info("OTel disabled (LANGSMITH_API_KEY not set)")
+        return False
+
+    from opentelemetry import trace
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+    langsmith_project = os.getenv("LANGSMITH_PROJECT", "default")
+    exporter = OTLPSpanExporter(
+        endpoint="https://api.smith.langchain.com/otel/v1/traces",
+        headers={
+            "x-api-key": langsmith_api_key,
+            "Langsmith-Project": langsmith_project,
+        },
+    )
+
+    # Reuse Sentry's TracerProvider if available, otherwise create one
+    provider = trace.get_tracer_provider()
+    if hasattr(provider, "add_span_processor"):
+        provider.add_span_processor(BatchSpanProcessor(exporter))
+        logger.info(
+            "OTel LangSmith OTLP exporter added to existing TracerProvider (project=%s)",
+            langsmith_project,
+        )
+    else:
+        tp = TracerProvider(resource=Resource.create({"service.name": "requirements-graphrag-api"}))
+        tp.add_span_processor(BatchSpanProcessor(exporter))
+        trace.set_tracer_provider(tp)
+        logger.info(
+            "OTel TracerProvider created with LangSmith OTLP exporter (project=%s)",
+            langsmith_project,
+        )
+
+    return True
+
+
 def configure_tracing(config: AppConfig) -> bool:
     """Configure LangSmith tracing from application config.
 
@@ -405,6 +457,7 @@ def get_tracing_status() -> dict[str, str | bool]:
 __all__ = [
     "REDACTED",
     "SENSITIVE_FIELD_PATTERNS",
+    "configure_otel",
     "configure_sentry",
     "configure_tracing",
     "create_thread_metadata",
