@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 from typing import TYPE_CHECKING
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -15,6 +16,7 @@ from requirements_graphrag_api.observability import (
     create_thread_metadata,
     disable_tracing,
     get_tracing_status,
+    patch_run_for_eval,
     sanitize_inputs,
     traceable,
     traceable_safe,
@@ -419,3 +421,43 @@ class TestCreateThreadMetadata:
         assert result is not None
         # LangSmith requires 'thread_id' key for Thread grouping
         assert result["metadata"]["thread_id"] == uuid_id
+
+
+class TestPatchRunForEval:
+    """Tests for patch_run_for_eval fire-and-forget helper."""
+
+    @patch("langsmith.Client")
+    def test_calls_client_update_run(self, mock_client_cls: MagicMock) -> None:
+        """Verify correct args are forwarded to Client().update_run()."""
+        mock_client = MagicMock()
+        mock_client_cls.return_value = mock_client
+
+        inputs = {"question": "hello", "intent": "conversational"}
+        outputs = {"answer": "world"}
+        patch_run_for_eval("run-123", inputs=inputs, outputs=outputs)
+
+        mock_client.update_run.assert_called_once_with("run-123", inputs=inputs, outputs=outputs)
+
+    @patch("langsmith.Client")
+    def test_swallows_exceptions(self, mock_client_cls: MagicMock) -> None:
+        """Verify exceptions are swallowed (fire-and-forget)."""
+        mock_client = MagicMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.update_run.side_effect = RuntimeError("network down")
+
+        # Should NOT raise
+        patch_run_for_eval(
+            "run-456",
+            inputs={"question": "q"},
+            outputs={"answer": "a"},
+        )
+
+    @patch("langsmith.Client", side_effect=ImportError("no langsmith"))
+    def test_noop_on_import_error(self, mock_client_cls: MagicMock) -> None:
+        """Verify graceful degradation when langsmith is not importable."""
+        # Should NOT raise
+        patch_run_for_eval(
+            "run-789",
+            inputs={"question": "q"},
+            outputs={"answer": "a"},
+        )

@@ -41,6 +41,17 @@ DEFAULT_PII_ENTITIES: tuple[str, ...] = (
     "US_SSN",
 )
 
+# Domain-specific terms that NER models frequently misclassify as PERSON.
+# Case-insensitive comparison is used during filtering.
+DOMAIN_ALLOW_LIST: frozenset[str] = frozenset(
+    term.lower()
+    for term in (
+        "Cypher",
+        "Neo4j",
+        "GraphRAG",
+    )
+)
+
 
 @dataclass(frozen=True, slots=True)
 class DetectedEntity:
@@ -209,6 +220,9 @@ def detect_and_redact_pii(
             language=language,
             score_threshold=score_threshold,
         )
+
+        # Filter out domain-specific terms that NER misclassifies
+        results = [r for r in results if text[r.start : r.end].lower() not in DOMAIN_ALLOW_LIST]
 
         if not results:
             return PIICheckResult(
