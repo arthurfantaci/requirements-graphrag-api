@@ -10,18 +10,38 @@
 
 | Requirement | Details |
 |-------------|---------|
-| LangSmith account | Admin access to `jama-mcp-graphrag` project |
-| Environment variables | `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT=jama-mcp-graphrag` |
+| LangSmith account | Admin access to org **Norfolk AI\|BI**, workspace **graphrag-api** |
+| LangSmith project | `graphrag-api-prod` (within graphrag-api workspace) |
+| Environment variables | `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT=graphrag-api-prod` |
 | Neo4j (for Cypher eval only) | `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD` |
 | Python environment | `uv` installed, backend dependencies available |
+
+### LangSmith Hierarchy
+
+```
+Norfolk AI|BI (Org: 91793c67-6068-4615-8a2f-7de948bc8f68)
+  └── graphrag-api (Workspace: 33c08fbf-3b88-4b49-ae32-9677043ebed2)
+        ├── Tracing Projects
+        │     ├── graphrag-api-prod   ← production traces
+        │     ├── graphrag-api-dev    ← development traces
+        │     └── evaluators          ← evaluation experiment runs
+        ├── Datasets & Experiments    ← workspace-level (shared)
+        ├── Annotation Queues         ← workspace-level (shared)
+        ├── Prompts (19)              ← workspace-level (shared)
+        ├── Monitoring                ← workspace-level
+        └── Custom Dashboards         ← workspace-level
+```
 
 ### Environment Setup
 
 ```bash
 # Required for all LangSmith features
 export LANGSMITH_API_KEY=lsv2_pt_...
-export LANGSMITH_PROJECT=jama-mcp-graphrag
 export LANGSMITH_TRACING=true
+
+# Project selection (determines which tracing project receives traces)
+export LANGSMITH_PROJECT=graphrag-api-prod   # production
+# export LANGSMITH_PROJECT=graphrag-api-dev  # development (default in config.py)
 
 # Required for online Cypher evaluation and offline eval
 export NEO4J_URI=neo4j+s://...
@@ -37,8 +57,9 @@ export PROMPT_ENVIRONMENT=production   # or "staging"
 ## Architecture Overview
 
 ```
+Norfolk AI|BI org → graphrag-api workspace
 ┌─────────────────────────────────────────────────────────────────┐
-│  PRODUCTION TRAFFIC                                             │
+│  PRODUCTION TRAFFIC → project: graphrag-api-prod                │
 │                                                                 │
 │  User → Chat API → Intent Router → Handler (3 vectors)         │
 │           │                            │                        │
@@ -47,8 +68,8 @@ export PROMPT_ENVIRONMENT=production   # or "staging"
 │           │                            │  session_id            │
 │           ▼                            ▼                        │
 │      ┌─────────────────────────────────────┐                    │
-│      │         LangSmith Traces            │                    │
-│      │  (enriched with intent metadata)    │                    │
+│      │    LangSmith Traces (graphrag-api-  │                    │
+│      │    prod, enriched with metadata)    │                    │
 │      └────┬───────────┬───────────┬────────┘                    │
 │           │           │           │                              │
 │           ▼           ▼           ▼                              │
@@ -78,11 +99,11 @@ export PROMPT_ENVIRONMENT=production   # or "staging"
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
-│  SCHEDULED / MANUAL                                             │
+│  SCHEDULED / MANUAL (target: graphrag-api-prod)                 │
 │                                                                 │
 │  online_eval_cypher.py ──► Batch Cypher execution against Neo4j │
 │  quality_check.py ───────► 7-day vs 30-day degradation check    │
-│  run_vector_evaluation.py ► Full offline eval (4 vectors)       │
+│  run_vector_evaluation.py ► Full offline eval → evaluators proj │
 │  ci_evaluation.py ────────► CI tier runner (1-4)                │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -95,23 +116,23 @@ export PROMPT_ENVIRONMENT=production   # or "staging"
 
 ```bash
 # Quick degradation check (dry run — no exit code failure)
-uv run python scripts/quality_check.py --project jama-mcp-graphrag --dry-run
+uv run python scripts/quality_check.py --project graphrag-api-prod --dry-run
 
 # Full degradation check (exits 1 on degradation)
-uv run python scripts/quality_check.py --project jama-mcp-graphrag
+uv run python scripts/quality_check.py --project graphrag-api-prod
 ```
 
 ### Run online Cypher evaluation
 
 ```bash
 # Evaluate last 24h of structured traces (posts feedback to LangSmith)
-uv run python scripts/online_eval_cypher.py --project jama-mcp-graphrag
+uv run python scripts/online_eval_cypher.py --project graphrag-api-prod
 
 # Dry run — evaluate but don't post
-uv run python scripts/online_eval_cypher.py --project jama-mcp-graphrag --dry-run
+uv run python scripts/online_eval_cypher.py --project graphrag-api-prod --dry-run
 
 # Custom window
-uv run python scripts/online_eval_cypher.py --project jama-mcp-graphrag \
+uv run python scripts/online_eval_cypher.py --project graphrag-api-prod \
     --hours-back 48 --limit 100
 ```
 

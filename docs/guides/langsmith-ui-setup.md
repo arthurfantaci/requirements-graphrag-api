@@ -5,7 +5,10 @@
 > Architecture (PR #187).
 >
 > **Time estimate**: ~45 minutes
-> **Prerequisites**: LangSmith admin access to the `jama-mcp-graphrag` project
+> **Prerequisites**: LangSmith admin access
+> **Organization**: Norfolk AI|BI
+> **Workspace**: graphrag-api
+> **Project**: graphrag-api-prod
 
 ---
 
@@ -20,12 +23,30 @@
 
 ---
 
+## Existing Resources (pre-configuration)
+
+Before starting, note what already exists in the **graphrag-api** workspace:
+
+| Component | Existing | Notes |
+|-----------|----------|-------|
+| Tracing Projects | `graphrag-api-prod`, `graphrag-api-dev`, `evaluators` | Production, dev, and eval runs |
+| Datasets | `graphrag-rag-golden` (39 ex), `graphrag-agentic-eval` (16 ex), `graphrag-text2cypher-eval` (11 ex), `graphrag-critic-eval` (10 ex), `graphrag-intent-classifier-eval` (18 ex) | Legacy datasets; new per-vector datasets created by migration script |
+| Annotation Queues | `qa-random-sample`, `failed-routing-review`, `low-confidence-review` | Legacy queues from prior setup — keep or archive as desired |
+| Prompts | 19 prompts with `production`/`staging` tags | Phase 1 complete |
+| Custom Dashboards | `graphrag-api-prod` (1 chart) | Will be expanded in Section D |
+
+---
+
 ## Section A: Annotation Queues (4 queues)
 
-Annotation queues receive traces for human review. The backend routes negative
-user feedback to queues via `routes/feedback.py` → `_resolve_queue_id()`, which
-resolves queue **names** to UUIDs. The names below must match
-`evaluation/constants.py` exactly.
+Annotation queues are a **workspace-level** resource (shared across all projects).
+The backend routes negative user feedback to queues via `routes/feedback.py` →
+`_resolve_queue_id()`, which resolves queue **names** to UUIDs. The names below
+must match `evaluation/constants.py` exactly.
+
+> **Note**: 3 legacy queues already exist (`qa-random-sample`, `failed-routing-review`,
+> `low-confidence-review`). The 4 queues below are new — create them alongside the
+> existing ones.
 
 ### How it works in the code
 
@@ -40,7 +61,7 @@ User clicks thumbs-down → FeedbackModal collects rubric scores
 
 ### Queue 1: `review-explanatory`
 
-1. Go to **LangSmith** → **Annotation Queues** → **+ New Queue**
+1. Go to **LangSmith** → workspace **graphrag-api** → **Annotation Queues** → **+ New Queue**
 2. Configure:
    - **Name**: `review-explanatory`
    - **Description**: `Explanatory vector responses flagged by low hallucination scores or negative user feedback. Review for accuracy, completeness, and citation quality.`
@@ -82,10 +103,11 @@ User clicks thumbs-down → FeedbackModal collects rubric scores
 
 ## Section B: Online Evaluators (4 evaluators)
 
-Online evaluators automatically score a sample of production traces. They run
-asynchronously (no latency impact on users). Each evaluated trace is
-auto-upgraded to extended retention at ~10x base cost — the sampling rates
-below are tuned to control this.
+Online evaluators are configured at the **project level** — set these up on
+the `graphrag-api-prod` project (not `graphrag-api-dev`). They automatically
+score a sample of production traces asynchronously (no latency impact on
+users). Each evaluated trace is auto-upgraded to extended retention at ~10x
+base cost — the sampling rates below are tuned to control this.
 
 > **Note**: There is also a 5th evaluator (`online_eval_cypher.py`) that runs
 > as a batch script outside LangSmith because it needs Neo4j access. See the
@@ -93,7 +115,7 @@ below are tuned to control this.
 
 ### Evaluator 1: Hallucination Detector
 
-1. Go to **LangSmith** → your project → **Online Evaluation** tab → **+ Add Evaluator**
+1. Go to **LangSmith** → **graphrag-api** workspace → project **graphrag-api-prod** → **Online Evaluation** tab → **+ Add Evaluator**
 2. Configure:
    - **Name**: `hallucination`
    - **Evaluator Type**: LLM-as-judge
@@ -218,7 +240,7 @@ the rule filters by that score and routes to a queue.
 
 ### Rule 1: Low Hallucination → review-explanatory
 
-1. Go to **LangSmith** → your project → **Rules** tab → **+ Add Rule**
+1. Go to **LangSmith** → **graphrag-api** workspace → project **graphrag-api-prod** → **Rules** tab → **+ Add Rule**
 2. Configure:
    - **Name**: `route-low-hallucination`
    - **Trigger**: Feedback received
@@ -274,12 +296,12 @@ the rule filters by that score and routes to a queue.
 
 ## Section D: Dashboards (3 dashboards)
 
-### Dashboard 1: Production Overview (customize prebuilt)
+### Dashboard 1: Production Overview (expand existing `graphrag-api-prod`)
 
-LangSmith auto-generates a prebuilt dashboard for every project with trace
-volume, latency, error rate, and cost charts. Customize it:
+Your workspace already has a `graphrag-api-prod` dashboard with 1 chart.
+Expand it to be the primary production overview:
 
-1. Go to **LangSmith** → your project → **Dashboards** → open the auto-generated dashboard
+1. Go to **LangSmith** → **graphrag-api** workspace → **Custom Dashboards** → open **graphrag-api-prod**
 2. **Add filter group**: `metadata.intent` — this enables per-intent breakdown
 3. **Customize charts**:
    - Ensure these charts exist (most are auto-generated):
@@ -347,7 +369,7 @@ volume, latency, error rate, and cost charts. Customize it:
 
 ### Alert 1: High Error Rate (Critical)
 
-1. Go to **LangSmith** → your project → **Alerts** → **+ New Alert**
+1. Go to **LangSmith** → **graphrag-api** workspace → project **graphrag-api-prod** → **Alerts** → **+ New Alert**
 2. Configure:
    - **Name**: `high-error-rate`
    - **Metric**: Errored Runs (percentage)
@@ -396,7 +418,7 @@ volume, latency, error rate, and cost charts. Customize it:
 After completing all sections, verify the setup:
 
 ### Annotation Queues
-- [ ] Navigate to **Annotation Queues** — all 4 queues are visible
+- [ ] Navigate to **graphrag-api** workspace → **Annotation Queues** — all 4 queues are visible
 - [ ] Each queue has the correct name (exact match to constants.py):
   - `review-explanatory`
   - `review-structured`
@@ -405,7 +427,7 @@ After completing all sections, verify the setup:
 - [ ] Submit a thumbs-down from the frontend → check that the trace appears in the correct intent queue
 
 ### Online Evaluators
-- [ ] Navigate to your project → **Online Evaluation** — 4 evaluators listed
+- [ ] Navigate to **graphrag-api-prod** → **Online Evaluation** — 4 evaluators listed
 - [ ] Wait for production traffic → verify evaluator scores appear on traces
 - [ ] Check that `hallucination` scores appear on explanatory traces
 - [ ] Check that `coherence` scores appear on conversational traces
@@ -413,7 +435,7 @@ After completing all sections, verify the setup:
 - [ ] Check that `answer_relevancy` scores appear on a sample of all traces
 
 ### Automation Rules
-- [ ] Navigate to your project → **Rules** — 5 rules listed
+- [ ] Navigate to **graphrag-api-prod** → **Rules** — 5 rules listed
 - [ ] Wait for a low hallucination score → confirm trace appears in `review-explanatory`
 - [ ] Wait for a cypher parse failure → confirm trace appears in `review-structured`
 

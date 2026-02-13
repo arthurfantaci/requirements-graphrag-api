@@ -3,6 +3,8 @@
 > Detailed workflows with concrete examples for operating the GraphRAG
 > LangSmith integration. For initial setup, see
 > [langsmith-ui-setup.md](langsmith-ui-setup.md).
+>
+> **Organization**: Norfolk AI|BI | **Workspace**: graphrag-api | **Project**: graphrag-api-prod
 
 ---
 
@@ -30,7 +32,7 @@ When the annotation queues have accumulated traces for review, typically from:
 
 ### Step-by-step
 
-1. **Open the queue**: LangSmith → Annotation Queues → select a queue (e.g., `review-explanatory`)
+1. **Open the queue**: LangSmith → **graphrag-api** workspace → Annotation Queues → select a queue (e.g., `review-explanatory`)
 
 2. **Review the trace**: For each item in the queue:
    - Read the **user question** (input)
@@ -127,7 +129,7 @@ quality review.
 
 4. **Cross-reference with quality_check.py**:
    ```bash
-   uv run python scripts/quality_check.py --project jama-mcp-graphrag --dry-run
+   uv run python scripts/quality_check.py --project graphrag-api-prod --dry-run
    ```
    This compares the last 7 days against a 30-day baseline and shows degradation
    across 6 monitored keys.
@@ -189,7 +191,7 @@ Investigation steps:
    ```
 
 3. **Review results in LangSmith**:
-   - Go to **Experiments** tab in your project
+   - Go to **Experiments** tab in **graphrag-api-prod**
    - Find the experiment by name: `graphrag-{vector}-production-{timestamp}`
    - Check per-evaluator scores
    - Compare against previous experiments to detect regressions
@@ -254,13 +256,13 @@ generated Cypher against Neo4j.
 1. **Run manually**:
    ```bash
    # Default: last 24h, up to 50 traces
-   uv run python scripts/online_eval_cypher.py --project jama-mcp-graphrag
+   uv run python scripts/online_eval_cypher.py --project graphrag-api-prod
 
    # Preview without posting feedback
-   uv run python scripts/online_eval_cypher.py --project jama-mcp-graphrag --dry-run
+   uv run python scripts/online_eval_cypher.py --project graphrag-api-prod --dry-run
 
    # Broader window
-   uv run python scripts/online_eval_cypher.py --project jama-mcp-graphrag \
+   uv run python scripts/online_eval_cypher.py --project graphrag-api-prod \
        --hours-back 72 --limit 200
    ```
 
@@ -282,7 +284,7 @@ generated Cypher against Neo4j.
    ```bash
    # Example crontab entry: run daily at 2 AM
    0 2 * * * cd /path/to/backend && uv run python scripts/online_eval_cypher.py \
-       --project jama-mcp-graphrag >> /var/log/online_eval_cypher.log 2>&1
+       --project graphrag-api-prod >> /var/log/online_eval_cypher.log 2>&1
    ```
 
 4. **Check results in LangSmith**: After running, structured traces will have
