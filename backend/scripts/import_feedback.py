@@ -492,6 +492,56 @@ def save_stats(
     logger.info("Saved statistics to %s", output_path)
 
 
+def _push_examples_to_langsmith(
+    examples: list[NewEvaluationExample],
+    dataset_name: str,
+) -> int:
+    """Push generated examples to a LangSmith dataset.
+
+    Args:
+        examples: List of generated examples.
+        dataset_name: Target LangSmith dataset name.
+
+    Returns:
+        Number of examples successfully pushed.
+    """
+    import os
+
+    if not os.getenv("LANGSMITH_API_KEY"):
+        logger.error("LANGSMITH_API_KEY not set — cannot push to LangSmith")
+        return 0
+
+    from langsmith import Client
+
+    client = Client()
+
+    try:
+        dataset = client.read_dataset(dataset_name=dataset_name)
+    except Exception as e:
+        logger.error("Dataset '%s' not found: %s", dataset_name, e)
+        return 0
+
+    pushed = 0
+    for ex in examples:
+        try:
+            client.create_example(
+                inputs={"question": ex.question},
+                outputs={"expected_answer": ex.ground_truth},
+                dataset_id=dataset.id,
+                metadata={
+                    "source": "feedback_import",
+                    "source_run_id": ex.source_run_id,
+                    "confidence": ex.confidence,
+                    "tags": ex.tags,
+                },
+            )
+            pushed += 1
+        except Exception as e:
+            logger.error("Failed to push example %s: %s", ex.id, e)
+
+    return pushed
+
+
 def main() -> int:
     """Main entry point for feedback import.
 
@@ -557,6 +607,10 @@ def main() -> int:
         help="Only validate annotations without processing",
     )
     parser.add_argument(
+        "--push-to-langsmith",
+        help=("Push generated examples to a LangSmith dataset (e.g., graphrag-eval-explanatory)"),
+    )
+    parser.add_argument(
         "--verbose",
         "-v",
         action="store_true",
@@ -619,6 +673,14 @@ def main() -> int:
 
         save_stats(stats, args.stats_output)
         print(f"Saved statistics to {args.stats_output}")
+
+        # Push to LangSmith if requested
+        if args.push_to_langsmith and examples:
+            pushed = _push_examples_to_langsmith(
+                examples,
+                args.push_to_langsmith,
+            )
+            print(f"Pushed {pushed}/{len(examples)} examples to {args.push_to_langsmith}")
 
         return 0
 

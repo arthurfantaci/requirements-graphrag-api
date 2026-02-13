@@ -36,13 +36,23 @@ class PromptName(StrEnum):
     # Agentic prompts
     QUERY_EXPANSION = "graphrag-query-expansion"
     SYNTHESIS = "graphrag-synthesis"
-    # Evaluation prompts (LLM-as-judge)
+    # Evaluation prompts — explanatory vector (LLM-as-judge)
     EVAL_FAITHFULNESS = "graphrag-eval-faithfulness"
     EVAL_ANSWER_RELEVANCY = "graphrag-eval-answer-relevancy"
     EVAL_CONTEXT_PRECISION = "graphrag-eval-context-precision"
     EVAL_CONTEXT_RECALL = "graphrag-eval-context-recall"
     EVAL_ANSWER_CORRECTNESS = "graphrag-eval-answer-correctness"
     EVAL_CONTEXT_ENTITY_RECALL = "graphrag-eval-context-entity-recall"
+    EVAL_GROUNDEDNESS = "graphrag-eval-groundedness"
+
+    # Evaluation prompts — structured vector
+    EVAL_RESULT_CORRECTNESS = "graphrag-eval-result-correctness"
+
+    # Evaluation prompts — conversational vector
+    EVAL_CONV_COHERENCE = "graphrag-eval-conv-coherence"
+    EVAL_CONV_CONTEXT_RETENTION = "graphrag-eval-conv-context-retention"
+    EVAL_CONV_HALLUCINATION = "graphrag-eval-conv-hallucination"
+    EVAL_CONV_COMBINED = "graphrag-eval-conv-combined"
 
 
 @dataclass(frozen=True)
@@ -736,13 +746,8 @@ COREFERENCE_RESOLVER_METADATA = PromptMetadata(
 # Used by ragas_evaluators.py for offline evaluation via langsmith.evaluate()
 # =============================================================================
 
-EVAL_FAITHFULNESS_SYSTEM: Final[str] = """You are evaluating the faithfulness of an answer \
-to its source context.
-
-Given:
-- **Context**: {context}
-- **Question**: {question}
-- **Answer**: {answer}
+EVAL_FAITHFULNESS_SYSTEM: Final[str] = """You are a judge evaluating the faithfulness of an \
+answer to its source context.
 
 ## Task
 
@@ -754,21 +759,32 @@ Determine whether every claim in the answer is supported by the context.
 2. For each claim, check if it is SUPPORTED, PARTIALLY SUPPORTED, or NOT SUPPORTED by the context.
 3. Calculate: score = fully_supported / total_claims (partially supported counts as 0.5).
 
+## Score Calibration
+
+- 1.0: Every claim in the answer is directly supported by the context
+- 0.7: Most claims are supported; one or two minor claims lack direct support
+- 0.3: Several claims are unsupported or contradict the context
+- 0.0: The answer is entirely fabricated or contradicts the context
+
 ## Output
 
-Respond with ONLY a JSON object:
+Respond with ONLY a JSON object. Do NOT wrap in markdown code blocks.
 {{"claims": [{{"claim": "...", "verdict": "supported|partial|unsupported"}}], \
 "score": <float 0.0-1.0>, "reasoning": "<brief explanation>"}}"""
 
 EVAL_FAITHFULNESS_TEMPLATE = ChatPromptTemplate.from_messages(
     [
         ("system", EVAL_FAITHFULNESS_SYSTEM),
-        ("human", "Evaluate faithfulness:"),
+        (
+            "human",
+            "Context:\n{context}\n\nQuestion:\n{question}\n\nAnswer:\n{answer}\n\n"
+            "Evaluate faithfulness:",
+        ),
     ]
 )
 
 EVAL_FAITHFULNESS_METADATA = PromptMetadata(
-    version="2.0.0",
+    version="3.0.0",
     description="LLM-as-judge: evaluates answer faithfulness via claim-level verification",
     input_variables=["context", "question", "answer"],
     output_format="json",
@@ -776,51 +792,65 @@ EVAL_FAITHFULNESS_METADATA = PromptMetadata(
 )
 
 
-EVAL_ANSWER_RELEVANCY_SYSTEM: Final[str] = """You are evaluating the relevancy of an answer \
-to a question.
-
-Given:
-- **Question**: {question}
-- **Answer**: {answer}
+EVAL_ANSWER_RELEVANCY_SYSTEM: Final[str] = """You are a judge evaluating the relevancy of an \
+answer to a question.
 
 ## Task
 
 Determine whether the answer directly and completely addresses the question.
 
-## Step-by-step
+## Scoring Rubric
 
-1. Identify the core information need of the question.
-2. Check if the answer addresses that need directly.
-3. Check for irrelevant content that dilutes the answer.
-4. Score based on: directness + completeness - irrelevance.
+Score each dimension on 0.0-1.0, then compute the weighted score:
+
+1. **Direct Address** (weight 0.5): Does the answer address the core information need?
+   - 1.0: Directly answers the question asked
+   - 0.5: Partially addresses the question but misses the core need
+   - 0.0: Does not address the question at all
+
+2. **Completeness** (weight 0.3): Are all parts of the question covered?
+   - 1.0: All aspects of the question are addressed
+   - 0.5: Main aspect is covered but sub-questions are missed
+   - 0.0: Most aspects are unanswered
+
+3. **Conciseness** (weight 0.2): Is irrelevant content minimized?
+   - 1.0: Every sentence contributes to answering the question
+   - 0.5: Some tangential content but mostly focused
+   - 0.0: Mostly irrelevant content that dilutes the answer
+
+Final score = (direct_address * 0.5) + (completeness * 0.3) + (conciseness * 0.2)
+
+## Score Calibration
+
+- 1.0: The answer perfectly addresses every part of the question with no filler
+- 0.7: The answer addresses the main question well, minor gaps or slight tangents
+- 0.3: The answer is loosely related but misses the core question
+- 0.0: The answer is completely off-topic
 
 ## Output
 
-Respond with ONLY a JSON object:
-{{"score": <float 0.0-1.0>, "reasoning": "<brief explanation>"}}"""
+Respond with ONLY a JSON object. Do NOT wrap in markdown code blocks.
+{{"direct_address": <float>, "completeness": <float>, "conciseness": <float>, \
+"score": <float 0.0-1.0>, "reasoning": "<brief explanation>"}}"""
 
 EVAL_ANSWER_RELEVANCY_TEMPLATE = ChatPromptTemplate.from_messages(
     [
         ("system", EVAL_ANSWER_RELEVANCY_SYSTEM),
-        ("human", "Evaluate relevancy:"),
+        ("human", "Question:\n{question}\n\nAnswer:\n{answer}\n\nEvaluate relevancy:"),
     ]
 )
 
 EVAL_ANSWER_RELEVANCY_METADATA = PromptMetadata(
-    version="2.0.0",
-    description="LLM-as-judge: evaluates answer relevancy to the question",
+    version="3.0.0",
+    description="LLM-as-judge: evaluates answer relevancy with weighted rubric",
     input_variables=["question", "answer"],
     output_format="json",
     tags=["evaluation", "ragas", "relevancy"],
 )
 
 
-EVAL_CONTEXT_PRECISION_SYSTEM: Final[str] = """You are evaluating the precision of retrieved \
-contexts for a question.
-
-Given:
-- **Question**: {question}
-- **Retrieved Contexts**: {contexts}
+EVAL_CONTEXT_PRECISION_SYSTEM: Final[str] = """You are a judge evaluating the precision of \
+retrieved contexts for a question.
 
 ## Task
 
@@ -832,21 +862,32 @@ Determine what proportion of the retrieved contexts are relevant to answering th
 2. A context is relevant if it contains information useful for answering the question.
 3. Calculate: score = relevant_contexts / total_contexts.
 
+## Score Calibration
+
+- 1.0: Every retrieved context chunk is directly relevant to the question
+- 0.7: Most chunks are relevant, one or two are tangential
+- 0.3: Only a few chunks are relevant, most are noise
+- 0.0: None of the retrieved contexts are relevant to the question
+
 ## Output
 
-Respond with ONLY a JSON object:
+Respond with ONLY a JSON object. Do NOT wrap in markdown code blocks.
 {{"verdicts": [{{"context_index": 0, "relevant": true|false, "reason": "..."}}], \
 "score": <float 0.0-1.0>, "reasoning": "<brief explanation>"}}"""
 
 EVAL_CONTEXT_PRECISION_TEMPLATE = ChatPromptTemplate.from_messages(
     [
         ("system", EVAL_CONTEXT_PRECISION_SYSTEM),
-        ("human", "Evaluate context precision:"),
+        (
+            "human",
+            "Question:\n{question}\n\nRetrieved Contexts:\n{contexts}\n\n"
+            "Evaluate context precision:",
+        ),
     ]
 )
 
 EVAL_CONTEXT_PRECISION_METADATA = PromptMetadata(
-    version="2.0.0",
+    version="3.0.0",
     description="LLM-as-judge: evaluates context precision via per-chunk relevance verdicts",
     input_variables=["question", "contexts"],
     output_format="json",
@@ -854,15 +895,10 @@ EVAL_CONTEXT_PRECISION_METADATA = PromptMetadata(
 )
 
 
-EVAL_CONTEXT_RECALL_SYSTEM: Final[str] = """You are evaluating context recall against a \
-ground truth answer.
+EVAL_CONTEXT_RECALL_SYSTEM: Final[str] = """You are a judge evaluating context recall against \
+a ground truth answer.
 
-Given:
-- **Question**: {question}
-- **Retrieved Contexts**: {contexts}
-- **Ground Truth Answer**: {ground_truth}
-
-## Task — Atomic Fact Decomposition
+## Task -- Atomic Fact Decomposition
 
 Determine what proportion of facts in the ground truth are supported by the retrieved contexts.
 
@@ -872,21 +908,32 @@ Determine what proportion of facts in the ground truth are supported by the retr
 2. For each atomic fact, check if it is SUPPORTED by any of the retrieved contexts.
 3. Calculate: recall = supported_facts / total_facts.
 
+## Score Calibration
+
+- 1.0: Every atomic fact in the ground truth is supported by the retrieved contexts
+- 0.7: Most facts are supported, a few minor facts are missing from context
+- 0.3: Only some key facts are supported, significant information gaps
+- 0.0: None of the ground truth facts are present in the retrieved contexts
+
 ## Output
 
-Respond with ONLY a JSON object:
+Respond with ONLY a JSON object. Do NOT wrap in markdown code blocks.
 {{"facts": [{{"fact": "...", "supported": true|false}}], \
 "score": <float 0.0-1.0>, "reasoning": "<brief explanation>"}}"""
 
 EVAL_CONTEXT_RECALL_TEMPLATE = ChatPromptTemplate.from_messages(
     [
         ("system", EVAL_CONTEXT_RECALL_SYSTEM),
-        ("human", "Evaluate context recall:"),
+        (
+            "human",
+            "Question:\n{question}\n\nRetrieved Contexts:\n{contexts}\n\n"
+            "Ground Truth Answer:\n{ground_truth}\n\nEvaluate context recall:",
+        ),
     ]
 )
 
 EVAL_CONTEXT_RECALL_METADATA = PromptMetadata(
-    version="2.0.0",
+    version="3.0.0",
     description=(
         "LLM-as-judge: evaluates context recall via atomic fact decomposition "
         "(expected improvement over holistic comparison)"
@@ -897,13 +944,8 @@ EVAL_CONTEXT_RECALL_METADATA = PromptMetadata(
 )
 
 
-EVAL_ANSWER_CORRECTNESS_SYSTEM: Final[str] = """You are evaluating the factual correctness of \
-an answer against a ground truth answer.
-
-Given:
-- **Question**: {question}
-- **Answer**: {answer}
-- **Ground Truth**: {ground_truth}
+EVAL_ANSWER_CORRECTNESS_SYSTEM: Final[str] = """You are a judge evaluating the factual \
+correctness of an answer against a ground truth answer.
 
 ## Task
 
@@ -922,7 +964,7 @@ Decompose both the answer and ground truth into atomic claims, then classify eac
 
 ## Output
 
-Respond with ONLY a JSON object:
+Respond with ONLY a JSON object. Do NOT wrap in markdown code blocks.
 {{"answer_claims": [{{"claim": "...", "classification": "TP|FP"}}], \
 "ground_truth_claims": [{{"claim": "...", "classification": "TP|FN"}}], \
 "tp": <int>, "fp": <int>, "fn": <int>, \
@@ -931,12 +973,16 @@ Respond with ONLY a JSON object:
 EVAL_ANSWER_CORRECTNESS_TEMPLATE = ChatPromptTemplate.from_messages(
     [
         ("system", EVAL_ANSWER_CORRECTNESS_SYSTEM),
-        ("human", "Evaluate answer correctness:"),
+        (
+            "human",
+            "Question:\n{question}\n\nAnswer:\n{answer}\n\n"
+            "Ground Truth:\n{ground_truth}\n\nEvaluate answer correctness:",
+        ),
     ]
 )
 
 EVAL_ANSWER_CORRECTNESS_METADATA = PromptMetadata(
-    version="1.0.0",
+    version="2.0.0",
     description=(
         "LLM-as-judge: decomposes answer and ground truth into atomic claims for F1 scoring"
     ),
@@ -948,9 +994,6 @@ EVAL_ANSWER_CORRECTNESS_METADATA = PromptMetadata(
 
 EVAL_CONTEXT_ENTITY_RECALL_SYSTEM: Final[str] = """You are extracting named entities from text \
 about requirements management and engineering.
-
-Given:
-- **Text**: {text}
 
 ## Task
 
@@ -968,24 +1011,24 @@ Extract all named entities from the text.
 ## Normalization Rules
 
 - Use the most complete form (e.g., "ISO 26262" not "26262")
-- Merge variations (e.g., "MBSE" and "Model-Based Systems Engineering" → "MBSE")
+- Merge variations (e.g., "MBSE" and "Model-Based Systems Engineering" -> "MBSE")
 - Lowercase for general concepts (e.g., "traceability", "impact analysis")
 - Original case for proper nouns and standards (e.g., "ISO 26262", "Jama Connect")
 
 ## Output
 
-Respond with ONLY a JSON object:
+Respond with ONLY a JSON object. Do NOT wrap in markdown code blocks.
 {{"entities": ["Entity 1", "Entity 2", ...]}}"""
 
 EVAL_CONTEXT_ENTITY_RECALL_TEMPLATE = ChatPromptTemplate.from_messages(
     [
         ("system", EVAL_CONTEXT_ENTITY_RECALL_SYSTEM),
-        ("human", "Extract entities:"),
+        ("human", "Text:\n{text}\n\nExtract entities:"),
     ]
 )
 
 EVAL_CONTEXT_ENTITY_RECALL_METADATA = PromptMetadata(
-    version="1.0.0",
+    version="2.0.0",
     description=(
         "LLM entity extraction for context entity recall evaluation "
         "(called twice: context + ground truth)"
@@ -993,6 +1036,387 @@ EVAL_CONTEXT_ENTITY_RECALL_METADATA = PromptMetadata(
     input_variables=["text"],
     output_format="json",
     tags=["evaluation", "ragas", "entity_recall"],
+)
+
+
+# =============================================================================
+# GROUNDEDNESS PROMPT (new — complements faithfulness)
+# =============================================================================
+
+EVAL_GROUNDEDNESS_SYSTEM: Final[str] = """You are a judge evaluating the groundedness of an \
+AI assistant's response.
+
+## Task
+
+Determine whether every claim in the response is grounded in (supported by) the provided \
+context. A grounded response makes no assertions beyond what the context supports.
+
+## Step-by-step
+
+1. Extract each distinct claim or assertion from the response.
+2. For each claim, determine if it is:
+   - **GROUNDED**: Directly supported by information in the context
+   - **PARTIALLY_GROUNDED**: Loosely related to context but extends beyond what is stated
+   - **UNGROUNDED**: Not supported by the context at all (hallucinated or from general knowledge)
+3. Calculate: score = grounded_claims / total_claims (partially grounded counts as 0.5).
+
+## Score Calibration
+
+- 1.0: Every single claim in the response can be traced to the context. No extrapolation.
+- 0.7: Most claims are grounded. One or two minor claims extend slightly beyond context.
+- 0.5: Mix of grounded and ungrounded claims. Core answer is grounded but significant \
+elaboration comes from outside the context.
+- 0.3: Only a few claims are grounded. The response mostly draws on general knowledge.
+- 0.0: The response is entirely ungrounded. It ignores the context completely.
+
+## Important Distinctions
+
+- Structural/formatting text ("Here is a summary:", "In conclusion") is NOT a claim -- ignore.
+- Citation references ("[Source 1]") are not claims themselves but indicate grounding intent.
+- Domain terminology used correctly is grounded if the context discusses that concept.
+
+## Output
+
+Respond with ONLY a JSON object. Do NOT wrap in markdown code blocks.
+{{"claims": [{{"claim": "...", "verdict": "grounded|partial|ungrounded", \
+"evidence": "brief quote or 'none'"}}], \
+"score": <float 0.0-1.0>, "reasoning": "<brief explanation>"}}"""
+
+EVAL_GROUNDEDNESS_TEMPLATE = ChatPromptTemplate.from_messages(
+    [
+        ("system", EVAL_GROUNDEDNESS_SYSTEM),
+        (
+            "human",
+            "Context:\n{context}\n\nResponse:\n{answer}\n\nEvaluate groundedness:",
+        ),
+    ]
+)
+
+EVAL_GROUNDEDNESS_METADATA = PromptMetadata(
+    version="1.0.0",
+    description=(
+        "LLM-as-judge: evaluates whether every claim in the response "
+        "is grounded in the retrieved context (complements faithfulness)"
+    ),
+    input_variables=["context", "answer"],
+    output_format="json",
+    evaluation_criteria=["claim_grounding", "hallucination_detection", "evidence_tracing"],
+    tags=["evaluation", "groundedness", "rag"],
+)
+
+
+# =============================================================================
+# RESULT CORRECTNESS PROMPT (structured vector — evaluates Cypher results)
+# =============================================================================
+
+EVAL_RESULT_CORRECTNESS_SYSTEM: Final[str] = """You are a judge evaluating whether database \
+query results correctly answer the user's question.
+
+## Task
+
+Assess whether the Cypher query results are correct, complete, and relevant to the question.
+
+## Step-by-step
+
+1. Identify the core information need of the question.
+2. Examine the Cypher query for logical correctness.
+3. Check if the results contain the information needed to answer the question.
+4. Score based on correctness and completeness.
+
+## Score Calibration
+
+- 1.0: Results directly and completely answer the question. The Cypher query is logically \
+correct and retrieves the right data.
+- 0.7: Results are relevant and mostly complete. The query is correct but may miss edge cases.
+- 0.5: Results partially answer the question. Some relevant data is present but key \
+information is missing or the query has a minor logical flaw.
+- 0.3: Results are tangentially relevant. The query targets the right node types but uses \
+wrong filters, relationships, or aggregation.
+- 0.0: Results do not answer the question at all. The query is fundamentally wrong or \
+returns empty/unrelated data.
+
+## Output
+
+Respond with ONLY a JSON object. Do NOT wrap in markdown code blocks.
+{{"score": <float 0.0-1.0>, "reasoning": "<explanation of scoring decision>"}}"""
+
+EVAL_RESULT_CORRECTNESS_TEMPLATE = ChatPromptTemplate.from_messages(
+    [
+        ("system", EVAL_RESULT_CORRECTNESS_SYSTEM),
+        (
+            "human",
+            "Question:\n{question}\n\nCypher Query:\n{cypher}\n\n"
+            "Query Results:\n{results}\n\nEvaluate result correctness:",
+        ),
+    ]
+)
+
+EVAL_RESULT_CORRECTNESS_METADATA = PromptMetadata(
+    version="1.0.0",
+    description=(
+        "LLM-as-judge: evaluates whether Cypher query results correctly answer the user's question"
+    ),
+    input_variables=["question", "cypher", "results"],
+    output_format="json",
+    evaluation_criteria=["query_correctness", "result_completeness", "result_relevance"],
+    tags=["evaluation", "structured", "text2cypher", "result_correctness"],
+)
+
+
+# =============================================================================
+# CONVERSATIONAL EVALUATION PROMPTS
+# =============================================================================
+
+EVAL_CONV_COHERENCE_SYSTEM: Final[str] = """You are evaluating whether an AI assistant's \
+response is coherent with the preceding conversation.
+
+## Task
+
+Determine whether the response naturally follows the conversation history and directly \
+addresses the user's latest question.
+
+## Special Cases
+
+- **First turn (no history)**: Score 1.0 unless the response is off-topic.
+- **Tangential responses**: Related to topic but not answering the question: 0.4-0.6.
+- **Over-referencing**: Excessively restating prior conversation: 0.6-0.8.
+
+## Scoring Rubric
+
+- **1.0**: Response naturally continues the conversation flow and directly addresses the question.
+- **0.8**: Addresses the question well but has minor awkwardness connecting to history.
+- **0.5**: On-topic but feels disconnected from the conversation flow.
+- **0.3**: Tangentially related but misses the core question in context.
+- **0.0**: Completely off-topic, contradicts the conversation flow, or ignores the question.
+
+## Output
+
+Respond with ONLY a JSON object. Do NOT wrap in markdown code blocks.
+{{"reasoning": "<step-by-step analysis>", "score": <float 0.0-1.0>}}"""
+
+EVAL_CONV_COHERENCE_TEMPLATE = ChatPromptTemplate.from_messages(
+    [
+        ("system", EVAL_CONV_COHERENCE_SYSTEM),
+        (
+            "human",
+            "Conversation history:\n{history}\n\nUser's latest question: {question}\n\n"
+            "Assistant's response: {answer}\n\nEvaluate coherence:",
+        ),
+    ]
+)
+
+EVAL_CONV_COHERENCE_METADATA = PromptMetadata(
+    version="1.0.0",
+    description="LLM-as-judge: evaluates conversational coherence between response and history",
+    input_variables=["history", "question", "answer"],
+    output_format="json",
+    tags=["evaluation", "conversational", "coherence"],
+)
+
+
+EVAL_CONV_CONTEXT_RETENTION_SYSTEM: Final[str] = """You are evaluating whether an AI \
+assistant's response demonstrates accurate awareness of earlier conversation content.
+
+## Task
+
+Determine whether the response correctly references, recalls, or builds upon information \
+from the conversation history. You are given a list of expected references -- specific \
+fragments from the history that the response SHOULD mention or allude to.
+
+## Evaluation Criteria
+
+1. **Explicit references**: Directly quotes or paraphrases history content. Full credit.
+2. **Implicit awareness**: Demonstrates knowledge without direct quotation. Partial credit (0.5).
+3. **Missing references**: Not found in response. Zero credit.
+
+## Conversation Length Scaling
+
+- **Short (1-4 messages)**: Score strictly.
+- **Medium (5-12 messages)**: Partial credit for implicit references.
+- **Long (13+ messages)**: Missing early references may receive partial credit (0.3).
+
+## Scoring
+
+Score = (sum of credit per expected reference) / (number of expected references)
+
+- **1.0**: ALL expected references are explicitly present or clearly reflected.
+- **0.7**: Most present; one may be implicit rather than explicit.
+- **0.4**: Some present but key ones missing.
+- **0.0**: None appear in the response.
+
+If no expected references are provided, score 1.0.
+
+## Output
+
+Respond with ONLY a JSON object. Do NOT wrap in markdown code blocks.
+{{"reference_checks": [{{"reference": "...", "found": "explicit|implicit|missing", \
+"evidence": "..."}}], "reasoning": "<analysis>", "score": <float 0.0-1.0>}}"""
+
+EVAL_CONV_CONTEXT_RETENTION_TEMPLATE = ChatPromptTemplate.from_messages(
+    [
+        ("system", EVAL_CONV_CONTEXT_RETENTION_SYSTEM),
+        (
+            "human",
+            "Conversation history:\n{history}\n\nUser's question: {question}\n\n"
+            "Assistant's response: {answer}\n\n"
+            "Expected references from history: {expected_references}\n\n"
+            "Evaluate context retention:",
+        ),
+    ]
+)
+
+EVAL_CONV_CONTEXT_RETENTION_METADATA = PromptMetadata(
+    version="1.0.0",
+    description=(
+        "LLM-as-judge: evaluates whether the response retains "
+        "and references conversation history accurately"
+    ),
+    input_variables=["history", "question", "answer", "expected_references"],
+    output_format="json",
+    tags=["evaluation", "conversational", "context_retention"],
+)
+
+
+EVAL_CONV_HALLUCINATION_SYSTEM: Final[str] = """You are a strict factual auditor checking for \
+hallucinations in a conversational recall response.
+
+## Task
+
+Determine whether the assistant's response fabricates ANY content that was NOT present in the \
+conversation history. This is a binary check: either clean (no fabrication) or hallucination.
+
+## What Counts as Hallucination
+
+1. **Fabricated user questions**: Claims the user asked something they never asked.
+2. **Fabricated assistant answers**: Claims it previously said something it never said.
+3. **Fabricated conversation events**: References discussions that did not occur.
+4. **Misattribution**: Attributes a statement to the wrong speaker.
+5. **Invented specifics**: Adds specific details not present in the original exchange.
+
+## What Does NOT Count
+
+1. **Paraphrasing**: Restating in different words with preserved meaning.
+2. **Reasonable inference**: Drawing obvious conclusions from history content.
+3. **General knowledge framing**: Adding widely-known context to frame a recall.
+4. **Hedging**: "I believe we discussed..." when the content IS in the history.
+
+## Procedure
+
+1. List each factual claim the response makes about the conversation.
+2. For each claim, verify it against the conversation history.
+3. If ANY claim is fabricated, score is 0. If ALL claims verified, score is 1.
+
+## Output
+
+Respond with ONLY a JSON object. Do NOT wrap in markdown code blocks.
+{{"claims": [{{"claim": "...", "verdict": "verified|fabricated", \
+"evidence": "quote from history or 'not found'"}}], \
+"score": <0 or 1>, "reasoning": "<summary>"}}"""
+
+EVAL_CONV_HALLUCINATION_TEMPLATE = ChatPromptTemplate.from_messages(
+    [
+        ("system", EVAL_CONV_HALLUCINATION_SYSTEM),
+        (
+            "human",
+            "Conversation history:\n{history}\n\nUser's question: {question}\n\n"
+            "Assistant's response: {answer}\n\nCheck for hallucinations:",
+        ),
+    ]
+)
+
+EVAL_CONV_HALLUCINATION_METADATA = PromptMetadata(
+    version="1.0.0",
+    description=(
+        "LLM-as-judge: binary check for fabricated conversation content "
+        "(1 = clean, 0 = hallucination)"
+    ),
+    input_variables=["history", "question", "answer"],
+    output_format="json",
+    tags=["evaluation", "conversational", "hallucination"],
+)
+
+
+EVAL_CONV_COMBINED_SYSTEM: Final[str] = """You are evaluating an AI assistant's response to a \
+conversational recall question. You must score THREE independent aspects in a single pass.
+
+## Aspect 1: Coherence (0.0-1.0)
+
+Does the response naturally follow the conversation and address the user's question?
+- 1.0: Naturally continues conversation flow and directly addresses the question
+- 0.5: On-topic but feels disconnected from conversation flow
+- 0.0: Completely off-topic or ignores the question
+
+Special case: If history is empty or very short, score based on question alone.
+
+## Aspect 2: Context Retention (0.0-1.0)
+
+Does the response accurately reference the expected conversation elements?
+- 1.0: ALL expected references explicitly present or clearly reflected
+- 0.4: Some present but key ones missing
+- 0.0: None appear in the response
+
+If no expected references provided, score 1.0.
+
+For each expected reference, classify as "explicit", "implicit", or "missing".
+
+## Aspect 3: Hallucination (binary: 0 or 1)
+
+Does the response fabricate conversation content?
+- 1: CLEAN — only references content actually in history
+- 0: HALLUCINATION — fabricates questions, answers, or events
+
+Paraphrasing and reasonable inference are NOT hallucinations.
+
+## Procedure
+
+1. Read the conversation history carefully.
+2. Assess COHERENCE: how naturally the response follows the conversation.
+3. Assess CONTEXT RETENTION: check each expected reference.
+4. Assess HALLUCINATION: list and verify each claim about the conversation.
+5. Score all three independently.
+
+## Output
+
+Respond with ONLY a JSON object. Do NOT wrap in markdown code blocks.
+{{
+  "coherence": {{
+    "reasoning": "<step-by-step coherence analysis>",
+    "score": <float 0.0-1.0>
+  }},
+  "context_retention": {{
+    "reference_checks": [{{"reference": "...", "found": "explicit|implicit|missing"}}],
+    "reasoning": "<analysis>",
+    "score": <float 0.0-1.0>
+  }},
+  "hallucination": {{
+    "claims_checked": [{{"claim": "...", "verdict": "verified|fabricated"}}],
+    "reasoning": "<summary>",
+    "score": <0 or 1>
+  }}
+}}"""
+
+EVAL_CONV_COMBINED_TEMPLATE = ChatPromptTemplate.from_messages(
+    [
+        ("system", EVAL_CONV_COMBINED_SYSTEM),
+        (
+            "human",
+            "Conversation history:\n{history}\n\nUser's question: {question}\n\n"
+            "Assistant's response: {answer}\n\n"
+            "Expected references from history: {expected_references}\n\n"
+            "Evaluate all three aspects:",
+        ),
+    ]
+)
+
+EVAL_CONV_COMBINED_METADATA = PromptMetadata(
+    version="1.0.0",
+    description=(
+        "Batched LLM-as-judge: 3 conversational scores in 1 call "
+        "(coherence, context_retention, hallucination)"
+    ),
+    input_variables=["history", "question", "answer", "expected_references"],
+    output_format="json",
+    tags=["evaluation", "conversational", "combined", "cost_optimized"],
 )
 
 
@@ -1066,6 +1490,37 @@ PROMPT_DEFINITIONS: Final[dict[PromptName, PromptDefinition]] = {
         name=PromptName.EVAL_CONTEXT_ENTITY_RECALL,
         template=EVAL_CONTEXT_ENTITY_RECALL_TEMPLATE,
         metadata=EVAL_CONTEXT_ENTITY_RECALL_METADATA,
+    ),
+    PromptName.EVAL_GROUNDEDNESS: PromptDefinition(
+        name=PromptName.EVAL_GROUNDEDNESS,
+        template=EVAL_GROUNDEDNESS_TEMPLATE,
+        metadata=EVAL_GROUNDEDNESS_METADATA,
+    ),
+    PromptName.EVAL_RESULT_CORRECTNESS: PromptDefinition(
+        name=PromptName.EVAL_RESULT_CORRECTNESS,
+        template=EVAL_RESULT_CORRECTNESS_TEMPLATE,
+        metadata=EVAL_RESULT_CORRECTNESS_METADATA,
+    ),
+    # Conversational evaluation prompts
+    PromptName.EVAL_CONV_COHERENCE: PromptDefinition(
+        name=PromptName.EVAL_CONV_COHERENCE,
+        template=EVAL_CONV_COHERENCE_TEMPLATE,
+        metadata=EVAL_CONV_COHERENCE_METADATA,
+    ),
+    PromptName.EVAL_CONV_CONTEXT_RETENTION: PromptDefinition(
+        name=PromptName.EVAL_CONV_CONTEXT_RETENTION,
+        template=EVAL_CONV_CONTEXT_RETENTION_TEMPLATE,
+        metadata=EVAL_CONV_CONTEXT_RETENTION_METADATA,
+    ),
+    PromptName.EVAL_CONV_HALLUCINATION: PromptDefinition(
+        name=PromptName.EVAL_CONV_HALLUCINATION,
+        template=EVAL_CONV_HALLUCINATION_TEMPLATE,
+        metadata=EVAL_CONV_HALLUCINATION_METADATA,
+    ),
+    PromptName.EVAL_CONV_COMBINED: PromptDefinition(
+        name=PromptName.EVAL_CONV_COMBINED,
+        template=EVAL_CONV_COMBINED_TEMPLATE,
+        metadata=EVAL_CONV_COMBINED_METADATA,
     ),
 }
 

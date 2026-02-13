@@ -201,6 +201,8 @@ def create_intent_accuracy_evaluator() -> EvaluatorFn:
                 classified_intent = "explanatory"
             elif "structured" in output_lower:
                 classified_intent = "structured"
+            elif "conversational" in output_lower:
+                classified_intent = "conversational"
             else:
                 classified_intent = ""
 
