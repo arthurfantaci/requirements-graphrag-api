@@ -209,11 +209,48 @@ class PromptCatalog:
         """
         return list(PROMPT_DEFINITIONS.keys())
 
-    async def push(self, name: PromptName) -> str:
+    async def _tag_latest_commit(
+        self,
+        client: Client,
+        prompt_id: str,
+        tags: list[str],
+    ) -> None:
+        """Apply commit tags to the latest commit of a prompt.
+
+        Used when push_prompt returns 409 (content unchanged) since
+        commit_tags are only applied to new commits.
+        """
+        try:
+            commits = await asyncio.to_thread(
+                lambda: list(client.list_prompt_commits(prompt_id, limit=1))
+            )
+            if not commits:
+                logger.warning("No commits found for %s", prompt_id)
+                return
+            commit_id = str(commits[0].id)
+            repo_path = f"-/{prompt_id}"
+            await asyncio.to_thread(client._create_commit_tags, repo_path, commit_id, tags)
+            logger.info("Tagged %s latest commit with %s", prompt_id, tags)
+        except Exception as e:
+            error_str = str(e)
+            # 409 = tags already exist on this commit — that's fine
+            if "409" in error_str or "already exists" in error_str:
+                logger.info("Tags already exist on %s latest commit", prompt_id)
+            else:
+                logger.warning("Failed to tag %s: %s", prompt_id, e)
+
+    async def push(
+        self,
+        name: PromptName,
+        *,
+        commit_tags: list[str] | None = None,
+    ) -> str:
         """Push a prompt to LangSmith Hub.
 
         Args:
             name: Prompt name identifier.
+            commit_tags: Optional version tags (e.g. ["production", "staging"])
+                applied atomically during push.
 
         Returns:
             URL of the pushed prompt.
@@ -231,30 +268,47 @@ class PromptCatalog:
             raise KeyError(f"Unknown prompt name: {name}")
 
         definition = PROMPT_DEFINITIONS[name]
-        hub_path = self._get_hub_path(name)
+        # Use bare prompt name for push (workspace scoping is handled by
+        # the Client's workspace_id header, not by path prefix).
+        prompt_id = name.value
 
         try:
             client = _create_langsmith_client()
+            push_kwargs: dict[str, object] = {
+                "object": definition.template,
+                "description": definition.metadata.description,
+                "tags": [*definition.metadata.tags, "ChatPromptTemplate"],
+            }
+            if commit_tags:
+                push_kwargs["commit_tags"] = commit_tags
             url = await asyncio.to_thread(
                 client.push_prompt,
-                hub_path,
-                object=definition.template,
-                description=definition.metadata.description,
-                tags=[*definition.metadata.tags, "ChatPromptTemplate"],
+                prompt_id,
+                **push_kwargs,
             )
             logger.info("Pushed prompt to hub: %s -> %s", name.value, url)
             return str(url)
         except Exception as e:
             # Handle 409 Conflict when prompt hasn't changed - treat as success
+            # Tags must be applied separately since no new commit was created.
             error_str = str(e)
             if "409" in error_str and "Nothing to commit" in error_str:
                 logger.info("Prompt unchanged, no commit needed: %s", name.value)
-                return f"[UNCHANGED] {hub_path}"
+                if commit_tags:
+                    await self._tag_latest_commit(client, prompt_id, commit_tags)
+                return f"[UNCHANGED] {prompt_id}"
             logger.error("Failed to push prompt %s: %s", name.value, e)
             raise
 
-    async def push_all(self) -> dict[str, str]:
+    async def push_all(
+        self,
+        *,
+        commit_tags: list[str] | None = None,
+    ) -> dict[str, str]:
         """Push all prompts to LangSmith Hub.
+
+        Args:
+            commit_tags: Optional version tags applied to all pushed prompts.
 
         Returns:
             Dictionary mapping prompt names to URLs or error messages.
@@ -263,7 +317,7 @@ class PromptCatalog:
 
         for name in PROMPT_DEFINITIONS:
             try:
-                url = await self.push(name)
+                url = await self.push(name, commit_tags=commit_tags)
                 results[name.value] = url
             except Exception as e:
                 results[name.value] = f"ERROR: {e}"
