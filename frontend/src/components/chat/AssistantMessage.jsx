@@ -122,7 +122,7 @@ export function AssistantMessage({ message }) {
 
       {/* Response actions - show when complete */}
       {status === 'complete' && (
-        <ResponseActions content={content} runId={runId} messageId={id} traceId={traceId} />
+        <ResponseActions content={content} runId={runId} messageId={id} traceId={traceId} intent={intent} />
       )}
     </div>
   )

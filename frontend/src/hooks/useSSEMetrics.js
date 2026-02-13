@@ -93,6 +93,9 @@ export function useSSEMetrics() {
       span.setAttribute('sse.total_duration_ms', metrics.totalDurationMs)
       span.setAttribute('sse.success', metrics.success)
       if (m.traceId) span.setAttribute('sse.trace_id', m.traceId)
+      // Attach Sentry replay ID for cross-system correlation
+      const replayId = Sentry.getReplay()?.getReplayId?.()
+      if (replayId) span.setAttribute('sse.sentry_replay_id', replayId)
       if (!metrics.success) span.setStatus({ code: 2, message: 'stream_error' })
       span.end()
       spanRef.current = null
