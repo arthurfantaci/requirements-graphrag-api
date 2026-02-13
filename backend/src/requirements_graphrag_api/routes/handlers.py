@@ -32,7 +32,11 @@ from requirements_graphrag_api.core.agentic import (
 from requirements_graphrag_api.core.conversation import stream_conversational_events
 from requirements_graphrag_api.evaluation.cost_analysis import get_global_cost_tracker
 from requirements_graphrag_api.guardrails import log_guardrail_event
-from requirements_graphrag_api.observability import create_thread_metadata, patch_run_for_eval
+from requirements_graphrag_api.observability import (
+    create_eval_run,
+    create_thread_metadata,
+    end_eval_run,
+)
 from requirements_graphrag_api.prompts import PromptName, get_prompt
 
 if TYPE_CHECKING:
@@ -205,6 +209,21 @@ async def generate_conversational_events(
     if trace_id:
         langsmith_extra["metadata"]["otel_trace_id"] = trace_id
 
+    # Create evaluator-friendly LangSmith run (start payload)
+    formatted_history = "\n".join(
+        f"{'User' if h.get('role') == 'user' else 'Assistant'}: {h.get('content', '')}"
+        for h in history
+    )
+    eval_run_id = create_eval_run(
+        name="conversational_handler",
+        inputs={
+            "question": safe_message,
+            "history": formatted_history,
+            "intent": "conversational",
+        },
+        metadata=langsmith_extra.get("metadata"),
+    )
+
     # Emit empty sources event so frontend SSE parser proceeds to token rendering
     empty_sources = {
         "sources": [],
@@ -216,18 +235,15 @@ async def generate_conversational_events(
 
     # Stream tokens from the conversational handler and accumulate for output filter
     accumulated_tokens: list[str] = []
-    run_id: str | None = None
     async for sse_event in stream_conversational_events(
         config, safe_message, history, langsmith_extra=langsmith_extra, trace_id=trace_id
     ):
         # Track accumulated tokens for output guardrails
-        if sse_event.startswith("data: "):
+        if sse_event.startswith("data: ") and '"token"' in sse_event:
             try:
                 data = json.loads(sse_event[6:].strip())
                 if "token" in data:
                     accumulated_tokens.append(data["token"])
-                if "run_id" in data:
-                    run_id = data["run_id"]
             except (json.JSONDecodeError, TypeError):
                 pass
         yield sse_event
@@ -269,21 +285,8 @@ async def generate_conversational_events(
             yield f"event: {StreamEventType.GUARDRAIL_WARNING.value}\n"
             yield f"data: {json.dumps({'warning': filter_result.filtered_content})}\n\n"
 
-    # Patch LangSmith trace with evaluator-friendly shape
-    if run_id:
-        formatted_history = "\n".join(
-            f"{'User' if h.get('role') == 'user' else 'Assistant'}: {h.get('content', '')}"
-            for h in history
-        )
-        patch_run_for_eval(
-            run_id,
-            inputs={
-                "question": safe_message,
-                "history": formatted_history,
-                "intent": "conversational",
-            },
-            outputs={"answer": full_response},
-        )
+    # Finalize evaluator run with outputs (end payload)
+    end_eval_run(eval_run_id, outputs={"answer": full_response})
 
 
 async def generate_explanatory_events(
@@ -516,6 +519,13 @@ async def generate_structured_events(
         if trace_id:
             thread_metadata["metadata"]["otel_trace_id"] = trace_id
 
+        # Create evaluator-friendly LangSmith run (start payload)
+        eval_run_id = create_eval_run(
+            name="structured_handler",
+            inputs={"question": refined_query, "intent": "structured"},
+            metadata=thread_metadata.get("metadata"),
+        )
+
         # Generate and execute Cypher query
         result = await text2cypher_query(
             config,
@@ -557,18 +567,16 @@ async def generate_structured_events(
                 done_data["message"] = result["message"]
             yield f"data: {json.dumps(done_data)}\n\n"
 
-        # Patch LangSmith trace with evaluator-friendly shape
-        if run_id:
-            patch_run_for_eval(
-                run_id,
-                inputs={"question": refined_query, "intent": "structured"},
-                outputs={
-                    "cypher": result.get("cypher", ""),
-                    "results": result.get("results", []),
-                    "row_count": result.get("row_count", 0),
-                    "error": result.get("error", ""),
-                },
-            )
+        # Finalize evaluator run with outputs (end payload)
+        end_eval_run(
+            eval_run_id,
+            outputs={
+                "cypher": result.get("cypher", ""),
+                "results": result.get("results", []),
+                "row_count": result.get("row_count", 0),
+                "error": result.get("error", ""),
+            },
+        )
 
     except Exception as e:
         logger.exception("Error in structured query")

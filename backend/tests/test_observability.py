@@ -13,10 +13,11 @@ from requirements_graphrag_api.config import AppConfig
 from requirements_graphrag_api.observability import (
     REDACTED,
     configure_tracing,
+    create_eval_run,
     create_thread_metadata,
     disable_tracing,
+    end_eval_run,
     get_tracing_status,
-    patch_run_for_eval,
     sanitize_inputs,
     traceable,
     traceable_safe,
@@ -423,20 +424,65 @@ class TestCreateThreadMetadata:
         assert result["metadata"]["thread_id"] == uuid_id
 
 
-class TestPatchRunForEval:
-    """Tests for patch_run_for_eval fire-and-forget helper."""
+class TestCreateEvalRun:
+    """Tests for create_eval_run fire-and-forget helper."""
 
     @patch("langsmith.Client")
-    def test_calls_client_update_run(self, mock_client_cls: MagicMock) -> None:
-        """Verify correct args are forwarded to Client().update_run()."""
+    def test_creates_run_and_returns_id(self, mock_client_cls: MagicMock) -> None:
+        """Verify create_run is called and a run ID string is returned."""
         mock_client = MagicMock()
         mock_client_cls.return_value = mock_client
 
-        inputs = {"question": "hello", "intent": "conversational"}
-        outputs = {"answer": "world"}
-        patch_run_for_eval("run-123", inputs=inputs, outputs=outputs)
+        run_id = create_eval_run(
+            name="test_handler",
+            inputs={"question": "hello", "intent": "conversational"},
+        )
 
-        mock_client.update_run.assert_called_once_with("run-123", inputs=inputs, outputs=outputs)
+        assert run_id is not None
+        assert isinstance(run_id, str)
+        mock_client.create_run.assert_called_once()
+        call_kwargs = mock_client.create_run.call_args
+        assert call_kwargs.kwargs["name"] == "test_handler"
+        assert call_kwargs.kwargs["inputs"]["question"] == "hello"
+
+    @patch("langsmith.Client", side_effect=ImportError("no langsmith"))
+    def test_returns_none_on_import_error(self, mock_client_cls: MagicMock) -> None:
+        """Verify graceful degradation returns None."""
+        run_id = create_eval_run(name="test", inputs={"question": "q"})
+        assert run_id is None
+
+    @patch("langsmith.Client")
+    def test_swallows_exceptions(self, mock_client_cls: MagicMock) -> None:
+        """Verify exceptions are swallowed (fire-and-forget)."""
+        mock_client = MagicMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.create_run.side_effect = RuntimeError("network down")
+
+        run_id = create_eval_run(name="test", inputs={"question": "q"})
+        assert run_id is None
+
+
+class TestEndEvalRun:
+    """Tests for end_eval_run fire-and-forget helper."""
+
+    @patch("langsmith.Client")
+    def test_calls_update_run_with_outputs(self, mock_client_cls: MagicMock) -> None:
+        """Verify update_run is called with outputs and end_time."""
+        mock_client = MagicMock()
+        mock_client_cls.return_value = mock_client
+
+        end_eval_run("run-123", outputs={"answer": "world"})
+
+        mock_client.update_run.assert_called_once()
+        call_kwargs = mock_client.update_run.call_args
+        assert call_kwargs.args[0] == "run-123"
+        assert call_kwargs.kwargs["outputs"] == {"answer": "world"}
+        assert "end_time" in call_kwargs.kwargs
+
+    def test_noop_when_run_id_is_none(self) -> None:
+        """Verify no-op when run_id is None (eval run creation failed)."""
+        # Should NOT raise or call any SDK methods
+        end_eval_run(None, outputs={"answer": "a"})
 
     @patch("langsmith.Client")
     def test_swallows_exceptions(self, mock_client_cls: MagicMock) -> None:
@@ -446,18 +492,4 @@ class TestPatchRunForEval:
         mock_client.update_run.side_effect = RuntimeError("network down")
 
         # Should NOT raise
-        patch_run_for_eval(
-            "run-456",
-            inputs={"question": "q"},
-            outputs={"answer": "a"},
-        )
-
-    @patch("langsmith.Client", side_effect=ImportError("no langsmith"))
-    def test_noop_on_import_error(self, mock_client_cls: MagicMock) -> None:
-        """Verify graceful degradation when langsmith is not importable."""
-        # Should NOT raise
-        patch_run_for_eval(
-            "run-789",
-            inputs={"question": "q"},
-            outputs={"answer": "a"},
-        )
+        end_eval_run("run-456", outputs={"answer": "a"})
