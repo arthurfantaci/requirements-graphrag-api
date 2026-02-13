@@ -1,24 +1,27 @@
 #!/usr/bin/env python
-"""CI-friendly evaluation runner with tiered support.
+"""CI-friendly evaluation runner with tiered, per-vector support.
 
-Provides different evaluation tiers for CI/CD integration:
-- Tier 1: Prompt validation only (no API calls)
-- Tier 2: Smoke evaluation (10 queries from golden dataset)
-- Tier 3: Full benchmark evaluation (250+ queries)
-- Tier 4: Deep evaluation with A/B comparison
+Provides per-vector evaluation tiers for CI/CD integration:
+- Tier 1: Prompt + dataset validation (no API calls, $0)
+- Tier 2: Smoke test per vector (manual, ~$0.50)
+- Tier 3: Full benchmark per vector (release tags, ~$15)
+- Tier 4: Deep evaluation per vector (manual, ~$20)
 
 Usage:
     # Tier 1 - Prompt validation (every PR)
     uv run python scripts/ci_evaluation.py --tier 1
 
-    # Tier 2 - Smoke test (merge to main)
+    # Tier 2 - Smoke test (manual)
     uv run python scripts/ci_evaluation.py --tier 2
 
     # Tier 3 - Full benchmark (release)
-    uv run python scripts/ci_evaluation.py --tier 3
+    uv run python scripts/ci_evaluation.py --tier 3 --regression-gate
 
-    # Tier 4 - Deep eval (nightly)
-    uv run python scripts/ci_evaluation.py --tier 4
+    # Tier 4 - Deep eval (manual)
+    uv run python scripts/ci_evaluation.py --tier 4 --regression-gate
+
+    # Single vector only
+    uv run python scripts/ci_evaluation.py --tier 3 --vector explanatory
 
 Exit codes:
     0 - All evaluations passed
@@ -34,13 +37,15 @@ import json
 import logging
 import sys
 import time
-from dataclasses import dataclass, field
 from pathlib import Path
 
 # Add src and repo root to path for imports
 repo_root = Path(__file__).parent.parent
 sys.path.insert(0, str(repo_root / "src"))
 sys.path.insert(0, str(repo_root))
+
+# Add scripts/ dir for sibling imports (run_vector_evaluation)
+sys.path.insert(0, str(Path(__file__).parent))
 
 from dotenv import load_dotenv  # noqa: E402
 
@@ -57,101 +62,16 @@ logger = logging.getLogger(__name__)
 # CONSTANTS AND CONFIGURATION
 # =============================================================================
 
-# Validation thresholds
-MIN_GOLDEN_DATASET_COUNT = 25
-MIN_MUST_PASS_COUNT = 20
-
-# Tier identifiers
-TIER_SMOKE = 2
-TIER_FULL = 3
-
-
-@dataclass(frozen=True)
-class TierConfig:
-    """Configuration for an evaluation tier."""
-
-    name: str
-    description: str
-    max_samples: int | None
-    cost_budget: float
-    min_avg_score: float
-    timeout_seconds: int
-    requires_api: bool = True
-
-
-TIER_CONFIGS: dict[int, TierConfig] = {
-    1: TierConfig(
-        name="prompt-validation",
-        description="Validate prompts and configurations (no API calls)",
-        max_samples=0,
-        cost_budget=0.0,
-        min_avg_score=0.0,
-        timeout_seconds=60,
-        requires_api=False,
-    ),
-    2: TierConfig(
-        name="smoke-test",
-        description="Quick smoke test with 10 golden examples",
-        max_samples=10,
-        cost_budget=0.50,
-        min_avg_score=0.6,
-        timeout_seconds=300,
-        requires_api=True,
-    ),
-    3: TierConfig(
-        name="full-benchmark",
-        description="Full benchmark with 250+ examples",
-        max_samples=None,  # All examples
-        cost_budget=15.0,
-        min_avg_score=0.6,
-        timeout_seconds=1200,
-        requires_api=True,
-    ),
-    4: TierConfig(
-        name="deep-eval",
-        description="Deep evaluation with A/B tests",
-        max_samples=None,
-        cost_budget=20.0,
-        min_avg_score=0.7,
-        timeout_seconds=2700,
-        requires_api=True,
-    ),
+# Per-tier vector configs: {vector: max_samples | None (= all examples)}
+TIER_VECTOR_CONFIGS: dict[int, dict[str, int | None]] = {
+    2: {"intent": None, "explanatory": 10, "structured": 10},
+    3: {"intent": None, "explanatory": None, "structured": None, "conversational": None},
+    4: {"intent": None, "explanatory": None, "structured": None, "conversational": None},
 }
 
 
-@dataclass
-class EvaluationResult:
-    """Result of a CI evaluation run."""
-
-    tier: int
-    tier_name: str
-    passed: bool
-    samples_evaluated: int
-    avg_score: float
-    min_score_threshold: float
-    duration_seconds: float
-    cost_estimate: float
-    metrics: dict[str, float] = field(default_factory=dict)
-    errors: list[str] = field(default_factory=list)
-
-    def to_dict(self) -> dict:
-        """Convert to dictionary for JSON serialization."""
-        return {
-            "tier": self.tier,
-            "tier_name": self.tier_name,
-            "passed": self.passed,
-            "samples_evaluated": self.samples_evaluated,
-            "avg_score": self.avg_score,
-            "min_score_threshold": self.min_score_threshold,
-            "duration_seconds": self.duration_seconds,
-            "cost_estimate": self.cost_estimate,
-            "metrics": self.metrics,
-            "errors": self.errors,
-        }
-
-
 # =============================================================================
-# TIER 1: PROMPT VALIDATION
+# TIER 1: PROMPT + DATASET VALIDATION
 # =============================================================================
 
 
@@ -169,19 +89,16 @@ def validate_prompts() -> tuple[bool, list[str]]:
             PromptName,
         )
 
-        # Verify all PromptName entries have definitions
         for name in PromptName:
             if name not in PROMPT_DEFINITIONS:
                 errors.append(f"Missing definition for PromptName.{name.name}")
 
-        # Verify each definition has valid metadata
         for name, definition in PROMPT_DEFINITIONS.items():
             if not definition.metadata.version:
                 errors.append(f"{name.value} missing version")
             if not definition.metadata.input_variables:
                 errors.append(f"{name.value} missing input_variables")
 
-            # Verify template can be instantiated
             try:
                 definition.template.input_variables  # noqa: B018
             except Exception as e:
@@ -196,10 +113,7 @@ def validate_prompts() -> tuple[bool, list[str]]:
 
 
 def validate_benchmark_dataset() -> tuple[bool, list[str]]:
-    """Validate benchmark dataset structure.
-
-    Uses the centralized golden dataset from the evaluation module
-    (Hub-First pattern: same local fallback used when LangSmith is unreachable).
+    """Validate per-vector dataset constants and local fallback data.
 
     Returns:
         Tuple of (passed, errors).
@@ -207,30 +121,52 @@ def validate_benchmark_dataset() -> tuple[bool, list[str]]:
     errors: list[str] = []
 
     try:
+        from requirements_graphrag_api.evaluation.constants import (
+            ALL_VECTOR_DATASETS,
+            DATASET_CONVERSATIONAL,
+            DATASET_EXPLANATORY,
+            DATASET_INTENT,
+            DATASET_STRUCTURED,
+        )
+
+        for label, value in [
+            ("DATASET_EXPLANATORY", DATASET_EXPLANATORY),
+            ("DATASET_STRUCTURED", DATASET_STRUCTURED),
+            ("DATASET_CONVERSATIONAL", DATASET_CONVERSATIONAL),
+            ("DATASET_INTENT", DATASET_INTENT),
+        ]:
+            if not value:
+                errors.append(f"{label} is empty")
+
+        if len(ALL_VECTOR_DATASETS) != 4:
+            errors.append(
+                f"ALL_VECTOR_DATASETS has {len(ALL_VECTOR_DATASETS)} entries (expected 4)"
+            )
+
+        logger.info("Validated %d vector dataset constants", len(ALL_VECTOR_DATASETS))
+
+    except ImportError as e:
+        errors.append(f"Import error: {e}")
+
+    # Validate local fallback golden examples
+    try:
         from requirements_graphrag_api.evaluation.golden_dataset import (
             GOLDEN_EXAMPLES,
             get_must_pass_examples,
         )
 
-        if len(GOLDEN_EXAMPLES) < MIN_GOLDEN_DATASET_COUNT:
-            errors.append(
-                f"Golden dataset has only {len(GOLDEN_EXAMPLES)} examples "
-                f"(expected {MIN_GOLDEN_DATASET_COUNT}+)"
-            )
+        if len(GOLDEN_EXAMPLES) < 25:
+            errors.append(f"Golden dataset has only {len(GOLDEN_EXAMPLES)} examples (expected 25+)")
 
         must_pass = get_must_pass_examples()
-        if len(must_pass) < MIN_MUST_PASS_COUNT:
-            errors.append(f"Must-pass examples: {len(must_pass)} (expected {MIN_MUST_PASS_COUNT}+)")
+        if len(must_pass) < 20:
+            errors.append(f"Must-pass examples: {len(must_pass)} (expected 20+)")
 
-        # Spot check first 5
-        for example in GOLDEN_EXAMPLES[:5]:
-            if not example.question:
-                errors.append(f"Example {example.id} missing question")
-            if not example.expected_answer:
-                errors.append(f"Example {example.id} missing expected_answer")
-
-        logger.info("Golden dataset: %d examples", len(GOLDEN_EXAMPLES))
-        logger.info("Must-pass examples: %d", len(must_pass))
+        logger.info(
+            "Golden dataset: %d examples (%d must-pass)",
+            len(GOLDEN_EXAMPLES),
+            len(must_pass),
+        )
 
     except ImportError as e:
         errors.append(f"Import error: {e}")
@@ -238,282 +174,238 @@ def validate_benchmark_dataset() -> tuple[bool, list[str]]:
     return len(errors) == 0, errors
 
 
-async def run_tier1() -> EvaluationResult:
-    """Run Tier 1: Prompt validation (no API calls)."""
+async def run_tier1() -> dict:
+    """Run Tier 1: Prompt + dataset validation (no API calls)."""
     start_time = time.time()
     errors: list[str] = []
 
     logger.info("=" * 60)
-    logger.info("TIER 1: Prompt Validation")
+    logger.info("TIER 1: Prompt & Dataset Validation")
     logger.info("=" * 60)
 
     logger.info("Validating prompt definitions...")
     prompts_ok, prompt_errors = validate_prompts()
     errors.extend(prompt_errors)
 
-    logger.info("Validating benchmark dataset...")
+    logger.info("Validating benchmark datasets...")
     dataset_ok, dataset_errors = validate_benchmark_dataset()
     errors.extend(dataset_errors)
 
-    duration = time.time() - start_time
     passed = prompts_ok and dataset_ok
 
-    return EvaluationResult(
-        tier=1,
-        tier_name="prompt-validation",
-        passed=passed,
-        samples_evaluated=0,
-        avg_score=1.0 if passed else 0.0,
-        min_score_threshold=0.0,
-        duration_seconds=duration,
-        cost_estimate=0.0,
-        metrics={"prompts_valid": float(prompts_ok), "dataset_valid": float(dataset_ok)},
-        errors=errors,
+    return {
+        "tier": 1,
+        "passed": passed,
+        "vectors": {},
+        "regression": None,
+        "duration_seconds": round(time.time() - start_time, 1),
+        "errors": errors,
+    }
+
+
+# =============================================================================
+# TIER 2-4: PER-VECTOR EVALUATION
+# =============================================================================
+
+
+async def _run_vector_ci(
+    vector: str,
+    max_samples: int | None,
+    prompt_tag: str = "production",
+) -> dict:
+    """Run evaluation for a single vector.
+
+    Args:
+        vector: Vector name (intent, explanatory, structured, conversational).
+        max_samples: Max examples to evaluate (None = all).
+        prompt_tag: Hub prompt tag.
+
+    Returns:
+        Dict with vector, scores, experiment, sample_count.
+    """
+    from langsmith import Client, aevaluate
+    from run_vector_evaluation import (
+        _create_conversational_target,
+        _create_explanatory_target,
+        _create_intent_target,
+        _create_structured_target,
+        _get_dataset_name,
+        _get_evaluators,
     )
 
+    from requirements_graphrag_api.evaluation.constants import experiment_name
 
-# =============================================================================
-# TIER 2-4: EVALUATION RUNNERS (via langsmith.evaluate())
-# =============================================================================
+    dataset_name = _get_dataset_name(vector)
+    evaluators = _get_evaluators(vector)
+    exp_name = experiment_name(vector, prompt_tag)
+
+    # Resolve data: slice if max_samples, otherwise pass dataset name
+    if max_samples is not None:
+        client = Client()
+        dataset = client.read_dataset(dataset_name=dataset_name)
+        all_examples = list(client.list_examples(dataset_id=dataset.id))
+        data = all_examples[:max_samples]
+        logger.info(
+            "Vector %s: %d/%d examples (capped)",
+            vector,
+            len(data),
+            len(all_examples),
+        )
+    else:
+        data = dataset_name
+
+    # Create target
+    target_creators = {
+        "explanatory": _create_explanatory_target,
+        "structured": _create_structured_target,
+        "conversational": _create_conversational_target,
+        "intent": _create_intent_target,
+    }
+    target_fn, driver = await target_creators[vector](prompt_tag)
+
+    try:
+        logger.info(
+            "Running %s: %d evaluators, dataset=%s, tag=%s",
+            vector,
+            len(evaluators),
+            dataset_name,
+            prompt_tag,
+        )
+
+        results = await aevaluate(
+            target_fn,
+            data=data,
+            evaluators=evaluators,
+            experiment_prefix=exp_name,
+            max_concurrency=2,
+            metadata={"vector": vector, "prompt_tag": prompt_tag, "ci": True},
+        )
+
+        # Collect scores
+        metric_scores: dict[str, list[float]] = {}
+        result_count = 0
+        async for result in results:
+            result_count += 1
+            eval_results = result.get("evaluation_results", {})
+            for er in eval_results.get("results", []):
+                if er.score is not None:
+                    metric_scores.setdefault(er.key, []).append(er.score)
+
+        avg_scores = {
+            metric: round(sum(scores) / len(scores), 4)
+            for metric, scores in metric_scores.items()
+            if scores
+        }
+
+        logger.info(
+            "Vector %s complete: %d samples, scores=%s",
+            vector,
+            result_count,
+            avg_scores,
+        )
+
+        return {
+            "vector": vector,
+            "scores": avg_scores,
+            "experiment": exp_name,
+            "sample_count": result_count,
+        }
+
+    finally:
+        if driver is not None:
+            driver.close()
 
 
-async def _run_evaluation_tier(
+async def _run_tiers_2_4(
     tier: int,
-    tier_name: str,
-) -> EvaluationResult:
-    """Run evaluation for a specific tier using langsmith.evaluate().
+    vector_filter: str | None = None,
+    regression_gate: bool = False,
+    prompt_tag: str = "production",
+) -> dict:
+    """Run per-vector evaluation for tiers 2-4.
 
     Args:
         tier: Tier number (2, 3, or 4).
-        tier_name: Human-readable tier name.
+        vector_filter: Optional single vector to run.
+        regression_gate: Whether to check regression thresholds.
+        prompt_tag: Hub prompt tag.
 
     Returns:
-        EvaluationResult with pass/fail status.
+        Result dict with per-vector scores and regression status.
     """
-    import os
-
     start_time = time.time()
     errors: list[str] = []
-    tier_config = TIER_CONFIGS[tier]
 
     logger.info("=" * 60)
-    logger.info("TIER %d: %s", tier, tier_name)
+    logger.info("TIER %d: Per-Vector Evaluation", tier)
     logger.info("=" * 60)
 
-    try:
-        from datetime import UTC, datetime
+    tier_vectors = TIER_VECTOR_CONFIGS[tier]
 
-        from langsmith import Client, aevaluate
+    # Filter to single vector if specified
+    if vector_filter:
+        if vector_filter not in tier_vectors:
+            return {
+                "tier": tier,
+                "passed": False,
+                "vectors": {},
+                "regression": None,
+                "duration_seconds": round(time.time() - start_time, 1),
+                "errors": [f"Vector '{vector_filter}' not in tier {tier} config"],
+            }
+        tier_vectors = {vector_filter: tier_vectors[vector_filter]}
 
-        from requirements_graphrag_api.evaluation.golden_dataset import DATASET_NAME
-        from requirements_graphrag_api.evaluation.ragas_evaluators import (
-            answer_correctness_evaluator,
-            answer_relevancy_evaluator,
-            answer_semantic_similarity_evaluator,
-            context_entity_recall_evaluator,
-            context_precision_evaluator,
-            context_recall_evaluator,
-            faithfulness_evaluator,
-        )
-
-        client = Client()
-        dataset_name = os.getenv("EVAL_DATASET", DATASET_NAME)
-
-        # Verify dataset exists
+    # Run each vector sequentially
+    vector_results: dict[str, dict] = {}
+    for vector, max_samples in tier_vectors.items():
         try:
-            dataset = client.read_dataset(dataset_name=dataset_name)
-            examples = list(client.list_examples(dataset_id=dataset.id))
-            total_examples = len(examples)
-            logger.info("Found %d examples in dataset '%s'", total_examples, dataset_name)
+            result = await _run_vector_ci(vector, max_samples, prompt_tag)
+            vector_results[vector] = result
         except Exception as e:
-            errors.append(f"Dataset error: {e}")
-            return EvaluationResult(
-                tier=tier,
-                tier_name=tier_name,
-                passed=False,
-                samples_evaluated=0,
-                avg_score=0.0,
-                min_score_threshold=tier_config.min_avg_score,
-                duration_seconds=time.time() - start_time,
-                cost_estimate=0.0,
-                errors=errors,
-            )
+            logger.exception("Vector %s failed", vector)
+            errors.append(f"{vector}: {e}")
 
-        # Limit samples for smoke test
-        if tier_config.max_samples and total_examples > tier_config.max_samples:
-            examples = examples[: tier_config.max_samples]
-            logger.info("Limited to %d samples for tier %d", len(examples), tier)
+    # Regression gate
+    regression_output = None
+    passed = len(vector_results) > 0 and len(errors) == 0
 
-        evaluators = [
-            faithfulness_evaluator,
-            answer_relevancy_evaluator,
-            answer_correctness_evaluator,
-            answer_semantic_similarity_evaluator,
-            context_precision_evaluator,
-            context_recall_evaluator,
-            context_entity_recall_evaluator,
-        ]
+    if regression_gate and vector_results:
+        from requirements_graphrag_api.evaluation.regression import check_all_vectors
 
-        # Create async target from the RAG pipeline
-        from requirements_graphrag_api.config import get_config
-        from requirements_graphrag_api.core.retrieval import (
-            create_vector_retriever,
-            graph_enriched_search,
-        )
-        from requirements_graphrag_api.neo4j_client import create_driver
-        from requirements_graphrag_api.prompts import PromptName, get_prompt
+        gate_input = {v: r["scores"] for v, r in vector_results.items()}
+        reports = check_all_vectors(gate_input)
 
-        app_config = get_config()
-        driver = create_driver(app_config)
-        try:
-            driver.verify_connectivity()
-            retriever = create_vector_retriever(driver, app_config)
+        gate_passed = all(r.passed for r in reports.values())
+        regression_output = {
+            "passed": gate_passed,
+            "details": {v: r.summary() for v, r in reports.items()},
+        }
 
-            async def rag_target(inputs: dict) -> dict:
-                """RAG pipeline target for evaluation."""
-                import json as _json
+        for _v, report in reports.items():
+            logger.info(report.summary())
 
-                from langchain_openai import ChatOpenAI
+        passed = passed and gate_passed
 
-                question = inputs.get("question", "")
-                results = await graph_enriched_search(
-                    retriever=retriever,
-                    driver=driver,
-                    query=question,
-                    limit=5,
-                )
-
-                contexts = [r.get("content", "") for r in results]
-                context = "\n\n".join(contexts)
-
-                prompt_template = await get_prompt(PromptName.SYNTHESIS)
-                llm = ChatOpenAI(model=app_config.chat_model, temperature=0.1)
-                chain = prompt_template | llm
-                response = await chain.ainvoke(
-                    {"context": context, "previous_context": "", "question": question}
-                )
-
-                # SYNTHESIS returns JSON — extract the answer field
-                raw = response.content
-                if raw.startswith("```"):
-                    raw_lines = raw.split("\n")
-                    raw = "\n".join(ln for ln in raw_lines if not ln.startswith("```")).strip()
-                try:
-                    parsed = _json.loads(raw)
-                    answer = parsed.get("answer", raw)
-                except (_json.JSONDecodeError, KeyError):
-                    answer = raw
-
-                return {
-                    "answer": answer,
-                    "contexts": contexts,
-                    "intent": "explanatory",
-                }
-
-            logger.info(
-                "Running evaluation with %d evaluators on %d examples...",
-                len(evaluators),
-                len(examples),
-            )
-
-            timestamp = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
-            experiment_prefix = f"ci-tier{tier}-{timestamp}"
-            results = await aevaluate(
-                rag_target,
-                data=examples,
-                evaluators=evaluators,
-                experiment_prefix=experiment_prefix,
-                max_concurrency=2,
-                metadata={"tier": tier, "tier_name": tier_name},
-            )
-
-            # Extract metrics
-            aggregate_metrics: dict[str, float] = {}
-            result_count = 0
-            async for _result in results:
-                result_count += 1
-
-            avg_score = aggregate_metrics.get("avg_score", 0.0)
-            if avg_score == 0.0 and aggregate_metrics:
-                scores = [v for k, v in aggregate_metrics.items() if isinstance(v, int | float)]
-                avg_score = sum(scores) / len(scores) if scores else 0.0
-
-            passed = result_count > 0
-
-            return EvaluationResult(
-                tier=tier,
-                tier_name=tier_name,
-                passed=passed,
-                samples_evaluated=result_count,
-                avg_score=avg_score,
-                min_score_threshold=tier_config.min_avg_score,
-                duration_seconds=time.time() - start_time,
-                cost_estimate=0.0,
-                metrics=aggregate_metrics,
-                errors=errors,
-            )
-        finally:
-            driver.close()
-
-    except Exception as e:
-        logger.exception("Tier %d failed with error", tier)
-        errors.append(str(e))
-        return EvaluationResult(
-            tier=tier,
-            tier_name=tier_name,
-            passed=False,
-            samples_evaluated=0,
-            avg_score=0.0,
-            min_score_threshold=tier_config.min_avg_score,
-            duration_seconds=time.time() - start_time,
-            cost_estimate=0.0,
-            errors=errors,
-        )
-
-
-async def run_tier2() -> EvaluationResult:
-    """Run Tier 2: Smoke test with 10 golden examples."""
-    return await _run_evaluation_tier(2, "Smoke Test")
-
-
-async def run_tier3() -> EvaluationResult:
-    """Run Tier 3: Full benchmark evaluation."""
-    return await _run_evaluation_tier(3, "Full Benchmark")
-
-
-async def run_tier4() -> EvaluationResult:
-    """Run Tier 4: Deep evaluation with extended analysis."""
-    return await _run_evaluation_tier(4, "Deep Evaluation")
+    return {
+        "tier": tier,
+        "passed": passed,
+        "vectors": {
+            v: {
+                "scores": r["scores"],
+                "experiment": r["experiment"],
+                "sample_count": r["sample_count"],
+            }
+            for v, r in vector_results.items()
+        },
+        "regression": regression_output,
+        "duration_seconds": round(time.time() - start_time, 1),
+        "errors": errors,
+    }
 
 
 # =============================================================================
 # MAIN
 # =============================================================================
-
-
-async def run_evaluation(tier: int) -> EvaluationResult:
-    """Run evaluation for specified tier.
-
-    Args:
-        tier: Evaluation tier (1-4).
-
-    Returns:
-        EvaluationResult with pass/fail status.
-    """
-    if tier not in TIER_CONFIGS:
-        raise ValueError(f"Invalid tier: {tier}. Must be 1-4.")
-
-    tier_config = TIER_CONFIGS[tier]
-    logger.info("Running %s evaluation...", tier_config.name)
-
-    if tier == 1:
-        return await run_tier1()
-
-    if tier == TIER_SMOKE:
-        return await run_tier2()
-    if tier == TIER_FULL:
-        return await run_tier3()
-    return await run_tier4()
 
 
 def main() -> int:
@@ -523,7 +415,7 @@ def main() -> int:
         Exit code (0=pass, 1=fail, 2=error).
     """
     parser = argparse.ArgumentParser(
-        description="CI-friendly evaluation runner",
+        description="CI-friendly per-vector evaluation runner",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -531,8 +423,18 @@ def main() -> int:
         "--tier",
         type=int,
         choices=[1, 2, 3, 4],
-        default=1,
-        help="Evaluation tier (1=prompt validation, 2=smoke, 3=full, 4=deep)",
+        required=True,
+        help="Evaluation tier (1=validation, 2=smoke, 3=full, 4=deep)",
+    )
+    parser.add_argument(
+        "--vector",
+        choices=["intent", "explanatory", "structured", "conversational"],
+        help="Run only this vector (default: all vectors for the tier)",
+    )
+    parser.add_argument(
+        "--regression-gate",
+        action="store_true",
+        help="Check results against regression thresholds (exit 1 on failure)",
     )
     parser.add_argument(
         "--output",
@@ -552,40 +454,50 @@ def main() -> int:
         logging.getLogger().setLevel(logging.DEBUG)
 
     try:
-        result = asyncio.run(run_evaluation(args.tier))
+        if args.tier == 1:
+            result = asyncio.run(run_tier1())
+        else:
+            result = asyncio.run(
+                _run_tiers_2_4(
+                    tier=args.tier,
+                    vector_filter=args.vector,
+                    regression_gate=args.regression_gate,
+                )
+            )
 
+        # Print summary
         print("\n" + "=" * 60)
-        print(f"EVALUATION RESULT: {'PASSED' if result.passed else 'FAILED'}")
+        print(f"EVALUATION RESULT: {'PASSED' if result['passed'] else 'FAILED'}")
         print("=" * 60)
-        print(f"Tier: {result.tier} ({result.tier_name})")
-        print(f"Samples Evaluated: {result.samples_evaluated}")
-        print(f"Average Score: {result.avg_score:.4f}")
-        print(f"Threshold: {result.min_score_threshold:.4f}")
-        print(f"Duration: {result.duration_seconds:.1f}s")
-        print(f"Est. Cost: ${result.cost_estimate:.2f}")
+        print(f"Tier: {result['tier']}")
+        print(f"Duration: {result['duration_seconds']}s")
 
-        if result.metrics:
-            print("\nMetrics:")
-            for key, value in result.metrics.items():
-                if isinstance(value, float):
-                    print(f"  {key}: {value:.4f}")
-                else:
-                    print(f"  {key}: {value}")
+        if result["vectors"]:
+            print("\nPer-Vector Results:")
+            for vector, vr in result["vectors"].items():
+                print(f"\n  {vector} ({vr['sample_count']} samples):")
+                for metric, score in sorted(vr["scores"].items()):
+                    print(f"    {metric}: {score:.4f}")
 
-        if result.errors:
+        if result.get("regression"):
+            reg = result["regression"]
+            status = "PASSED" if reg["passed"] else "FAILED"
+            print(f"\nRegression Gate: {status}")
+
+        if result.get("errors"):
             print("\nErrors:")
-            for error in result.errors:
+            for error in result["errors"]:
                 print(f"  - {error}")
 
         output_path = Path(args.output)
-        output_path.write_text(json.dumps(result.to_dict(), indent=2))
+        output_path.write_text(json.dumps(result, indent=2))
         logger.info("Results saved to %s", output_path)
 
     except Exception:
         logger.exception("Evaluation failed with error")
         return 2
 
-    return 0 if result.passed else 1
+    return 0 if result["passed"] else 1
 
 
 if __name__ == "__main__":

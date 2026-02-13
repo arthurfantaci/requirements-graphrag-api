@@ -1,6 +1,7 @@
-# Evaluation Pipeline for Tier 3-4
-# - Tier 3: Full benchmark on release tags (v*)
-# - Tier 4: Deep evaluation nightly
+# Per-Vector Evaluation Pipeline
+# - Tier 2: Smoke test (manual only, ~$0.50)
+# - Tier 3: Full benchmark on release tags (v*) or manual (~$15)
+# - Tier 4: Deep evaluation (manual only, ~$20)
 name: Evaluation
 
 # Grant permissions for creating issues and commit comments
@@ -14,10 +15,6 @@ on:
     tags:
       - 'v*'
 
-  # Tier 4: Nightly schedule (2 AM UTC)
-  schedule:
-    - cron: '0 2 * * *'
-
   # Manual trigger with tier selection
   workflow_dispatch:
     inputs:
@@ -27,6 +24,7 @@ on:
         default: '3'
         type: choice
         options:
+          - '2'
           - '3'
           - '4'
 
@@ -34,11 +32,55 @@ env:
   PYTHON_VERSION: "3.12"
 
 jobs:
-  # Tier 3: Full Benchmark (release)
+  # Tier 2: Smoke Test (manual only)
+  smoke-test:
+    name: Tier 2 - Smoke Test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.tier == '2'
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run smoke test (Tier 2)
+        run: uv run python scripts/ci_evaluation.py --tier 2 --output tier2_results.json --verbose
+        env:
+          NEO4J_URI: ${{ secrets.NEO4J_URI }}
+          NEO4J_USERNAME: ${{ secrets.NEO4J_USERNAME }}
+          NEO4J_PASSWORD: ${{ secrets.NEO4J_PASSWORD }}
+          NEO4J_DATABASE: ${{ secrets.NEO4J_DATABASE }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+          LANGSMITH_PROJECT: graphrag-api-smoke
+          LANGSMITH_TRACING: "true"
+
+      - name: Upload Tier 2 results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tier2-smoke-results-${{ github.sha }}
+          path: backend/tier2_results.json
+
+  # Tier 3: Full Benchmark (release tags or manual)
   full-benchmark:
     name: Tier 3 - Full Benchmark
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tier == '3')
+    if: >-
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.tier == '3')
     timeout-minutes: 30
     defaults:
       run:
@@ -58,7 +100,7 @@ jobs:
         run: uv sync --extra dev
 
       - name: Run full benchmark (Tier 3)
-        run: uv run python scripts/ci_evaluation.py --tier 3 --output tier3_results.json --verbose
+        run: uv run python scripts/ci_evaluation.py --tier 3 --regression-gate --output tier3_results.json --verbose
         env:
           NEO4J_URI: ${{ secrets.NEO4J_URI }}
           NEO4J_USERNAME: ${{ secrets.NEO4J_USERNAME }}
@@ -84,23 +126,31 @@ jobs:
             const fs = require('fs');
             const results = JSON.parse(fs.readFileSync('backend/tier3_results.json', 'utf8'));
 
-            const body = `## 📊 Release Evaluation Results
+            let vectorTable = '';
+            for (const [vector, data] of Object.entries(results.vectors)) {
+              vectorTable += `\n### ${vector} (${data.sample_count} samples)\n\n`;
+              vectorTable += `| Metric | Score |\n|--------|-------|\n`;
+              for (const [metric, score] of Object.entries(data.scores).sort()) {
+                vectorTable += `| ${metric} | ${Number(score).toFixed(4)} |\n`;
+              }
+            }
 
-            **Tier 3 - Full Benchmark**
+            const regression = results.regression
+              ? `\n**Regression Gate**: ${results.regression.passed ? 'PASSED' : 'FAILED'}`
+              : '';
 
-            | Metric | Value |
-            |--------|-------|
-            | Status | ${results.passed ? '✅ PASSED' : '❌ FAILED'} |
-            | Samples Evaluated | ${results.samples_evaluated} |
-            | Average Score | ${results.avg_score.toFixed(4)} |
-            | Threshold | ${results.min_score_threshold.toFixed(4)} |
-            | Duration | ${results.duration_seconds.toFixed(1)}s |
-            | Est. Cost | $${results.cost_estimate.toFixed(2)} |
+            const body = [
+              '## Release Evaluation Results',
+              '',
+              `**Tier 3 - Full Benchmark**: ${results.passed ? 'PASSED' : 'FAILED'}`,
+              `**Duration**: ${results.duration_seconds}s`,
+              vectorTable,
+              regression,
+              results.errors && results.errors.length > 0
+                ? '\n**Errors:**\n' + results.errors.map(e => `- ${e}`).join('\n')
+                : '',
+            ].join('\n');
 
-            ${results.errors.length > 0 ? '\n**Errors:**\n' + results.errors.map(e => `- ${e}`).join('\n') : ''}
-            `;
-
-            // Post results as a commit comment on the tagged commit
             await github.rest.repos.createCommitComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -108,11 +158,11 @@ jobs:
               body: body,
             });
 
-  # Tier 4: Deep Evaluation (nightly)
+  # Tier 4: Deep Evaluation (manual only)
   deep-evaluation:
     name: Tier 4 - Deep Evaluation
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tier == '4')
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.tier == '4'
     timeout-minutes: 60
     defaults:
       run:
@@ -132,7 +182,7 @@ jobs:
         run: uv sync --extra dev
 
       - name: Run deep evaluation (Tier 4)
-        run: uv run python scripts/ci_evaluation.py --tier 4 --output tier4_results.json --verbose
+        run: uv run python scripts/ci_evaluation.py --tier 4 --regression-gate --output tier4_results.json --verbose
         env:
           NEO4J_URI: ${{ secrets.NEO4J_URI }}
           NEO4J_USERNAME: ${{ secrets.NEO4J_USERNAME }}
@@ -140,7 +190,7 @@ jobs:
           NEO4J_DATABASE: ${{ secrets.NEO4J_DATABASE }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
-          LANGSMITH_PROJECT: graphrag-api-nightly
+          LANGSMITH_PROJECT: graphrag-api-deep
           LANGSMITH_TRACING: "true"
 
       - name: Upload Tier 4 results
@@ -160,48 +210,42 @@ jobs:
 
             try {
               const results = JSON.parse(fs.readFileSync('backend/tier4_results.json', 'utf8'));
-              resultsInfo = `
-              - Average Score: ${results.avg_score.toFixed(4)}
-              - Threshold: ${results.min_score_threshold.toFixed(4)}
-              - Samples: ${results.samples_evaluated}
-              - Errors: ${results.errors.join(', ') || 'None'}
-              `;
+
+              let vectorSummary = '';
+              for (const [vector, data] of Object.entries(results.vectors || {})) {
+                vectorSummary += `\n- **${vector}** (${data.sample_count} samples): `;
+                vectorSummary += Object.entries(data.scores)
+                  .map(([m, s]) => `${m}=${Number(s).toFixed(3)}`)
+                  .join(', ');
+              }
+
+              const regression = results.regression
+                ? `\n- Regression gate: ${results.regression.passed ? 'PASSED' : 'FAILED'}`
+                : '';
+
+              resultsInfo = `${vectorSummary}${regression}\n- Errors: ${(results.errors || []).join(', ') || 'None'}`;
             } catch (e) {
               resultsInfo = `Could not read results: ${e.message}`;
             }
 
+            const issueTitle = `[Bug]: Deep Evaluation Failed - ${new Date().toISOString().split('T')[0]}`;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
             await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              title: `[Bug]: Nightly Evaluation Failed - ${new Date().toISOString().split('T')[0]}`,
-              body: `## Description
-
-            The Tier 4 deep evaluation failed during the nightly run.
-
-            ## Steps to Reproduce
-
-            This issue was auto-generated by the nightly evaluation workflow.
-
-            **Workflow Run:** [#${context.runNumber}](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
-
-            ## Expected Behavior
-
-            All evaluation samples should pass with an average score at or above the configured threshold.
-
-            ## Actual Behavior
-
-            ${resultsInfo}
-
-            ## Component
-
-            Backend API
-
-            ## Additional Context
-
-            Please investigate and fix any regressions.
-
-            /cc @${context.actor}
-            `,
+              title: issueTitle,
+              body: [
+                '## Description',
+                '',
+                'The Tier 4 deep evaluation failed during a manual run.',
+                '',
+                `**Workflow Run:** [#${context.runNumber}](${runUrl})`,
+                '',
+                '## Results',
+                '',
+                resultsInfo,
+              ].join('\n'),
               labels: ['evaluation', 'bug', 'automated'],
               assignees: ['arthurfantaci']
             });
@@ -210,8 +254,8 @@ jobs:
   evaluation-summary:
     name: Evaluation Summary
     runs-on: ubuntu-latest
-    needs: [full-benchmark, deep-evaluation]
-    if: always() && (needs.full-benchmark.result != 'skipped' || needs.deep-evaluation.result != 'skipped')
+    needs: [smoke-test, full-benchmark, deep-evaluation]
+    if: always() && (needs.smoke-test.result != 'skipped' || needs.full-benchmark.result != 'skipped' || needs.deep-evaluation.result != 'skipped')
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4

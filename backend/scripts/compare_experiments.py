@@ -1,14 +1,17 @@
 #!/usr/bin/env python
-"""Compare LangSmith experiments.
+"""Compare LangSmith experiments across per-vector datasets.
 
 This script demonstrates LangSmith experiment comparison:
-- Listing experiments for a dataset
+- Listing experiments for a dataset (per-vector or legacy)
 - Comparing metrics between experiments
 - Statistical comparison for decision making
 
 Usage:
-    # List experiments for the golden dataset
+    # List experiments for all vector datasets
     uv run python scripts/compare_experiments.py --list
+
+    # List experiments for a specific vector
+    uv run python scripts/compare_experiments.py --list --vector explanatory
 
     # Compare two experiments
     uv run python scripts/compare_experiments.py --compare exp1 exp2
@@ -41,13 +44,24 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-from requirements_graphrag_api.evaluation.golden_dataset import DATASET_NAME  # noqa: E402
+from requirements_graphrag_api.evaluation.constants import (  # noqa: E402
+    ALL_VECTOR_DATASETS,
+    DATASET_CONVERSATIONAL,
+    DATASET_EXPLANATORY,
+    DATASET_INTENT,
+    DATASET_LEGACY,
+    DATASET_STRUCTURED,
+)
 
-# Configuration
-DEFAULT_DATASET = DATASET_NAME
+VECTOR_DATASETS: dict[str, str] = {
+    "explanatory": DATASET_EXPLANATORY,
+    "structured": DATASET_STRUCTURED,
+    "conversational": DATASET_CONVERSATIONAL,
+    "intent": DATASET_INTENT,
+}
 
 
-def list_experiments(dataset_name: str = DEFAULT_DATASET) -> list[dict[str, Any]]:
+def list_experiments(dataset_name: str) -> list[dict[str, Any]]:
     """List all experiments for a dataset.
 
     Args:
@@ -65,7 +79,6 @@ def list_experiments(dataset_name: str = DEFAULT_DATASET) -> list[dict[str, Any]
     print("=" * 70)
 
     try:
-        # Get dataset ID
         dataset = client.read_dataset(dataset_name=dataset_name)
     except Exception as e:
         logger.error("Dataset not found: %s - %s", dataset_name, e)
@@ -74,11 +87,9 @@ def list_experiments(dataset_name: str = DEFAULT_DATASET) -> list[dict[str, Any]
     experiments = []
 
     try:
-        # List projects (experiments) that reference this dataset
         projects = list(client.list_projects())
 
         for project in projects:
-            # Filter to projects that are experiments for this dataset
             if project.reference_dataset_id == dataset.id:
                 exp_info = {
                     "name": project.name,
@@ -90,7 +101,7 @@ def list_experiments(dataset_name: str = DEFAULT_DATASET) -> list[dict[str, Any]
 
         if not experiments:
             print("No experiments found for this dataset.")
-            print("Run run_ragas_evaluation.py to create experiments.")
+            print("Run run_vector_evaluation.py to create experiments.")
         else:
             print(f"\n{'Name':<40} {'Runs':>6} {'Created':<20}")
             print("-" * 70)
@@ -122,7 +133,6 @@ def get_experiment_metrics(experiment_name: str) -> dict[str, float]:
     metrics: dict[str, list[float]] = {}
 
     try:
-        # Find the project
         projects = list(client.list_projects())
         project = None
         for p in projects:
@@ -134,11 +144,9 @@ def get_experiment_metrics(experiment_name: str) -> dict[str, float]:
             logger.error("Experiment not found: %s", experiment_name)
             return {}
 
-        # Get runs for this project
         runs = list(client.list_runs(project_id=project.id))
 
         for run in runs:
-            # Get feedback for each run
             feedbacks = list(client.list_feedback(run_ids=[run.id]))
 
             for feedback in feedbacks:
@@ -151,7 +159,6 @@ def get_experiment_metrics(experiment_name: str) -> dict[str, float]:
     except Exception as e:
         logger.error("Failed to get experiment metrics: %s", e)
 
-    # Calculate averages
     return {key: sum(scores) / len(scores) if scores else 0.0 for key, scores in metrics.items()}
 
 
@@ -178,7 +185,6 @@ def show_experiment(experiment_name: str) -> None:
     for metric, score in sorted(metrics.items()):
         print(f"{metric:<25} {score:>10.3f}")
 
-    # Overall average
     avg = sum(metrics.values()) / len(metrics) if metrics else 0.0
     print("-" * 40)
     print(f"{'AVERAGE':<25} {avg:>10.3f}")
@@ -213,7 +219,6 @@ def compare_experiments(exp1_name: str, exp2_name: str) -> dict[str, Any]:
         logger.error("No metrics found for variant experiment: %s", exp2_name)
         return {"error": f"No metrics for {exp2_name}"}
 
-    # Compare metrics
     all_metrics = set(exp1_metrics.keys()) | set(exp2_metrics.keys())
 
     print(f"\n{'Metric':<25} {'Baseline':>10} {'Variant':>10} {'Change':>10}")
@@ -226,7 +231,6 @@ def compare_experiments(exp1_name: str, exp2_name: str) -> dict[str, Any]:
         change = variant - baseline
         improvements[metric] = change
 
-        # Indicator
         threshold = 0.01
         if change > threshold:
             indicator = "+"
@@ -239,7 +243,6 @@ def compare_experiments(exp1_name: str, exp2_name: str) -> dict[str, Any]:
 
     print("-" * 60)
 
-    # Overall assessment
     exp1_avg = sum(exp1_metrics.values()) / len(exp1_metrics) if exp1_metrics else 0.0
     exp2_avg = sum(exp2_metrics.values()) / len(exp2_metrics) if exp2_metrics else 0.0
     overall_change = exp2_avg - exp1_avg
@@ -254,7 +257,6 @@ def compare_experiments(exp1_name: str, exp2_name: str) -> dict[str, Any]:
     avg_line = f"{'AVERAGE':<25} {exp1_avg:>10.3f} {exp2_avg:>10.3f}"
     print(f"{avg_line} {indicator}{abs(overall_change):>9.3f}")
 
-    # Recommendation
     print("\n" + "=" * 70)
     improved = sum(1 for v in improvements.values() if v > 0.01)
     degraded = sum(1 for v in improvements.values() if v < -0.01)
@@ -285,7 +287,7 @@ def main(
     list_flag: bool = False,
     show: str | None = None,
     compare: tuple[str, str] | None = None,
-    dataset: str = DEFAULT_DATASET,
+    vector: str | None = None,
 ) -> int:
     """Run experiment comparison.
 
@@ -293,7 +295,7 @@ def main(
         list_flag: If True, list experiments.
         show: Experiment name to show details.
         compare: Tuple of (baseline, variant) experiment names.
-        dataset: Dataset name for listing.
+        vector: Optional vector to filter datasets.
 
     Returns:
         Exit code (0 for success).
@@ -303,7 +305,14 @@ def main(
         return 1
 
     if list_flag:
-        list_experiments(dataset)
+        if vector:
+            # List experiments for a specific vector dataset
+            dataset_name = VECTOR_DATASETS[vector]
+            list_experiments(dataset_name)
+        else:
+            # Iterate all 4 vector datasets + legacy
+            for dataset_name in (*ALL_VECTOR_DATASETS, DATASET_LEGACY):
+                list_experiments(dataset_name)
         return 0
 
     if show:
@@ -316,8 +325,12 @@ def main(
             return 1
         return 0
 
-    # Default: list experiments
-    list_experiments(dataset)
+    # Default: list experiments for all datasets
+    if vector:
+        list_experiments(VECTOR_DATASETS[vector])
+    else:
+        for dataset_name in (*ALL_VECTOR_DATASETS, DATASET_LEGACY):
+            list_experiments(dataset_name)
     return 0
 
 
@@ -327,7 +340,7 @@ if __name__ == "__main__":
         "--list",
         "-l",
         action="store_true",
-        help="List experiments for the dataset",
+        help="List experiments for the dataset(s)",
     )
     parser.add_argument(
         "--show",
@@ -343,10 +356,10 @@ if __name__ == "__main__":
         help="Compare two experiments",
     )
     parser.add_argument(
-        "--dataset",
-        "-d",
-        default=DEFAULT_DATASET,
-        help=f"Dataset name for listing (default: {DEFAULT_DATASET})",
+        "--vector",
+        "-v",
+        choices=["explanatory", "structured", "conversational", "intent"],
+        help="Filter to a specific vector dataset",
     )
 
     args = parser.parse_args()
@@ -358,6 +371,6 @@ if __name__ == "__main__":
             list_flag=args.list,
             show=args.show,
             compare=compare_tuple,
-            dataset=args.dataset,
+            vector=args.vector,
         )
     )
