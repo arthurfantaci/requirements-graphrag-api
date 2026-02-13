@@ -366,8 +366,9 @@ async def generate_explanatory_events(
         # Get thread configuration for persistence (uses conversation_id as thread_id)
         thread_id = request.conversation_id or str(uuid.uuid4())
         runnable_config = get_thread_config(thread_id)
+        runnable_config.setdefault("metadata", {})["intent"] = "explanatory"
         if trace_id:
-            runnable_config.setdefault("metadata", {})["otel_trace_id"] = trace_id
+            runnable_config["metadata"]["otel_trace_id"] = trace_id
 
         # Stream events from the agentic orchestrator, accumulating for output guardrails
         accumulated_tokens: list[str] = []
@@ -491,9 +492,10 @@ async def generate_structured_events(
         )
 
         # Create LangSmith thread metadata for conversation grouping
-        thread_metadata = create_thread_metadata(request.conversation_id)
-        if trace_id and thread_metadata:
-            thread_metadata.setdefault("metadata", {})["otel_trace_id"] = trace_id
+        thread_metadata = create_thread_metadata(request.conversation_id) or {}
+        thread_metadata.setdefault("metadata", {})["intent"] = "structured"
+        if trace_id:
+            thread_metadata["metadata"]["otel_trace_id"] = trace_id
 
         # Generate and execute Cypher query
         result = await text2cypher_query(

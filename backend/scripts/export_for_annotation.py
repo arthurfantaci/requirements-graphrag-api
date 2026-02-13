@@ -103,7 +103,7 @@ class ExportConfig:
         latency_threshold_ms: Latency threshold in milliseconds.
     """
 
-    project: str = "jama-mcp-graphrag"
+    project: str = "graphrag-api-prod"
     confidence_threshold: float = 0.7
     faithfulness_threshold: float = 0.6
     relevancy_threshold: float = 0.6
@@ -459,7 +459,7 @@ def main() -> int:
     parser.add_argument(
         "--project",
         "-p",
-        default="jama-mcp-graphrag",
+        default="graphrag-api-prod",
         help="LangSmith project name",
     )
     parser.add_argument(

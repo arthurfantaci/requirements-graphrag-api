@@ -101,6 +101,10 @@ class FeedbackRequest(BaseModel):
         default=None,
         description="Per-dimension rubric scores",
     )
+    trace_id: str | None = Field(
+        default=None,
+        description="OTel trace ID for cross-system correlation (Sentry, frontend)",
+    )
 
 
 class FeedbackResponse(BaseModel):
@@ -196,6 +200,8 @@ async def submit_feedback(
             comment_parts.append(f"Conversation ID: {body.conversation_id}")
         if body.intent:
             comment_parts.append(f"Intent: {body.intent}")
+        if body.trace_id:
+            comment_parts.append(f"Trace ID: {body.trace_id}")
 
         comment = " | ".join(comment_parts) if comment_parts else None
 
