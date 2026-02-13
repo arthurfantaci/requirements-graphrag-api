@@ -371,6 +371,8 @@ async def _run_evaluation_tier(
 
             async def rag_target(inputs: dict) -> dict:
                 """RAG pipeline target for evaluation."""
+                import json as _json
+
                 from langchain_openai import ChatOpenAI
 
                 question = inputs.get("question", "")
@@ -383,23 +385,27 @@ async def _run_evaluation_tier(
 
                 contexts = [r.get("content", "") for r in results]
                 context = "\n\n".join(contexts)
-                entities = ", ".join(
-                    {
-                        r.get("metadata", {}).get("entity_name", "")
-                        for r in results
-                        if r.get("metadata")
-                    }
-                )
 
-                prompt_template = await get_prompt(PromptName.RAG_GENERATION)
+                prompt_template = await get_prompt(PromptName.SYNTHESIS)
                 llm = ChatOpenAI(model=app_config.chat_model, temperature=0.1)
                 chain = prompt_template | llm
                 response = await chain.ainvoke(
-                    {"context": context, "entities": entities, "question": question}
+                    {"context": context, "previous_context": "", "question": question}
                 )
 
+                # SYNTHESIS returns JSON — extract the answer field
+                raw = response.content
+                if raw.startswith("```"):
+                    raw_lines = raw.split("\n")
+                    raw = "\n".join(ln for ln in raw_lines if not ln.startswith("```")).strip()
+                try:
+                    parsed = _json.loads(raw)
+                    answer = parsed.get("answer", raw)
+                except (_json.JSONDecodeError, KeyError):
+                    answer = raw
+
                 return {
-                    "answer": response.content,
+                    "answer": answer,
                     "contexts": contexts,
                     "intent": "explanatory",
                 }

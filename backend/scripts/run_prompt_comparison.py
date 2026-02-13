@@ -61,30 +61,35 @@ PROMPT_DATASET_MAP = {
         "dataset_name": "graphrag-intent-classifier-eval",
         "description": "Intent classification accuracy",
     },
-    "critic": {
-        "prompt_name": "graphrag-critic",
-        "dataset_name": "graphrag-critic-eval",
-        "description": "Context quality assessment",
-    },
     "text2cypher": {
         "prompt_name": "graphrag-text2cypher",
         "dataset_name": "graphrag-text2cypher-eval",
         "description": "Cypher query generation",
     },
-    "stepback": {
-        "prompt_name": "graphrag-stepback",
+    "synthesis": {
+        "prompt_name": "graphrag-synthesis",
         "dataset_name": None,  # No dataset yet
-        "description": "Step-back query generation",
+        "description": "Answer synthesis with self-critique",
+    },
+    "conversational": {
+        "prompt_name": "graphrag-conversational",
+        "dataset_name": None,  # No dataset yet
+        "description": "Multi-turn conversation handling",
+    },
+    "coreference-resolver": {
+        "prompt_name": "graphrag-coreference-resolver",
+        "dataset_name": None,  # No dataset yet
+        "description": "Coreference resolution for multi-turn",
+    },
+    "query-expansion": {
+        "prompt_name": "graphrag-query-expansion",
+        "dataset_name": None,  # No dataset yet
+        "description": "Query expansion for better retrieval",
     },
     "query-updater": {
         "prompt_name": "graphrag-query-updater",
         "dataset_name": None,  # No dataset yet
         "description": "Multi-turn query refinement",
-    },
-    "rag-generation": {
-        "prompt_name": "graphrag-rag-generation",
-        "dataset_name": None,  # No dataset yet
-        "description": "Answer generation with citations",
     },
 }
 

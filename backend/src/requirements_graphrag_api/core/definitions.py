@@ -332,9 +332,9 @@ def _build_context_from_results(
     for entity/glossary/relationship/standards formatting, then appends
     inline media resource sections for evaluation pipeline compatibility.
 
-    The evaluation pipeline (RAG_GENERATION prompt) expects media URLs
-    embedded in the context string, unlike the production SYNTHESIS prompt
-    which receives media via separate SSE events.
+    The evaluation pipeline expects media URLs embedded in the context
+    string, unlike the production SSE handler which sends media via
+    separate events.
     """
     from requirements_graphrag_api.core.context import NormalizedDocument, format_context
 

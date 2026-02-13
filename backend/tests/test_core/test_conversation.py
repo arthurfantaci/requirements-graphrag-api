@@ -362,7 +362,7 @@ class TestConversationalPromptCatalog:
         assert defn.name == PromptName.CONVERSATIONAL
         assert defn.template is not None
         assert defn.metadata is not None
-        assert defn.metadata.version == "1.0.0"
+        assert defn.metadata.version == "1.1.0"
 
     def test_prompt_has_evaluation_criteria(self) -> None:
         defn = PROMPT_DEFINITIONS[PromptName.CONVERSATIONAL]

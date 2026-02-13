@@ -47,8 +47,6 @@ CYPHER_STARTERS: Final[tuple[str, ...]] = (
     "WITH",
     "UNWIND",
     "CALL",
-    "EXPLAIN",
-    "PROFILE",
     "USE",
 )
 
@@ -125,7 +123,11 @@ async def generate_cypher(
                         timeout=5.0,
                     )
                 )
-                labels = [(r["label"], r["count"]) for r in labels_result]
+                labels = [
+                    (r["label"], r["count"])
+                    for r in labels_result
+                    if not r["label"].startswith("__")
+                ]
                 return "Node counts: " + ", ".join(f"{lbl}({cnt})" for lbl, cnt in labels[:15])
         except Exception as e:
             logger.warning("Failed to get schema: %s", e)

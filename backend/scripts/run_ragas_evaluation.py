@@ -109,7 +109,7 @@ async def create_rag_target(
     from requirements_graphrag_api.core.retrieval import graph_enriched_search
     from requirements_graphrag_api.prompts import PromptName, get_prompt
 
-    prompt_template = await get_prompt(PromptName.RAG_GENERATION)
+    prompt_template = await get_prompt(PromptName.SYNTHESIS)
     llm = ChatOpenAI(model=model, temperature=0.1)
 
     async def rag_target(inputs: dict[str, Any]) -> dict[str, Any]:
@@ -132,13 +132,26 @@ async def create_rag_target(
         response = await chain.ainvoke(
             {
                 "context": context,
-                "entities": "",
+                "previous_context": "",
                 "question": question,
             }
         )
 
+        # SYNTHESIS returns JSON — extract the answer field
+        import json
+
+        raw = response.content
+        if raw.startswith("```"):
+            raw_lines = raw.split("\n")
+            raw = "\n".join(ln for ln in raw_lines if not ln.startswith("```")).strip()
+        try:
+            parsed = json.loads(raw)
+            answer = parsed.get("answer", raw)
+        except (json.JSONDecodeError, KeyError):
+            answer = raw
+
         return {
-            "answer": response.content,
+            "answer": answer,
             "contexts": contexts,
             "intent": "explanatory",
         }
