@@ -7,10 +7,10 @@ queries against Neo4j, and posts per-metric feedback to LangSmith.
 
 Usage:
     # Evaluate last 24h of structured traces
-    uv run python scripts/online_eval_cypher.py --project jama-mcp-graphrag
+    uv run python scripts/online_eval_cypher.py --project graphrag-api-prod
 
     # Evaluate last 48h, limit 100, dry run
-    uv run python scripts/online_eval_cypher.py --project jama-mcp-graphrag \
+    uv run python scripts/online_eval_cypher.py --project graphrag-api-prod \
         --hours-back 48 --limit 100 --dry-run
 
     # Show help
@@ -190,8 +190,8 @@ def main() -> int:
     parser.add_argument(
         "--project",
         "-p",
-        default="jama-mcp-graphrag",
-        help="LangSmith project name (default: jama-mcp-graphrag)",
+        default="graphrag-api-prod",
+        help="LangSmith project name (default: graphrag-api-prod)",
     )
     parser.add_argument(
         "--limit",

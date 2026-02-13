@@ -573,7 +573,7 @@ def main() -> int:
     parser.add_argument(
         "--project",
         "-p",
-        default="jama-mcp-graphrag",
+        default="graphrag-api-prod",
         help="LangSmith project name (for --from-langsmith)",
     )
     parser.add_argument(

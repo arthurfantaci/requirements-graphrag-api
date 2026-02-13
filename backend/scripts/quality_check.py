@@ -8,14 +8,14 @@ when degradation is detected.
 
 Usage:
     # Run with defaults (7-day window vs 30-day baseline)
-    uv run python scripts/quality_check.py --project jama-mcp-graphrag
+    uv run python scripts/quality_check.py --project graphrag-api-prod
 
     # Custom windows
-    uv run python scripts/quality_check.py --project jama-mcp-graphrag \
+    uv run python scripts/quality_check.py --project graphrag-api-prod \
         --recent-days 3 --baseline-days 14
 
     # Show details without failing
-    uv run python scripts/quality_check.py --project jama-mcp-graphrag --dry-run
+    uv run python scripts/quality_check.py --project graphrag-api-prod --dry-run
 
 Exit codes:
     0 — no degradation detected (or insufficient data)
@@ -175,8 +175,8 @@ def main() -> int:
     parser.add_argument(
         "--project",
         "-p",
-        default="jama-mcp-graphrag",
-        help="LangSmith project name (default: jama-mcp-graphrag)",
+        default="graphrag-api-prod",
+        help="LangSmith project name (default: graphrag-api-prod)",
     )
     parser.add_argument(
         "--recent-days",
