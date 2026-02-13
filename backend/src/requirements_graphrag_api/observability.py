@@ -454,6 +454,31 @@ def get_tracing_status() -> dict[str, str | bool]:
     }
 
 
+def patch_run_for_eval(
+    run_id: str,
+    *,
+    inputs: dict[str, Any],
+    outputs: dict[str, Any],
+) -> None:
+    """Patch an existing LangSmith run with evaluator-friendly inputs/outputs.
+
+    Fire-and-forget: any failure is logged at debug level and never
+    propagated.  This keeps the user-facing streaming path unaffected.
+
+    Args:
+        run_id: The LangSmith run ID to patch.
+        inputs: Evaluator-friendly input fields (e.g. question, history).
+        outputs: Evaluator-friendly output fields (e.g. answer, cypher).
+    """
+    try:
+        from langsmith import Client
+
+        Client().update_run(run_id, inputs=inputs, outputs=outputs)
+        logger.debug("Patched run %s for evaluators", run_id)
+    except Exception:
+        logger.debug("Failed to patch run %s for evaluators", run_id, exc_info=True)
+
+
 __all__ = [
     "REDACTED",
     "SENSITIVE_FIELD_PATTERNS",
@@ -463,6 +488,7 @@ __all__ = [
     "create_thread_metadata",
     "disable_tracing",
     "get_tracing_status",
+    "patch_run_for_eval",
     "sanitize_inputs",
     "traceable",  # Re-export for backward compatibility
     "traceable_safe",
