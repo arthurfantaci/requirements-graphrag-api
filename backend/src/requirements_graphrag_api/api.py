@@ -38,6 +38,7 @@ from requirements_graphrag_api.config import get_auth_config, get_config, get_gu
 from requirements_graphrag_api.core.retrieval import create_vector_retriever
 from requirements_graphrag_api.middleware import (
     SizeLimitMiddleware,
+    TraceCorrelationMiddleware,
     get_rate_limiter,
     rate_limit_exceeded_handler,
 )
@@ -255,6 +256,12 @@ app.add_middleware(AuthMiddleware, require_auth=_auth_required)
 # Add size limit middleware (Phase 4)
 # Prevents oversized requests from consuming server resources
 app.add_middleware(SizeLimitMiddleware)
+
+# Add trace correlation middleware (Phase 3)
+# Reads OTel trace ID from current span, stores in request.state.trace_id,
+# and injects X-Trace-ID response header. Registered last so it runs first
+# (Starlette LIFO order), AFTER FastAPIInstrumentor creates the OTel span.
+app.add_middleware(TraceCorrelationMiddleware)
 
 # Mount routers
 app.include_router(health_router, tags=["Health"])

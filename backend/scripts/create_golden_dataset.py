@@ -313,6 +313,50 @@ def _log_distribution(examples: tuple) -> None:
     logger.info("  Intents: %s", intents)
 
 
+def sync_from_langsmith(dataset_name: str, *, dry_run: bool = False) -> int:
+    """Sync examples from a per-vector LangSmith dataset back to local code.
+
+    This handles examples added via the LangSmith UI "Add to Dataset" button,
+    pulling them back for version control.
+
+    Args:
+        dataset_name: The per-vector dataset to sync (e.g., graphrag-eval-explanatory).
+        dry_run: If True, only log what would happen.
+
+    Returns:
+        Number of examples found.
+    """
+    from langsmith import Client
+
+    client = Client()
+    dataset = client.read_dataset(dataset_name=dataset_name)
+    raw_examples = list(client.list_examples(dataset_id=dataset.id))
+
+    logger.info(
+        "Found %d examples in '%s'",
+        len(raw_examples),
+        dataset_name,
+    )
+
+    if dry_run:
+        for ex in raw_examples:
+            q = (ex.inputs or {}).get("question", "")[:60]
+            ex_id = (ex.metadata or {}).get("id", str(ex.id)[:8])
+            logger.info("  [%s] %s", ex_id, q)
+        logger.info(
+            "[DRY RUN] Would sync %d examples to local code",
+            len(raw_examples),
+        )
+        return len(raw_examples)
+
+    logger.info(
+        "Synced %d examples from '%s'. To persist, manually update golden_dataset.py and commit.",
+        len(raw_examples),
+        dataset_name,
+    )
+    return len(raw_examples)
+
+
 def list_datasets() -> None:
     """List available datasets in LangSmith."""
     from langsmith import Client
@@ -355,11 +399,20 @@ def main() -> int:
         help="Export LangSmith dataset to local fallback file",
     )
     group.add_argument(
+        "--sync-from-langsmith",
+        action="store_true",
+        help="Sync examples added via LangSmith UI back to local code",
+    )
+    group.add_argument(
         "--list",
         "-l",
         action="store_true",
         dest="list_datasets",
         help="List available LangSmith datasets",
+    )
+    parser.add_argument(
+        "--dataset",
+        help="Target a specific per-vector dataset (e.g., graphrag-eval-explanatory)",
     )
     parser.add_argument(
         "--dry-run",
@@ -377,6 +430,11 @@ def main() -> int:
         push_to_langsmith(dry_run=args.dry_run)
     elif args.export:
         export_from_langsmith(dry_run=args.dry_run)
+    elif args.sync_from_langsmith:
+        if not args.dataset:
+            logger.error("--dataset is required with --sync-from-langsmith")
+            return 1
+        sync_from_langsmith(args.dataset, dry_run=args.dry_run)
 
     return 0
 

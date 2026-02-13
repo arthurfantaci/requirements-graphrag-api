@@ -39,6 +39,8 @@ function createAssistantMessage() {
     error: null,
     // LangSmith correlation for feedback
     runId: null,
+    // OTel trace ID for cross-system correlation
+    traceId: null,
   }
 }
 
@@ -115,7 +117,7 @@ export function useSSEChat() {
           break
 
         case 'done':
-          // Mark as complete, use full answer if provided, capture run_id for feedback
+          // Mark as complete, use full answer if provided, capture run_id + trace_id
           updateLastMessage((msg) => ({
             ...msg,
             content: data.full_answer || msg.content,
@@ -123,6 +125,7 @@ export function useSSEChat() {
             rowCount: data.row_count ?? msg.rowCount,
             message: data.message || msg.message,
             runId: data.run_id || null,
+            traceId: data.trace_id || null,
           }))
           break
 

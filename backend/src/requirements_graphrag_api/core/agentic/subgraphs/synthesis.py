@@ -94,6 +94,11 @@ def create_synthesis_subgraph(config: AppConfig) -> StateGraph:
             )
             result = response.content
 
+            # Strip markdown code fences if present (LLMs sometimes wrap JSON)
+            if result.startswith("```"):
+                lines = result.split("\n")
+                result = "\n".join(line for line in lines if not line.startswith("```")).strip()
+
             # Parse JSON response
             try:
                 parsed = json.loads(result)
@@ -203,6 +208,11 @@ Focus on improving completeness and addressing the gaps identified above."""
                 config.chat_model, synth_response, operation="synthesis_revision"
             )
             result = synth_response.content
+
+            # Strip markdown code fences if present
+            if result.startswith("```"):
+                lines = result.split("\n")
+                result = "\n".join(line for line in lines if not line.startswith("```")).strip()
 
             # Parse revised response
             try:

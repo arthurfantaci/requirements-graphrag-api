@@ -1,0 +1,38 @@
+name: Prompt Sync Check
+
+on:
+  schedule:
+    # Monday 9am UTC
+    - cron: "0 9 * * 1"
+  workflow_dispatch: {}
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  check-sync:
+    name: Check Hub Prompt Drift
+    runs-on: ubuntu-latest
+    # Warn-only — don't block other workflows
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Check prompt sync
+        env:
+          LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+        run: uv run python scripts/check_prompt_sync.py --verbose

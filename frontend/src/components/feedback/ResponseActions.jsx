@@ -33,7 +33,7 @@ function ThumbsDownIcon() {
  * Response action bar with Copy, Thumbs Up, Thumbs Down
  * Styled similar to Claude Desktop
  */
-export function ResponseActions({ content, runId, messageId }) {
+export function ResponseActions({ content, runId, messageId, traceId, intent }) {
   const [copied, setCopied] = useState(false)
   const [feedbackGiven, setFeedbackGiven] = useState(null) // 'positive' | 'negative' | null
   const [feedbackWarning, setFeedbackWarning] = useState(null)
@@ -70,7 +70,7 @@ export function ResponseActions({ content, runId, messageId }) {
     setModalOpen(true)
   }
 
-  const submitFeedback = async (details) => {
+  const submitFeedback = async ({ comment, rubricScores } = {}) => {
     setModalOpen(false)
     const isPositive = pendingFeedback === 'positive'
 
@@ -90,9 +90,12 @@ export function ResponseActions({ content, runId, messageId }) {
         body: JSON.stringify({
           run_id: runId,
           score: isPositive ? 1.0 : 0.0,
-          comment: details || null,
+          comment: comment || null,
           message_id: messageId,
           category: isPositive ? 'positive' : 'negative',
+          ...(traceId && { trace_id: traceId }),
+          ...(intent && { intent }),
+          ...(rubricScores && Object.keys(rubricScores).length > 0 && { rubric_scores: rubricScores }),
         }),
       })
     } catch (error) {
@@ -165,6 +168,7 @@ export function ResponseActions({ content, runId, messageId }) {
       <FeedbackModal
         isOpen={modalOpen}
         isPositive={pendingFeedback === 'positive'}
+        intent={intent}
         onSubmit={submitFeedback}
         onCancel={cancelFeedback}
       />

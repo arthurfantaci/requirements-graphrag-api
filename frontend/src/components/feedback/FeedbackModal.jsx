@@ -1,10 +1,81 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 
 /**
- * Feedback modal for collecting optional details
+ * Intent-specific rubric dimensions.
+ *
+ * Each intent type gets purpose-built rating dimensions so annotators
+ * evaluate what matters for that response type.
  */
-export function FeedbackModal({ isOpen, isPositive, onSubmit, onCancel }) {
+const RUBRIC_DIMENSIONS = {
+  explanatory: [
+    { key: 'accuracy', label: 'Accuracy', description: 'Factually correct information' },
+    { key: 'completeness', label: 'Completeness', description: 'Covers the topic adequately' },
+    { key: 'citation_quality', label: 'Citation Quality', description: 'Sources are relevant and specific' },
+  ],
+  structured: [
+    { key: 'cypher_quality', label: 'Query Quality', description: 'Well-formed and efficient Cypher' },
+    { key: 'result_correctness', label: 'Result Correctness', description: 'Results answer the question' },
+  ],
+  conversational: [
+    { key: 'coherence', label: 'Coherence', description: 'Logically consistent response' },
+    { key: 'helpfulness', label: 'Helpfulness', description: 'Useful and actionable answer' },
+  ],
+}
+
+/**
+ * Star rating component for a single rubric dimension
+ */
+function RubricRating({ dimension, value, onChange }) {
+  const stars = [1, 2, 3, 4, 5]
+
+  return (
+    <div className="flex items-center justify-between py-1.5">
+      <div className="flex-1 min-w-0 mr-3">
+        <span className="text-sm text-charcoal">{dimension.label}</span>
+        <span className="block text-xs text-charcoal-muted truncate">{dimension.description}</span>
+      </div>
+      <div className="flex gap-0.5 shrink-0">
+        {stars.map((star) => (
+          <button
+            key={star}
+            type="button"
+            onClick={() => onChange(star / 5)}
+            className={`w-6 h-6 rounded transition-colors ${
+              value != null && star <= value * 5
+                ? 'text-terracotta'
+                : 'text-charcoal-muted/30 hover:text-charcoal-muted/60'
+            }`}
+            aria-label={`${star} of 5 for ${dimension.label}`}
+          >
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-full h-full">
+              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+            </svg>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Feedback modal for collecting optional details and intent-specific rubric scores
+ */
+export function FeedbackModal({ isOpen, isPositive, intent, onSubmit, onCancel }) {
   const [details, setDetails] = useState('')
+  const [rubricScores, setRubricScores] = useState({})
+
+  const dimensions = useMemo(
+    () => (intent && RUBRIC_DIMENSIONS[intent]) || [],
+    [intent]
+  )
+
+  // Reset state when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setDetails('')
+      setRubricScores({})
+    }
+  }, [isOpen])
 
   // Close on Escape key
   useEffect(() => {
@@ -18,13 +89,19 @@ export function FeedbackModal({ isOpen, isPositive, onSubmit, onCancel }) {
 
   if (!isOpen) return null
 
+  const handleRubricChange = (key, value) => {
+    setRubricScores((prev) => ({ ...prev, [key]: value }))
+  }
+
   const handleSubmit = () => {
-    onSubmit(details)
+    onSubmit({ comment: details, rubricScores })
     setDetails('')
+    setRubricScores({})
   }
 
   const handleCancel = () => {
     setDetails('')
+    setRubricScores({})
     onCancel()
   }
 
@@ -54,19 +131,42 @@ export function FeedbackModal({ isOpen, isPositive, onSubmit, onCancel }) {
         </div>
 
         {/* Content */}
-        <div className="px-6 py-4">
-          <label className="block text-sm text-charcoal-light mb-2">
-            Please provide details: (optional)
-          </label>
-          <textarea
-            value={details}
-            onChange={(e) => setDetails(e.target.value)}
-            placeholder={placeholder}
-            rows={4}
-            autoFocus
-            className="w-full px-3 py-2 border border-black/15 rounded-lg focus:outline-none focus:ring-2 focus:ring-terracotta focus:border-transparent resize-none"
-          />
-          <p className="mt-3 text-xs text-charcoal-muted">
+        <div className="px-6 py-4 space-y-4">
+          {/* Intent-specific rubric */}
+          {dimensions.length > 0 && (
+            <div>
+              <label className="block text-sm text-charcoal-light mb-2">
+                Rate this response: (optional)
+              </label>
+              <div className="space-y-1">
+                {dimensions.map((dim) => (
+                  <RubricRating
+                    key={dim.key}
+                    dimension={dim}
+                    value={rubricScores[dim.key] ?? null}
+                    onChange={(val) => handleRubricChange(dim.key, val)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Free-text comment */}
+          <div>
+            <label className="block text-sm text-charcoal-light mb-2">
+              {dimensions.length > 0 ? 'Additional comments: (optional)' : 'Please provide details: (optional)'}
+            </label>
+            <textarea
+              value={details}
+              onChange={(e) => setDetails(e.target.value)}
+              placeholder={placeholder}
+              rows={dimensions.length > 0 ? 3 : 4}
+              autoFocus={dimensions.length === 0}
+              className="w-full px-3 py-2 border border-black/15 rounded-lg focus:outline-none focus:ring-2 focus:ring-terracotta focus:border-transparent resize-none"
+            />
+          </div>
+
+          <p className="text-xs text-charcoal-muted">
             Submitting this feedback will help improve future responses.
           </p>
         </div>

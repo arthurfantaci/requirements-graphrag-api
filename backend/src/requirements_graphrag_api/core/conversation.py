@@ -108,6 +108,7 @@ async def stream_conversational_events(
     conversation_history: list[dict[str, str]],
     *,
     langsmith_extra: dict[str, Any] | None = None,
+    trace_id: str | None = None,
 ) -> AsyncIterator[str]:
     """Stream SSE events for a conversational query using true token streaming.
 
@@ -119,6 +120,7 @@ async def stream_conversational_events(
         question: The user's meta-conversation question.
         conversation_history: Previous messages as list of role/content dicts.
         langsmith_extra: Optional LangSmith metadata for thread grouping.
+        trace_id: OTel trace ID for cross-system correlation.
 
     Yields:
         Formatted SSE event strings (token events + done event).
@@ -143,6 +145,8 @@ async def stream_conversational_events(
         }
         if run_id:
             done_data["run_id"] = run_id
+        if trace_id:
+            done_data["trace_id"] = trace_id
         yield f"data: {json.dumps(done_data)}\n\n"
         return
 
@@ -181,6 +185,8 @@ async def stream_conversational_events(
     }
     if run_id:
         done_data["run_id"] = run_id
+    if trace_id:
+        done_data["trace_id"] = trace_id
     yield f"data: {json.dumps(done_data)}\n\n"
 
 

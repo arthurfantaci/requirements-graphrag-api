@@ -155,6 +155,8 @@ async def generate_conversational_events(
     request: ChatRequest,
     safe_message: str,
     guardrail_config: GuardrailConfig,
+    *,
+    trace_id: str | None = None,
 ) -> AsyncIterator[str]:
     """Generate SSE events for conversational (meta-conversation) queries.
 
@@ -169,6 +171,7 @@ async def generate_conversational_events(
         request: Chat request with message, conversation_history, and options.
         safe_message: Sanitized message with PII redacted.
         guardrail_config: Guardrail configuration for output checks.
+        trace_id: OTel trace ID for cross-system correlation.
 
     Yields:
         Formatted SSE event strings.
@@ -199,6 +202,8 @@ async def generate_conversational_events(
     # Create LangSmith metadata for thread grouping + intent tracking
     langsmith_extra = create_thread_metadata(request.conversation_id) or {}
     langsmith_extra.setdefault("metadata", {})["intent"] = "conversational"
+    if trace_id:
+        langsmith_extra["metadata"]["otel_trace_id"] = trace_id
 
     # Emit empty sources event so frontend SSE parser proceeds to token rendering
     empty_sources = {
@@ -212,7 +217,7 @@ async def generate_conversational_events(
     # Stream tokens from the conversational handler and accumulate for output filter
     accumulated_tokens: list[str] = []
     async for sse_event in stream_conversational_events(
-        config, safe_message, history, langsmith_extra=langsmith_extra
+        config, safe_message, history, langsmith_extra=langsmith_extra, trace_id=trace_id
     ):
         # Track accumulated tokens for output guardrails
         if sse_event.startswith("data: ") and '"token"' in sse_event:
@@ -269,6 +274,8 @@ async def generate_explanatory_events(
     request: ChatRequest,
     safe_message: str,
     guardrail_config: GuardrailConfig | None = None,
+    *,
+    trace_id: str | None = None,
 ) -> AsyncIterator[str]:
     """Generate SSE events for explanatory (RAG) queries using agentic orchestrator.
 
@@ -287,6 +294,7 @@ async def generate_explanatory_events(
         request: Chat request with message and options.
         safe_message: Sanitized message with PII redacted.
         guardrail_config: Guardrail configuration for output checks.
+        trace_id: OTel trace ID for cross-system correlation.
 
     Yields:
         Formatted SSE event strings.
@@ -358,6 +366,8 @@ async def generate_explanatory_events(
         # Get thread configuration for persistence (uses conversation_id as thread_id)
         thread_id = request.conversation_id or str(uuid.uuid4())
         runnable_config = get_thread_config(thread_id)
+        if trace_id:
+            runnable_config.setdefault("metadata", {})["otel_trace_id"] = trace_id
 
         # Stream events from the agentic orchestrator, accumulating for output guardrails
         accumulated_tokens: list[str] = []
@@ -369,6 +379,7 @@ async def generate_explanatory_events(
             initial_state,
             runnable_config,
             app_config=config,
+            trace_id=trace_id,
         ):
             # Track event data for output guardrails
             if sse_event.startswith("event: "):
@@ -458,6 +469,8 @@ async def generate_structured_events(
     driver: Driver,
     request: ChatRequest,
     safe_message: str,
+    *,
+    trace_id: str | None = None,
 ) -> AsyncIterator[str]:
     """Generate SSE events for structured (Text2Cypher) queries.
 
@@ -466,6 +479,7 @@ async def generate_structured_events(
         driver: Neo4j driver for graph queries.
         request: Chat request with message and options.
         safe_message: Sanitized message with PII redacted.
+        trace_id: OTel trace ID for cross-system correlation.
 
     Yields:
         Formatted SSE event strings.
@@ -478,6 +492,8 @@ async def generate_structured_events(
 
         # Create LangSmith thread metadata for conversation grouping
         thread_metadata = create_thread_metadata(request.conversation_id)
+        if trace_id and thread_metadata:
+            thread_metadata.setdefault("metadata", {})["otel_trace_id"] = trace_id
 
         # Generate and execute Cypher query
         result = await text2cypher_query(
@@ -514,6 +530,8 @@ async def generate_structured_events(
                 "row_count": result.get("row_count", 0),
                 "run_id": run_id,
             }
+            if trace_id:
+                done_data["trace_id"] = trace_id
             if result.get("message"):
                 done_data["message"] = result["message"]
             yield f"data: {json.dumps(done_data)}\n\n"

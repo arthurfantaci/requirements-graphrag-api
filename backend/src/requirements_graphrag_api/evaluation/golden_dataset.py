@@ -58,6 +58,15 @@ class GoldenExample:
     difficulty: str = "medium"
     must_pass: bool = False
 
+    @property
+    def vector(self) -> str:
+        """Return the evaluation vector for this example."""
+        return self.intent if self.intent in ("explanatory", "structured") else "explanatory"
+
+    def to_langsmith_inputs(self) -> dict[str, Any]:
+        """Return just the inputs dict for LangSmith dataset creation."""
+        return {"question": self.question}
+
     def to_langsmith(self) -> dict[str, Any]:
         """Convert to LangSmith example format (inputs/outputs/metadata)."""
         return {
@@ -97,6 +106,79 @@ class GoldenExample:
             expected_standards=meta.get("expected_standards", []),
             intent=outputs.get("intent", "explanatory"),
             category=meta.get("category", meta.get("domain", "general")),
+            difficulty=meta.get("difficulty", "medium"),
+            must_pass=meta.get("must_pass", False),
+        )
+
+
+@dataclass
+class ConversationalExample:
+    """A curated conversational evaluation example with multi-turn history.
+
+    Unlike GoldenExample (single-turn RAG), this captures conversation
+    context: prior history, a follow-up question, and expected references
+    the model should retain from earlier turns.
+
+    Attributes:
+        id: Unique identifier (e.g., "conv-001").
+        conversation_history: Prior turns as a formatted string.
+        question: The follow-up question in this turn.
+        expected_answer: Ground-truth answer for comparison.
+        expected_references: Topics/facts from history the answer should retain.
+        category: Topic category for stratified analysis.
+        difficulty: Difficulty rating ("easy", "medium", "hard").
+        must_pass: Whether this example must score above threshold.
+    """
+
+    id: str
+    conversation_history: str
+    question: str
+    expected_answer: str
+    expected_references: list[str] = field(default_factory=list)
+    category: str = "conversation"
+    difficulty: str = "medium"
+    must_pass: bool = False
+
+    @property
+    def vector(self) -> str:
+        """Return the evaluation vector."""
+        return "conversational"
+
+    def to_langsmith(self) -> dict[str, Any]:
+        """Convert to LangSmith example format."""
+        return {
+            "inputs": {
+                "question": self.question,
+                "history": self.conversation_history,
+            },
+            "outputs": {
+                "expected_answer": self.expected_answer,
+                "expected_references": self.expected_references,
+            },
+            "metadata": {
+                "id": self.id,
+                "difficulty": self.difficulty,
+                "category": self.category,
+                "must_pass": self.must_pass,
+            },
+        }
+
+    @classmethod
+    def from_langsmith(
+        cls,
+        inputs: dict[str, Any],
+        outputs: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
+    ) -> ConversationalExample:
+        """Create from LangSmith example data."""
+        meta = metadata or {}
+        return cls(
+            id=meta.get("id", ""),
+            conversation_history=inputs.get("history", ""),
+            question=inputs.get("question", ""),
+            expected_answer=(outputs.get("expected_answer") or outputs.get("answer", "")),
+            expected_references=outputs.get("expected_references", []),
+            category=meta.get("category", "conversation"),
             difficulty=meta.get("difficulty", "medium"),
             must_pass=meta.get("must_pass", False),
         )
@@ -706,6 +788,338 @@ GOLDEN_EXAMPLES: tuple[GoldenExample, ...] = (
 
 
 # =============================================================================
+# LOCAL CONVERSATIONAL EXAMPLES
+# =============================================================================
+
+CONVERSATIONAL_EXAMPLES: tuple[ConversationalExample, ...] = (
+    ConversationalExample(
+        id="conv-001",
+        conversation_history=(
+            "User: What is requirements traceability?\n"
+            "Assistant: Requirements traceability is the ability to describe "
+            "and follow the life of a requirement in both a forward and "
+            "backward direction through the development lifecycle."
+        ),
+        question="How does it help with change management?",
+        expected_answer=(
+            "Traceability supports change management by enabling impact "
+            "analysis — when a requirement changes, trace links reveal all "
+            "affected design elements, code modules, and test cases."
+        ),
+        expected_references=["requirements traceability", "impact analysis"],
+        category="follow_up",
+        difficulty="medium",
+        must_pass=True,
+    ),
+    ConversationalExample(
+        id="conv-002",
+        conversation_history=(
+            "User: Tell me about ISO 26262.\n"
+            "Assistant: ISO 26262 is the international standard for "
+            "functional safety of electrical and electronic systems in "
+            "road vehicles. It defines ASIL levels A through D."
+        ),
+        question="What ASIL level requires the most rigorous traceability?",
+        expected_answer=(
+            "ASIL D requires the most rigorous traceability. At this level, "
+            "bidirectional traceability between all lifecycle artifacts is "
+            "mandatory, including safety goals, functional safety requirements, "
+            "technical safety requirements, and verification evidence."
+        ),
+        expected_references=["ISO 26262", "ASIL"],
+        category="follow_up",
+        difficulty="hard",
+        must_pass=True,
+    ),
+    ConversationalExample(
+        id="conv-003",
+        conversation_history=(
+            "User: What tools support requirements management?\n"
+            "Assistant: Common tools include Jama Connect, IBM DOORS, "
+            "and Helix RM. Each provides requirements authoring, "
+            "traceability, and collaboration features."
+        ),
+        question="Which one is best for medical device development?",
+        expected_answer=(
+            "Jama Connect is widely regarded as strong for medical device "
+            "development due to its built-in support for IEC 62304 workflows, "
+            "risk management integration (ISO 14971), and FDA audit trail "
+            "capabilities. IBM DOORS is also used in regulated environments."
+        ),
+        expected_references=["Jama Connect", "IEC 62304", "medical device"],
+        category="follow_up",
+        difficulty="medium",
+        must_pass=True,
+    ),
+    ConversationalExample(
+        id="conv-004",
+        conversation_history=(
+            "User: What is a suspect link?\n"
+            "Assistant: A suspect link is a traceability link that may be "
+            "invalid or outdated due to changes in one of the linked items.\n"
+            "User: How do I identify them?\n"
+            "Assistant: Most RM tools automatically flag links as suspect "
+            "when a linked item changes. You can also run periodic audits."
+        ),
+        question="What should I do when I find suspect links?",
+        expected_answer=(
+            "When you find suspect links: 1) Review the linked items to "
+            "determine if the relationship is still valid. 2) Update or "
+            "remove invalid links. 3) Re-verify affected test cases. "
+            "4) Document the review decision. 5) Clear the suspect flag."
+        ),
+        expected_references=["suspect links", "trace links"],
+        category="multi_turn",
+        difficulty="medium",
+        must_pass=True,
+    ),
+    ConversationalExample(
+        id="conv-005",
+        conversation_history="",
+        question="What is requirements traceability?",
+        expected_answer=(
+            "Requirements traceability is the ability to describe and follow "
+            "the life of a requirement in both a forward and backward "
+            "direction through the development lifecycle."
+        ),
+        expected_references=[],
+        category="first_turn",
+        difficulty="easy",
+        must_pass=True,
+    ),
+    ConversationalExample(
+        id="conv-006",
+        conversation_history=(
+            "User: Compare forward and backward traceability.\n"
+            "Assistant: Forward traceability tracks from requirements to "
+            "implementation and tests. Backward traceability traces from "
+            "deliverables back to requirements."
+        ),
+        question="Which one helps identify gold plating?",
+        expected_answer=(
+            "Backward traceability helps identify gold plating — features "
+            "or code that don't trace back to any requirement. By tracing "
+            "from implementation artifacts back to requirements, you can "
+            "find work that was added without a requirement justification."
+        ),
+        expected_references=[
+            "backward traceability",
+            "gold plating",
+        ],
+        category="follow_up",
+        difficulty="hard",
+        must_pass=False,
+    ),
+    ConversationalExample(
+        id="conv-007",
+        conversation_history=(
+            "User: What is DO-178C?\n"
+            "Assistant: DO-178C is the standard for software considerations "
+            "in airborne systems. It defines 5 Design Assurance Levels.\n"
+            "User: What are the levels?\n"
+            "Assistant: Level A (catastrophic), B (hazardous), C (major), "
+            "D (minor), E (no effect). Higher levels require more rigorous "
+            "development and verification."
+        ),
+        question="How does Level A differ from Level C for traceability?",
+        expected_answer=(
+            "Level A requires complete bidirectional traceability with "
+            "independence of verification activities. Level C requires "
+            "traceability but with less rigor — independence is not "
+            "required and some objectives can be satisfied with less "
+            "formal evidence."
+        ),
+        expected_references=["DO-178C", "design assurance levels"],
+        category="multi_turn",
+        difficulty="hard",
+        must_pass=False,
+    ),
+    ConversationalExample(
+        id="conv-008",
+        conversation_history=(
+            "User: What is MBSE?\n"
+            "Assistant: Model-Based Systems Engineering uses models as "
+            "the primary artifact instead of documents. Tools like Cameo, "
+            "Rhapsody, and Capella support it."
+        ),
+        question="Can MBSE replace traditional traceability matrices?",
+        expected_answer=(
+            "MBSE can complement but not fully replace traceability matrices. "
+            "Model relationships provide automatic traceability within the "
+            "model, but you may still need matrices for cross-tool "
+            "traceability and regulatory compliance documentation."
+        ),
+        expected_references=["MBSE", "traceability matrix"],
+        category="follow_up",
+        difficulty="hard",
+        must_pass=False,
+    ),
+    ConversationalExample(
+        id="conv-009",
+        conversation_history=(
+            "User: What is requirements decomposition?\n"
+            "Assistant: Requirements decomposition breaks down high-level "
+            "requirements into lower-level, more detailed requirements."
+        ),
+        question=("How do I know when I've decomposed enough?"),
+        expected_answer=(
+            "You've decomposed enough when each requirement is: "
+            "1) Atomic — addresses a single concern. "
+            "2) Testable — you can write a verification procedure. "
+            "3) Implementable — a developer can build it without "
+            "further clarification. "
+            "4) Allocatable — it maps to a single component or subsystem."
+        ),
+        expected_references=[
+            "requirements decomposition",
+            "atomic requirements",
+        ],
+        category="follow_up",
+        difficulty="medium",
+        must_pass=True,
+    ),
+    ConversationalExample(
+        id="conv-010",
+        conversation_history=(
+            "User: What is the difference between V&V?\n"
+            "Assistant: Verification confirms the product is built "
+            "correctly per specifications. Validation confirms it meets "
+            "stakeholder needs.\n"
+            "User: Which uses traceability more?\n"
+            "Assistant: Both use traceability, but verification relies on "
+            "it more heavily to demonstrate requirement-to-test coverage."
+        ),
+        question="Give me an example of each in practice.",
+        expected_answer=(
+            "Verification example: Tracing each software requirement to "
+            "its unit test to confirm 100% test coverage. "
+            "Validation example: Tracing user needs to acceptance tests "
+            "and conducting user acceptance testing to confirm the system "
+            "solves the right problem."
+        ),
+        expected_references=[
+            "verification and validation",
+            "test coverage",
+        ],
+        category="multi_turn",
+        difficulty="medium",
+        must_pass=True,
+    ),
+    ConversationalExample(
+        id="conv-011",
+        conversation_history=(
+            "User: Tell me about Jama Connect.\n"
+            "Assistant: Jama Connect is a requirements management platform "
+            "with live traceability, review workflows, and risk management."
+        ),
+        question="How does its live traceability work?",
+        expected_answer=(
+            "Jama Connect's live traceability automatically maintains "
+            "relationships between items across the lifecycle. When an item "
+            "changes, linked items are flagged as suspect. The trace graph "
+            "updates in real-time, showing coverage and impact analysis "
+            "without manual matrix updates."
+        ),
+        expected_references=["Jama Connect", "live traceability"],
+        category="follow_up",
+        difficulty="medium",
+        must_pass=False,
+    ),
+    ConversationalExample(
+        id="conv-012",
+        conversation_history=(
+            "User: What are derived requirements?\n"
+            "Assistant: Derived requirements emerge from design decisions "
+            "and are not directly traceable to source requirements."
+        ),
+        question="Are derived requirements a problem?",
+        expected_answer=(
+            "Derived requirements are not inherently a problem — they're "
+            "normal in systems engineering. However, they need special "
+            "attention: 1) They must be documented and justified. "
+            "2) Safety analyses may be needed (especially in DO-178C). "
+            "3) They should be reviewed for unintended scope expansion. "
+            "4) Their origin rationale should be captured."
+        ),
+        expected_references=["derived requirements"],
+        category="follow_up",
+        difficulty="medium",
+        must_pass=False,
+    ),
+    ConversationalExample(
+        id="conv-013",
+        conversation_history=(
+            "User: How does IEC 62304 handle traceability?\n"
+            "Assistant: IEC 62304 requires traceability between system "
+            "requirements, software requirements, architecture, units, "
+            "and testing throughout the product lifecycle."
+        ),
+        question="What happens if we skip traceability for Class A software?",
+        expected_answer=(
+            "IEC 62304 Class A (no injury possible) has reduced "
+            "requirements — you still need basic software development "
+            "planning but full traceability is not mandatory. However, "
+            "if your risk analysis is wrong and the class should be B or C, "
+            "you'll need to retroactively establish traceability, which "
+            "is far more expensive."
+        ),
+        expected_references=["IEC 62304", "software safety class"],
+        category="follow_up",
+        difficulty="hard",
+        must_pass=False,
+    ),
+    ConversationalExample(
+        id="conv-014",
+        conversation_history=(
+            "User: What is baseline management?\n"
+            "Assistant: Baseline management captures a snapshot of "
+            "requirements at a specific point and controls changes "
+            "through formal review.\n"
+            "User: When should I baseline?\n"
+            "Assistant: Baseline at key milestones: after requirements "
+            "review approval, before design starts, at design review, "
+            "and before testing."
+        ),
+        question="What if stakeholders want changes after a baseline?",
+        expected_answer=(
+            "Changes after a baseline go through the change control "
+            "process: 1) Submit a change request. 2) Perform impact "
+            "analysis using traceability. 3) Review and approve/reject. "
+            "4) If approved, update requirements, trace links, and "
+            "downstream artifacts. 5) Create a new baseline version."
+        ),
+        expected_references=["baseline management", "change management"],
+        category="multi_turn",
+        difficulty="medium",
+        must_pass=True,
+    ),
+    ConversationalExample(
+        id="conv-015",
+        conversation_history=(
+            "User: What is ASPICE?\n"
+            "Assistant: Automotive SPICE defines process assessment levels "
+            "for automotive software development, covering engineering "
+            "and management processes."
+        ),
+        question="How does ASPICE level 2 differ from level 3?",
+        expected_answer=(
+            "At ASPICE Level 2 (Managed), processes are planned, monitored, "
+            "and adjusted at the project level. Work products are "
+            "appropriately established and controlled. At Level 3 "
+            "(Established), standard processes are defined at the "
+            "organization level, and projects tailor them. The key "
+            "difference is organizational standardization vs. "
+            "project-level management."
+        ),
+        expected_references=["ASPICE", "capability levels"],
+        category="follow_up",
+        difficulty="hard",
+        must_pass=False,
+    ),
+)
+
+
+# =============================================================================
 # QUERY HELPERS
 # =============================================================================
 
@@ -713,6 +1127,11 @@ GOLDEN_EXAMPLES: tuple[GoldenExample, ...] = (
 def get_must_pass_examples() -> list[GoldenExample]:
     """Get examples that must score above threshold."""
     return [ex for ex in GOLDEN_EXAMPLES if ex.must_pass]
+
+
+def get_must_pass_conversational() -> list[ConversationalExample]:
+    """Get conversational examples that must score above threshold."""
+    return [ex for ex in CONVERSATIONAL_EXAMPLES if ex.must_pass]
 
 
 def get_examples_by_category(category: str) -> list[GoldenExample]:
@@ -723,6 +1142,22 @@ def get_examples_by_category(category: str) -> list[GoldenExample]:
 def get_examples_by_intent(intent: str) -> list[GoldenExample]:
     """Get examples filtered by intent."""
     return [ex for ex in GOLDEN_EXAMPLES if ex.intent == intent]
+
+
+def get_examples_by_vector(
+    vector: str,
+) -> list[GoldenExample] | list[ConversationalExample]:
+    """Get examples for a specific evaluation vector.
+
+    Args:
+        vector: One of "explanatory", "structured", "conversational".
+
+    Returns:
+        List of GoldenExample or ConversationalExample instances.
+    """
+    if vector == "conversational":
+        return list(CONVERSATIONAL_EXAMPLES)
+    return [ex for ex in GOLDEN_EXAMPLES if ex.vector == vector]
 
 
 # =============================================================================
@@ -796,11 +1231,15 @@ async def _pull_from_langsmith(dataset_name: str) -> list[GoldenExample] | None:
 
 
 __all__ = [
+    "CONVERSATIONAL_EXAMPLES",
     "DATASET_NAME",
     "GOLDEN_EXAMPLES",
+    "ConversationalExample",
     "GoldenExample",
     "get_examples_by_category",
     "get_examples_by_intent",
+    "get_examples_by_vector",
     "get_golden_examples",
+    "get_must_pass_conversational",
     "get_must_pass_examples",
 ]
