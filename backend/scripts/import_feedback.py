@@ -4,6 +4,12 @@
 This script imports annotations from human reviewers and processes them
 for use in improving the evaluation dataset and model performance.
 
+Note:
+    Annotation queues (Phase 5) now automatically route negative user
+    feedback to intent-specific queues in LangSmith. This manual
+    import workflow complements that by processing annotations from
+    batch review sessions into the golden dataset.
+
 Workflow:
 1. Read annotations from LangSmith or local JSON
 2. Validate and normalize feedback data

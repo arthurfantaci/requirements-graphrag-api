@@ -38,6 +38,15 @@ DATASET_CRITIC_EVAL: Final[str] = "graphrag-critic-eval"
 # =============================================================================
 
 QUEUE_USER_REPORTED: Final[str] = "user-reported-issues"
+QUEUE_EXPLANATORY: Final[str] = "review-explanatory"
+QUEUE_STRUCTURED: Final[str] = "review-structured"
+QUEUE_CONVERSATIONAL: Final[str] = "review-conversational"
+
+QUEUE_INTENT_MAP: Final[dict[str, str]] = {
+    "explanatory": QUEUE_EXPLANATORY,
+    "structured": QUEUE_STRUCTURED,
+    "conversational": QUEUE_CONVERSATIONAL,
+}
 
 # =============================================================================
 # EXPERIMENT NAMING
@@ -245,6 +254,10 @@ __all__ = [
     "EXPERIMENT_PREFIX",
     "INTERNAL_LABELS",
     "JUDGE_MODEL",
+    "QUEUE_CONVERSATIONAL",
+    "QUEUE_EXPLANATORY",
+    "QUEUE_INTENT_MAP",
+    "QUEUE_STRUCTURED",
     "QUEUE_USER_REPORTED",
     "REGRESSION_THRESHOLDS",
     "TIER1_PATTERNS",

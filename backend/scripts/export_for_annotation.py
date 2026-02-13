@@ -4,6 +4,12 @@
 This script queries evaluation runs from LangSmith and exports those
 with low confidence scores to an annotation queue for human review.
 
+Note:
+    Annotation queues (Phase 5) now automatically route negative user
+    feedback to intent-specific queues in LangSmith. This manual
+    export/import workflow complements that by surfacing low-confidence
+    runs that users did not explicitly flag.
+
 Workflow:
 1. Query LangSmith for recent evaluation runs
 2. Filter runs below confidence thresholds

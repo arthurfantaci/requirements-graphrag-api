@@ -17,12 +17,45 @@ import os
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from requirements_graphrag_api.evaluation.constants import (
+    QUEUE_INTENT_MAP,
+    QUEUE_USER_REPORTED,
+)
 from requirements_graphrag_api.guardrails import detect_and_redact_pii
 from requirements_graphrag_api.middleware.timeout import TIMEOUTS, with_timeout
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Cache queue name → UUID to avoid repeated list_annotation_queues calls
+_queue_id_cache: dict[str, str] = {}
+
+
+def _resolve_queue_id(client: object, queue_name: str) -> str | None:
+    """Resolve an annotation queue name to its UUID, with caching.
+
+    Args:
+        client: LangSmith Client instance.
+        queue_name: Name of the annotation queue.
+
+    Returns:
+        Queue UUID as string, or None if not found.
+    """
+    if queue_name in _queue_id_cache:
+        return _queue_id_cache[queue_name]
+
+    try:
+        queues = list(client.list_annotation_queues(name=queue_name))  # type: ignore[attr-defined]
+        if queues:
+            queue_id = str(queues[0].id)
+            _queue_id_cache[queue_name] = queue_id
+            return queue_id
+        logger.warning("Annotation queue '%s' not found in LangSmith", queue_name)
+    except Exception:
+        logger.warning("Failed to resolve annotation queue '%s'", queue_name, exc_info=True)
+
+    return None
 
 
 class FeedbackRequest(BaseModel):
@@ -59,6 +92,14 @@ class FeedbackRequest(BaseModel):
     conversation_id: str | None = Field(
         default=None,
         description="Optional conversation ID for context",
+    )
+    intent: str | None = Field(
+        default=None,
+        description="Intent type (explanatory, structured, conversational)",
+    )
+    rubric_scores: dict[str, float] | None = Field(
+        default=None,
+        description="Per-dimension rubric scores",
     )
 
 
@@ -153,6 +194,8 @@ async def submit_feedback(
             comment_parts.append(f"Message ID: {body.message_id}")
         if body.conversation_id:
             comment_parts.append(f"Conversation ID: {body.conversation_id}")
+        if body.intent:
+            comment_parts.append(f"Intent: {body.intent}")
 
         comment = " | ".join(comment_parts) if comment_parts else None
 
@@ -172,6 +215,22 @@ async def submit_feedback(
 
         feedback_id = str(feedback.id) if feedback else None
 
+        # Submit per-dimension rubric scores as separate feedback keys
+        if body.rubric_scores:
+            for dimension, dim_score in body.rubric_scores.items():
+                try:
+                    client.create_feedback(
+                        run_id=body.run_id,
+                        key=f"user-{dimension}",
+                        score=dim_score,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to submit rubric score for dimension '%s'",
+                        dimension,
+                        exc_info=True,
+                    )
+
         # Log for monitoring
         feedback_type = "positive" if body.score >= 0.5 else "negative"
         logger.info(
@@ -181,16 +240,31 @@ async def submit_feedback(
             body.category,
         )
 
-        # If negative feedback, consider adding to annotation queue
-        # This is commented out for now - enable when annotation queue is set up
-        # if body.score < 0.5:
-        #     try:
-        #         client.add_runs_to_annotation_queue(
-        #             queue_name="user-reported-issues",
-        #             run_ids=[body.run_id],
-        #         )
-        #     except Exception as e:
-        #         logger.warning("Failed to add to annotation queue: %s", e)
+        # Route negative feedback to intent-specific annotation queues
+        if body.score < 0.5:
+            queue_name = (
+                QUEUE_INTENT_MAP.get(body.intent, QUEUE_USER_REPORTED)
+                if body.intent
+                else QUEUE_USER_REPORTED
+            )
+            try:
+                queue_id = _resolve_queue_id(client, queue_name)
+                if queue_id:
+                    client.add_runs_to_annotation_queue(
+                        queue_id=queue_id,
+                        run_ids=[body.run_id],
+                    )
+                    logger.info(
+                        "Added run %s to annotation queue '%s'",
+                        body.run_id,
+                        queue_name,
+                    )
+            except Exception:
+                logger.warning(
+                    "Failed to add run to annotation queue '%s'",
+                    queue_name,
+                    exc_info=True,
+                )
 
         return FeedbackResponse(status="received", feedback_id=feedback_id)
 
