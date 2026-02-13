@@ -279,6 +279,84 @@ class TestResultDataclass:
         assert len(phones) == 1
 
 
+class TestDomainAllowList:
+    """Test that domain-specific terms are not flagged as PII."""
+
+    def test_cypher_not_flagged_as_person(self, mock_presidio):
+        text = "The previous Cypher query was incorrect"
+        mock_result = MagicMock()
+        mock_result.entity_type = "PERSON"
+        mock_result.start = 13
+        mock_result.end = 19
+        mock_result.score = 0.85
+        mock_presidio["analyzer"].analyze.return_value = [mock_result]
+
+        result = detect_and_redact_pii(text)
+
+        assert result.contains_pii is False
+        assert result.anonymized_text == text
+
+    def test_neo4j_not_flagged_as_person(self, mock_presidio):
+        text = "Use Neo4j for graph databases"
+        mock_result = MagicMock()
+        mock_result.entity_type = "PERSON"
+        mock_result.start = 4
+        mock_result.end = 9
+        mock_result.score = 0.80
+        mock_presidio["analyzer"].analyze.return_value = [mock_result]
+
+        result = detect_and_redact_pii(text)
+
+        assert result.contains_pii is False
+        assert result.anonymized_text == text
+
+    def test_graphrag_not_flagged(self, mock_presidio):
+        text = "GraphRAG combines graph and RAG"
+        mock_result = MagicMock()
+        mock_result.entity_type = "PERSON"
+        mock_result.start = 0
+        mock_result.end = 8
+        mock_result.score = 0.75
+        mock_presidio["analyzer"].analyze.return_value = [mock_result]
+
+        result = detect_and_redact_pii(text)
+
+        assert result.contains_pii is False
+        assert result.anonymized_text == text
+
+    def test_allow_list_case_insensitive(self, mock_presidio):
+        text = "CYPHER is a query language"
+        mock_result = MagicMock()
+        mock_result.entity_type = "PERSON"
+        mock_result.start = 0
+        mock_result.end = 6
+        mock_result.score = 0.85
+        mock_presidio["analyzer"].analyze.return_value = [mock_result]
+
+        result = detect_and_redact_pii(text)
+
+        assert result.contains_pii is False
+        assert result.anonymized_text == text
+
+    def test_real_person_still_detected(self, mock_presidio):
+        text = "Contact John Smith about Cypher"
+        mock_results = [
+            MagicMock(entity_type="PERSON", start=8, end=18, score=0.90),
+            MagicMock(entity_type="PERSON", start=25, end=31, score=0.85),
+        ]
+        mock_presidio["analyzer"].analyze.return_value = mock_results
+
+        anon_result = MagicMock()
+        anon_result.text = "Contact <PERSON> about Cypher"
+        mock_presidio["anonymizer"].anonymize.return_value = anon_result
+
+        result = detect_and_redact_pii(text)
+
+        assert result.contains_pii is True
+        assert result.entity_count == 1
+        assert result.detected_entities[0].text == "John Smith"
+
+
 class TestErrorHandling:
     """Test error handling and fallback behavior."""
 
