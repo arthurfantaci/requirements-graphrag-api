@@ -454,29 +454,74 @@ def get_tracing_status() -> dict[str, str | bool]:
     }
 
 
-def patch_run_for_eval(
-    run_id: str,
+def create_eval_run(
     *,
+    name: str,
     inputs: dict[str, Any],
-    outputs: dict[str, Any],
-) -> None:
-    """Patch an existing LangSmith run with evaluator-friendly inputs/outputs.
+    metadata: dict[str, Any] | None = None,
+) -> str | None:
+    """Create a LangSmith run for online evaluators (start payload only).
 
-    Fire-and-forget: any failure is logged at debug level and never
-    propagated.  This keeps the user-facing streaming path unaffected.
+    Creates a root-level run with evaluator-friendly inputs.  Call
+    ``end_eval_run`` after streaming completes to attach outputs.
+
+    Fire-and-forget: failures are logged at debug level.
 
     Args:
-        run_id: The LangSmith run ID to patch.
-        inputs: Evaluator-friendly input fields (e.g. question, history).
-        outputs: Evaluator-friendly output fields (e.g. answer, cypher).
+        name: Run name (e.g. ``"conversational_handler"``).
+        inputs: Evaluator-friendly input fields (question, history, …).
+        metadata: Optional metadata (intent, thread_id, trace_id, …).
+
+    Returns:
+        The run ID string, or ``None`` on failure.
     """
     try:
+        import uuid
+        from datetime import UTC, datetime
+
         from langsmith import Client
 
-        Client().update_run(run_id, inputs=inputs, outputs=outputs)
-        logger.debug("Patched run %s for evaluators", run_id)
+        run_id = str(uuid.uuid4())
+        Client().create_run(
+            name=name,
+            run_type="chain",
+            inputs=inputs,
+            id=run_id,
+            project_name=os.getenv("LANGSMITH_PROJECT", "default"),
+            start_time=datetime.now(UTC),
+            extra={"metadata": metadata} if metadata else None,
+        )
+        logger.debug("Created eval run %s (%s)", run_id, name)
+        return run_id
     except Exception:
-        logger.debug("Failed to patch run %s for evaluators", run_id, exc_info=True)
+        logger.debug("Failed to create eval run", exc_info=True)
+        return None
+
+
+def end_eval_run(
+    run_id: str | None,
+    *,
+    outputs: dict[str, Any],
+) -> None:
+    """Finalize a LangSmith eval run with outputs (end payload).
+
+    Fire-and-forget: failures are logged at debug level.
+
+    Args:
+        run_id: Run ID from ``create_eval_run``, or ``None`` (no-op).
+        outputs: Evaluator-friendly output fields (answer, cypher, …).
+    """
+    if not run_id:
+        return
+    try:
+        from datetime import UTC, datetime
+
+        from langsmith import Client
+
+        Client().update_run(run_id, outputs=outputs, end_time=datetime.now(UTC))
+        logger.debug("Ended eval run %s", run_id)
+    except Exception:
+        logger.debug("Failed to end eval run %s", run_id, exc_info=True)
 
 
 __all__ = [
@@ -485,10 +530,11 @@ __all__ = [
     "configure_otel",
     "configure_sentry",
     "configure_tracing",
+    "create_eval_run",
     "create_thread_metadata",
     "disable_tracing",
+    "end_eval_run",
     "get_tracing_status",
-    "patch_run_for_eval",
     "sanitize_inputs",
     "traceable",  # Re-export for backward compatibility
     "traceable_safe",
