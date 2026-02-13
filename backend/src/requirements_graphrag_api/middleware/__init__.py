@@ -40,12 +40,16 @@ from requirements_graphrag_api.middleware.timeout import (
     run_with_timeout,
     with_timeout,
 )
+from requirements_graphrag_api.middleware.tracing import (
+    TraceCorrelationMiddleware,
+)
 
 __all__ = [
     "MAX_REQUEST_SIZE",
     "MAX_RESPONSE_SIZE",
     "TIMEOUTS",
     "SizeLimitMiddleware",
+    "TraceCorrelationMiddleware",
     "check_request_size",
     "get_rate_limit_key",
     "get_rate_limiter",

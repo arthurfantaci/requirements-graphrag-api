@@ -121,6 +121,7 @@ def create_done_event(
     full_answer: str,
     source_count: int = 0,
     run_id: str | None = None,
+    trace_id: str | None = None,
 ) -> AgenticEvent:
     """Create a done event with final answer."""
     data: dict[str, Any] = {
@@ -129,6 +130,8 @@ def create_done_event(
     }
     if run_id:
         data["run_id"] = run_id
+    if trace_id:
+        data["trace_id"] = trace_id
     return AgenticEvent(
         event_type=AgenticEventType.DONE,
         data=data,
@@ -160,6 +163,7 @@ async def stream_agentic_events(
     config: RunnableConfig,
     *,
     app_config: AppConfig | None = None,
+    trace_id: str | None = None,
 ) -> AsyncGenerator[str, None]:
     r"""Stream SSE events from agentic graph execution.
 
@@ -171,6 +175,7 @@ async def stream_agentic_events(
         initial_state: Initial state with query and messages.
         config: RunnableConfig with thread_id for persistence.
         app_config: Optional app config for additional settings.
+        trace_id: OTel trace ID for cross-system correlation.
 
     Yields:
         SSE-formatted strings (data: {json}\n\n).
@@ -373,6 +378,7 @@ async def stream_agentic_events(
             full_answer=final_answer,
             source_count=source_count,
             run_id=run_id,
+            trace_id=trace_id,
         ).to_sse()
 
         logger.info("Agentic stream completed successfully")

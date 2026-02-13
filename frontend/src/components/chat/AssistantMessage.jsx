@@ -30,6 +30,7 @@ export function AssistantMessage({ message }) {
     status,
     error,
     runId,
+    traceId,
   } = message
 
   const isStructured = intent === 'structured'
@@ -121,7 +122,7 @@ export function AssistantMessage({ message }) {
 
       {/* Response actions - show when complete */}
       {status === 'complete' && (
-        <ResponseActions content={content} runId={runId} messageId={id} />
+        <ResponseActions content={content} runId={runId} messageId={id} traceId={traceId} />
       )}
     </div>
   )

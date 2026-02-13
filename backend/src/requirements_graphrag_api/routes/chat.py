@@ -134,6 +134,7 @@ async def _generate_sse_events(
     guardrail_config: GuardrailConfig,
     user_ip: str | None = None,
     request_id: str | None = None,
+    trace_id: str | None = None,
 ) -> AsyncIterator[str]:
     """Generate SSE events from streaming chat response with automatic routing.
 
@@ -145,6 +146,7 @@ async def _generate_sse_events(
         guardrail_config: Guardrail configuration.
         user_ip: Client IP address for logging.
         request_id: Unique request identifier.
+        trace_id: OTel trace ID for cross-system correlation.
 
     Yields:
         Formatted SSE event strings.
@@ -360,13 +362,13 @@ async def _generate_sse_events(
         if intent == QueryIntent.CONVERSATIONAL:
             # Use lightweight conversation handler for meta-conversation queries
             async for event_str in generate_conversational_events(
-                config, request, safe_message, guardrail_config
+                config, request, safe_message, guardrail_config, trace_id=trace_id
             ):
                 yield event_str
         elif intent == QueryIntent.STRUCTURED:
             # Use Text2Cypher for structured queries
             async for event_str in generate_structured_events(
-                config, driver, request, safe_message
+                config, driver, request, safe_message, trace_id=trace_id
             ):
                 yield event_str
         else:
@@ -378,6 +380,7 @@ async def _generate_sse_events(
                 request,
                 safe_message,
                 guardrail_config=guardrail_config,
+                trace_id=trace_id,
             ):
                 yield event_str
 
@@ -476,6 +479,7 @@ async def chat_endpoint(
     # Get client info for logging
     user_ip = get_remote_address(request)
     request_id = str(uuid.uuid4())[:8]
+    trace_id = getattr(request.state, "trace_id", None) or str(uuid.uuid4())
 
     return StreamingResponse(
         _generate_sse_events(
@@ -486,6 +490,7 @@ async def chat_endpoint(
             guardrail_config,
             user_ip=user_ip,
             request_id=request_id,
+            trace_id=trace_id,
         ),
         media_type="text/event-stream",
         headers={

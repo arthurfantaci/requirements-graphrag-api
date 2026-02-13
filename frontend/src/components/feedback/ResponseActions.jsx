@@ -33,7 +33,7 @@ function ThumbsDownIcon() {
  * Response action bar with Copy, Thumbs Up, Thumbs Down
  * Styled similar to Claude Desktop
  */
-export function ResponseActions({ content, runId, messageId }) {
+export function ResponseActions({ content, runId, messageId, traceId }) {
   const [copied, setCopied] = useState(false)
   const [feedbackGiven, setFeedbackGiven] = useState(null) // 'positive' | 'negative' | null
   const [feedbackWarning, setFeedbackWarning] = useState(null)
@@ -93,6 +93,7 @@ export function ResponseActions({ content, runId, messageId }) {
           comment: details || null,
           message_id: messageId,
           category: isPositive ? 'positive' : 'negative',
+          ...(traceId && { trace_id: traceId }),
         }),
       })
     } catch (error) {
