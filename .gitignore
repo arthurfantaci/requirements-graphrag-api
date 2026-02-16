@@ -94,6 +94,7 @@ frontend/.cache/
 # Internal documentation (working docs, plans, session notes)
 # Public docs live in docs/ root; internal docs in docs/internal/
 docs/internal/
+docs/plans/
 
 # LangGraph dev server runtime state
 backend/.langgraph_api/
