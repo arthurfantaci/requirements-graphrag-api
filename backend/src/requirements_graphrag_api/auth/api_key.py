@@ -29,6 +29,9 @@ import secrets
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any
+
+from fastapi.security import APIKeyHeader
 
 # API key header configuration
 API_KEY_HEADER_NAME = "X-API-Key"
@@ -301,3 +304,25 @@ def create_anonymous_key_info() -> APIKeyInfo:
         scopes=("chat", "search"),
         metadata={},
     )
+
+
+# OpenAPI security scheme for Swagger UI padlock icons.
+# auto_error=False: documentation-only — AuthMiddleware handles enforcement.
+api_key_security = APIKeyHeader(name=API_KEY_HEADER_NAME, auto_error=False)
+
+# Standard 401 response schema for OpenAPI documentation
+UNAUTHORIZED_RESPONSE: dict[int, dict[str, Any]] = {
+    401: {
+        "description": "Missing or invalid API key",
+        "content": {
+            "application/json": {
+                "example": {
+                    "detail": {
+                        "error": "missing_api_key",
+                        "message": f"API key required. Include '{API_KEY_HEADER_NAME}' header.",
+                    }
+                }
+            }
+        },
+    }
+}

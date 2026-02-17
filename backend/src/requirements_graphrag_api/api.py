@@ -24,14 +24,16 @@ import os
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Security
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 
 from requirements_graphrag_api.auth import (
+    UNAUTHORIZED_RESPONSE,
     APIKeyStore,
     AuthMiddleware,
     InMemoryAPIKeyStore,
+    api_key_security,
     configure_audit_logging,
 )
 from requirements_graphrag_api.config import get_auth_config, get_config, get_guardrail_config
@@ -210,12 +212,15 @@ app = FastAPI(
     title="Requirements GraphRAG API",
     description=(
         "GraphRAG REST API for Requirements Management Knowledge Graph. "
-        "Provides RAG-powered Q&A, semantic search, and knowledge graph exploration."
+        "Provides RAG-powered Q&A, semantic search, and knowledge graph exploration.\n\n"
+        "**Authentication**: Protected endpoints require an `X-API-Key` header. "
+        "Click the **Authorize** button above to enter your API key for testing."
     ),
     version="1.0.0",
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
+    swagger_ui_parameters={"persistAuthorization": True},
 )
 
 # Instrument FastAPI with OpenTelemetry (extracts W3C traceparent headers,
@@ -264,13 +269,41 @@ app.add_middleware(SizeLimitMiddleware)
 app.add_middleware(TraceCorrelationMiddleware)
 
 # Mount routers
+# Protected routers get padlock icons and 401 response docs in Swagger
+_auth_deps = [Security(api_key_security)]
+
 app.include_router(health_router, tags=["Health"])
 app.include_router(chat_router, tags=["Chat"])
-app.include_router(feedback_router, tags=["Feedback"])
-app.include_router(search_router, tags=["Search"])
-app.include_router(definitions_router, tags=["Definitions"])
-app.include_router(standards_router, tags=["Standards"])
-app.include_router(schema_router, tags=["Schema"])
+app.include_router(
+    feedback_router,
+    tags=["Feedback"],
+    dependencies=_auth_deps,
+    responses=UNAUTHORIZED_RESPONSE,
+)
+app.include_router(
+    search_router,
+    tags=["Search"],
+    dependencies=_auth_deps,
+    responses=UNAUTHORIZED_RESPONSE,
+)
+app.include_router(
+    definitions_router,
+    tags=["Definitions"],
+    dependencies=_auth_deps,
+    responses=UNAUTHORIZED_RESPONSE,
+)
+app.include_router(
+    standards_router,
+    tags=["Standards"],
+    dependencies=_auth_deps,
+    responses=UNAUTHORIZED_RESPONSE,
+)
+app.include_router(
+    schema_router,
+    tags=["Schema"],
+    dependencies=_auth_deps,
+    responses=UNAUTHORIZED_RESPONSE,
+)
 
 
 @app.get("/")

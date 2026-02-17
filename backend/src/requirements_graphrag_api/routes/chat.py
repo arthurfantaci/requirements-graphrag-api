@@ -14,11 +14,12 @@ import re
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Security
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from slowapi.util import get_remote_address
 
+from requirements_graphrag_api.auth import UNAUTHORIZED_RESPONSE, api_key_security
 from requirements_graphrag_api.core import (
     QueryIntent,
     StreamEventType,
@@ -394,7 +395,11 @@ async def _generate_sse_events(
 limiter = get_rate_limiter()
 
 
-@router.post("/chat")
+@router.post(
+    "/chat",
+    dependencies=[Security(api_key_security)],
+    responses=UNAUTHORIZED_RESPONSE,
+)
 @limiter.limit(CHAT_RATE_LIMIT)
 async def chat_endpoint(
     request: Request,
