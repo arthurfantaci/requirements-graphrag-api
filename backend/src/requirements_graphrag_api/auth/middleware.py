@@ -109,6 +109,7 @@ SKIP_AUTH_PATHS: frozenset[str] = frozenset(
         "/docs",
         "/openapi.json",
         "/redoc",
+        "/chat/routing-guide",
     }
 )
 
