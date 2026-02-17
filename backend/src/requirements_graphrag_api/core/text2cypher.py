@@ -199,7 +199,22 @@ def _execute_cypher(
     *,
     timeout: float,
 ) -> tuple[list[dict[str, Any]], str | None]:
-    """Execute Cypher query with timeout via Query object. Returns (results, error_or_none)."""
+    """Execute a Cypher query against Neo4j with a per-query timeout.
+
+    Args:
+        driver: Neo4j driver instance.
+        cypher: Cypher query string to execute.
+        timeout: Per-query timeout in seconds, passed to ``neo4j.Query``.
+
+    Returns:
+        A tuple of ``(results, error)``:
+        - On success: ``(list[dict], None)``
+        - On failure: ``([], error_string)``
+
+    Catches ``ClientError``, ``CypherSyntaxError``, ``DatabaseError``,
+    and ``ServiceUnavailable`` so callers receive an error string instead
+    of an exception.
+    """
     try:
         with driver.session() as session:
             result = session.run(Query(cypher, timeout=timeout))

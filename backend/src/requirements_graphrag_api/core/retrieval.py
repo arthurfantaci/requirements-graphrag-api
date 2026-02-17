@@ -838,7 +838,7 @@ async def graph_enriched_search(
     # blocking the event loop. Expected latency improvement: 3-5x.
     # ==========================================================================
 
-    async def _noop() -> dict:
+    async def _noop() -> dict[str, Any]:
         return {}
 
     (

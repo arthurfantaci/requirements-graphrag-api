@@ -81,9 +81,17 @@ class AppConfig:
         log_level: Logging level.
         neo4j_max_connection_pool_size: Max connections (reduce for serverless).
         neo4j_connection_acquisition_timeout: Timeout for acquiring connections.
+        neo4j_liveness_check_timeout: Seconds before checking idle connection liveness.
+        neo4j_max_connection_lifetime: Max seconds a connection can live before recycling.
         langsmith_api_key: LangSmith API key for observability.
         langsmith_project: LangSmith project name.
         langsmith_tracing_enabled: Whether to enable LangSmith tracing.
+        langsmith_workspace_id: Workspace ID, required for org-scoped API keys.
+        langsmith_org: LangSmith organization name.
+        prompt_environment: Prompt catalog environment (development/production).
+        prompt_cache_ttl: Prompt cache TTL in seconds.
+        prompt_hub_enabled: Whether to fetch prompts from LangSmith Prompt Hub.
+        conversational_model: Lightweight model for conversational intent queries.
     """
 
     neo4j_uri: str
@@ -203,6 +211,14 @@ class GuardrailConfig:
         prompt_injection_enabled: Enable prompt injection detection.
         pii_detection_enabled: Enable PII detection and redaction.
         rate_limiting_enabled: Enable request rate limiting.
+        toxicity_enabled: Enable input toxicity detection.
+        toxicity_use_full_check: Use OpenAI Moderation API instead of fast keyword check.
+        topic_guard_enabled: Enable LLM-based topic scope enforcement.
+        topic_guard_use_llm: Use LLM classification for borderline queries.
+        topic_guard_allow_borderline: Allow borderline-topic queries through.
+        output_filter_enabled: Enable output toxicity and confidence scoring.
+        output_filter_confidence_threshold: Minimum confidence to pass output filter.
+        hallucination_enabled: Enable source-grounding hallucination detection.
         injection_block_threshold: Risk level at which to block (low/medium/high/critical).
         pii_entities: PII entity types to detect.
         pii_score_threshold: Minimum confidence score for PII detection.

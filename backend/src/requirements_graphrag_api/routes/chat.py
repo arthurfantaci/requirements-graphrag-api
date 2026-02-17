@@ -12,7 +12,7 @@ import json
 import logging
 import re
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
@@ -405,11 +405,22 @@ async def chat_endpoint(
     This endpoint automatically routes queries based on intent classification:
     - **EXPLANATORY** queries use RAG with hybrid search and graph enrichment
     - **STRUCTURED** queries use Text2Cypher for direct graph queries
+    - **CONVERSATIONAL** queries use lightweight LLM recall for meta-conversation
 
-    **Security Guardrails:**
+    **Input Guardrails:**
     - Rate limiting: 20 requests/minute per IP or API key
     - Prompt injection detection: Blocks malicious instruction manipulation
     - PII detection: Automatically redacts personal information
+    - Toxicity detection: Keyword-based (optionally full OpenAI Moderation)
+    - Topic guard: LLM-based scope enforcement for off-topic queries
+
+    **Output Guardrails (Explanatory only):**
+    - Output filter: Toxicity and confidence scoring on generated text
+    - Hallucination detection: Source-grounding check against retrieved context
+
+    **Multi-turn Context:**
+    Explanatory queries support conversation persistence via PostgreSQL
+    checkpointing (LangGraph). Pass `conversation_id` to continue a thread.
 
     **SSE Event Sequence (Explanatory - RAG):**
     1. `routing` - Intent classification result
@@ -458,6 +469,18 @@ async def chat_endpoint(
     2. `token` - Individual tokens as they're generated (true streaming)
     3. `done` - Complete answer with `run_id` for feedback
 
+    **Example Conversational Response:**
+    ```
+    event: routing
+    data: {"intent": "conversational"}
+
+    event: token
+    data: {"token": "Your"}
+
+    event: done
+    data: {"full_answer": "Your first question was about...", "run_id": "abc-123"}
+    ```
+
     **Routing Tips:**
     - Use "list all", "show me all", "how many" for structured queries
     - Use "what is", "how do I", "explain" for explanatory queries
@@ -503,7 +526,7 @@ async def chat_endpoint(
 
 
 @router.get("/chat/routing-guide")
-async def routing_guide_endpoint() -> dict:
+async def routing_guide_endpoint() -> dict[str, Any]:
     """Get user-facing documentation for query routing.
 
     Returns guidance on how to phrase queries for optimal routing.
