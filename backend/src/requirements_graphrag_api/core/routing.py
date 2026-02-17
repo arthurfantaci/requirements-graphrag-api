@@ -3,6 +3,7 @@
 Classifies user queries to route them to the appropriate handler:
 - EXPLANATORY: Uses the agentic RAG orchestrator (LangGraph subgraphs)
 - STRUCTURED: Uses Text2Cypher for direct graph queries
+- CONVERSATIONAL: Uses lightweight LLM recall for meta-conversation queries
 
 Uses a two-stage approach: fast keyword matching for obvious cases,
 then LLM-based classification (INTENT_CLASSIFIER prompt) for ambiguous queries.
