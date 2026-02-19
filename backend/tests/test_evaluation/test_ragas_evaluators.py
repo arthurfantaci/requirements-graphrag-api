@@ -383,9 +383,18 @@ class TestAnswerSemanticSimilarityEvaluator:
         # Return identical embedding vectors
         vec = [0.5, 0.3, 0.8]
 
-        with patch(
-            "requirements_graphrag_api.evaluation.ragas_evaluators.OpenAIEmbeddings"
-        ) as mock_embed_cls:
+        mock_cfg = MagicMock()
+        mock_cfg.openai_embedding_model = "text-embedding-3-small"
+
+        with (
+            patch(
+                "requirements_graphrag_api.evaluation.ragas_evaluators.get_config",
+                return_value=mock_cfg,
+            ),
+            patch(
+                "requirements_graphrag_api.evaluation.ragas_evaluators.OpenAIEmbeddings"
+            ) as mock_embed_cls,
+        ):
             mock_instance = MagicMock()
             mock_instance.aembed_documents = AsyncMock(return_value=[vec, vec])
             mock_embed_cls.return_value = mock_instance
@@ -394,6 +403,7 @@ class TestAnswerSemanticSimilarityEvaluator:
 
         assert result["key"] == "answer_semantic_similarity"
         assert result["score"] == pytest.approx(1.0)
+        mock_embed_cls.assert_called_once_with(model="text-embedding-3-small")
 
     @pytest.mark.asyncio
     async def test_orthogonal_embeddings(self) -> None:
@@ -406,9 +416,18 @@ class TestAnswerSemanticSimilarityEvaluator:
         vec_a = [1.0, 0.0]
         vec_b = [0.0, 1.0]
 
-        with patch(
-            "requirements_graphrag_api.evaluation.ragas_evaluators.OpenAIEmbeddings"
-        ) as mock_embed_cls:
+        mock_cfg = MagicMock()
+        mock_cfg.openai_embedding_model = "text-embedding-3-small"
+
+        with (
+            patch(
+                "requirements_graphrag_api.evaluation.ragas_evaluators.get_config",
+                return_value=mock_cfg,
+            ),
+            patch(
+                "requirements_graphrag_api.evaluation.ragas_evaluators.OpenAIEmbeddings"
+            ) as mock_embed_cls,
+        ):
             mock_instance = MagicMock()
             mock_instance.aembed_documents = AsyncMock(return_value=[vec_a, vec_b])
             mock_embed_cls.return_value = mock_instance

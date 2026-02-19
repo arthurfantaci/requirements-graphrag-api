@@ -46,7 +46,7 @@ class TestCostTrackerText2Cypher:
         mock_session = MagicMock()
         mock_result = MagicMock()
         mock_result.__iter__ = lambda self: iter(
-            [MagicMock(**{"__getitem__": lambda s, k: {"label": "Entity", "count": 10}.get(k)})]
+            [MagicMock(__getitem__=lambda s, k: {"label": "Entity", "count": 10}.get(k))]
         )
         mock_session.run = MagicMock(return_value=mock_result)
         mock_session.__enter__ = MagicMock(return_value=mock_session)

@@ -282,9 +282,8 @@ def main() -> int:
         logger.info("All expected evaluator feedback found (or acceptably sampled out)")
         logger.info("=" * 60)
         return 0
-    else:
-        logger.error("Some evaluators did not produce expected feedback")
-        return 1
+    logger.error("Some evaluators did not produce expected feedback")
+    return 1
 
 
 if __name__ == "__main__":

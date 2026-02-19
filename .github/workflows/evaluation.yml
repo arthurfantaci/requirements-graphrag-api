@@ -53,7 +53,7 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --frozen --extra dev
 
       - name: Run smoke test (Tier 2)
         run: uv run python scripts/ci_evaluation.py --tier 2 --output tier2_results.json --verbose
@@ -63,6 +63,7 @@ jobs:
           NEO4J_PASSWORD: ${{ secrets.NEO4J_PASSWORD }}
           NEO4J_DATABASE: ${{ secrets.NEO4J_DATABASE }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
           LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
           LANGSMITH_PROJECT: graphrag-api-smoke
           LANGSMITH_TRACING: "true"
@@ -97,7 +98,7 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --frozen --extra dev
 
       - name: Run full benchmark (Tier 3)
         run: uv run python scripts/ci_evaluation.py --tier 3 --regression-gate --output tier3_results.json --verbose
@@ -107,6 +108,7 @@ jobs:
           NEO4J_PASSWORD: ${{ secrets.NEO4J_PASSWORD }}
           NEO4J_DATABASE: ${{ secrets.NEO4J_DATABASE }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
           LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
           LANGSMITH_PROJECT: graphrag-api-release
           LANGSMITH_TRACING: "true"
@@ -179,7 +181,7 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --frozen --extra dev
 
       - name: Run deep evaluation (Tier 4)
         run: uv run python scripts/ci_evaluation.py --tier 4 --regression-gate --output tier4_results.json --verbose
@@ -189,6 +191,7 @@ jobs:
           NEO4J_PASSWORD: ${{ secrets.NEO4J_PASSWORD }}
           NEO4J_DATABASE: ${{ secrets.NEO4J_DATABASE }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
           LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
           LANGSMITH_PROJECT: graphrag-api-deep
           LANGSMITH_TRACING: "true"

@@ -19,7 +19,6 @@ from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
 from neo4j import GraphDatabase
-from neo4j_graphrag.embeddings import OpenAIEmbeddings
 from neo4j_graphrag.retrievers import VectorRetriever
 from rich.console import Console
 from rich.panel import Panel
@@ -44,9 +43,13 @@ def get_driver() -> Driver:
 
 def vector_search(driver: Driver, query: str, top_k: int = 5) -> RetrieverResult:
     """Perform vector similarity search on chunk embeddings."""
-    embedder = OpenAIEmbeddings(
-        model="text-embedding-3-small",
-        api_key=os.getenv("OPENAI_API_KEY"),
+    from requirements_graphrag_api.core.embeddings import VoyageAIEmbeddings
+
+    embedder = VoyageAIEmbeddings(
+        model=os.getenv("EMBEDDING_MODEL", "voyage-4"),
+        input_type="query",
+        dimensions=int(os.getenv("EMBEDDING_DIMENSIONS", "1024")),
+        api_key=os.getenv("VOYAGE_API_KEY", ""),
     )
     retriever = VectorRetriever(
         driver=driver,

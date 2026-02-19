@@ -75,7 +75,10 @@ class AppConfig:
         neo4j_database: Neo4j database name.
         openai_api_key: OpenAI API key.
         chat_model: Chat model name for generation.
-        embedding_model: Embedding model name.
+        embedding_model: Embedding model name for query-time retrieval (default: voyage-4).
+        voyage_api_key: Voyage AI API key for query-time embeddings.
+        embedding_dimensions: Embedding vector dimensions (must match Neo4j index).
+        openai_embedding_model: OpenAI embedding model for offline RAGAS evaluators only.
         vector_index_name: Name of the vector index in Neo4j.
         similarity_k: Default number of results for similarity search.
         log_level: Logging level.
@@ -100,7 +103,10 @@ class AppConfig:
     neo4j_database: str = "neo4j"
     openai_api_key: str = ""
     chat_model: str = "gpt-4o"
-    embedding_model: str = "text-embedding-3-small"
+    embedding_model: str = "voyage-4"
+    voyage_api_key: str = ""
+    embedding_dimensions: int = 1024
+    openai_embedding_model: str = "text-embedding-3-small"
     vector_index_name: str = "chunk_embeddings"
     similarity_k: int = 6
     log_level: str = "INFO"
@@ -370,7 +376,10 @@ def get_config() -> AppConfig:
         neo4j_database=os.getenv("NEO4J_DATABASE", "neo4j"),
         openai_api_key=os.getenv("OPENAI_API_KEY", ""),
         chat_model=os.getenv("OPENAI_MODEL", "gpt-4o"),
-        embedding_model=os.getenv("EMBEDDING_MODEL", "text-embedding-3-small"),
+        embedding_model=os.getenv("EMBEDDING_MODEL", "voyage-4"),
+        voyage_api_key=os.getenv("VOYAGE_API_KEY", ""),
+        embedding_dimensions=int(os.getenv("EMBEDDING_DIMENSIONS", "1024")),
+        openai_embedding_model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
         vector_index_name=os.getenv("VECTOR_INDEX_NAME", "chunk_embeddings"),
         similarity_k=int(os.getenv("SIMILARITY_K", "6")),
         log_level=os.getenv("LOG_LEVEL", "INFO"),

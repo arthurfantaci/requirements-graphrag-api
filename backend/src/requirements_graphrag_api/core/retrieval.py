@@ -25,7 +25,6 @@ from __future__ import annotations
 import ast
 import asyncio
 import logging
-import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -88,12 +87,15 @@ def create_vector_retriever(
     Returns:
         Configured VectorRetriever instance.
     """
-    from neo4j_graphrag.embeddings import OpenAIEmbeddings
     from neo4j_graphrag.retrievers import VectorRetriever
 
-    embedder = OpenAIEmbeddings(
+    from requirements_graphrag_api.core.embeddings import VoyageAIEmbeddings
+
+    embedder = VoyageAIEmbeddings(
         model=config.embedding_model,
-        api_key=config.openai_api_key or os.getenv("OPENAI_API_KEY"),
+        input_type="query",
+        dimensions=config.embedding_dimensions,
+        api_key=config.voyage_api_key,
     )
 
     return VectorRetriever(
