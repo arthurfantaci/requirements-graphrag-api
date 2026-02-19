@@ -151,7 +151,7 @@ Each event carries typed JSON payloads (`StreamEventType` StrEnum with 7 values:
 | Frontend | React 19, Vite 7, Tailwind CSS 4 | Chat UI with SSE streaming, entity badges, media galleries |
 | Backend | FastAPI, Python 3.12+, uv | REST API with SSE endpoints, async I/O |
 | Graph Database | Neo4j AuraDB, neo4j-graphrag | Knowledge graph storage, vector index, Cypher queries |
-| LLM | OpenAI GPT-4o, text-embedding-3-small | Answer generation, intent classification, embeddings |
+| LLM | OpenAI GPT-4o, Voyage AI voyage-4 | Answer generation, intent classification, embeddings |
 | Agentic Orchestration | LangGraph, langgraph-checkpoint-postgres | Stateful agent graphs, subgraph composition, conversation persistence |
 | Chain Composition | LangChain Core, langchain-openai | RAG chain building, prompt management |
 | Observability | LangSmith | Tracing, feedback, prompt versioning, evaluation |
@@ -277,7 +277,10 @@ See [`backend/.env.example`](backend/.env.example) for the full template with in
 | `NEO4J_DATABASE` | No | `neo4j` | Neo4j database name |
 | `OPENAI_API_KEY` | Yes | — | OpenAI API key |
 | `OPENAI_MODEL` | No | `gpt-4o` | LLM model for generation and classification |
-| `EMBEDDING_MODEL` | No | `text-embedding-3-small` | Embedding model (must match index) |
+| `EMBEDDING_MODEL` | No | `voyage-4` | Embedding model (must match Neo4j index) |
+| `EMBEDDING_DIMENSIONS` | No | `1024` | Embedding vector dimensions (must match index) |
+| `VOYAGE_API_KEY` | Yes | — | Voyage AI API key for query-time embeddings |
+| `OPENAI_EMBEDDING_MODEL` | No | `text-embedding-3-small` | OpenAI embedding model (offline RAGAS evaluators only) |
 | `VECTOR_INDEX_NAME` | No | `chunk_embeddings` | Neo4j vector index name |
 | `SIMILARITY_K` | No | `6` | Number of similar chunks to retrieve |
 | `NEO4J_MAX_POOL_SIZE` | No | `5` | Connection pool size (small for serverless) |

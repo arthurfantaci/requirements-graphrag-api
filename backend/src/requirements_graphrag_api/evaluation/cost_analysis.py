@@ -56,6 +56,10 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
         "input": 0.02,
         "output": 0.0,  # No output tokens for embeddings
     },
+    "voyage-4": {
+        "input": 0.03,  # $0.03 per 1M tokens (Voyage AI pricing)
+        "output": 0.0,  # No output tokens for embeddings
+    },
     "text-embedding-3-large": {
         "input": 0.13,
         "output": 0.0,

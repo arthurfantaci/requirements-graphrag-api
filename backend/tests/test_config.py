@@ -129,7 +129,10 @@ class TestAppConfig:
         assert config.neo4j_database == "neo4j"
         assert config.openai_api_key == ""
         assert config.chat_model == "gpt-4o"
-        assert config.embedding_model == "text-embedding-3-small"
+        assert config.embedding_model == "voyage-4"
+        assert config.voyage_api_key == ""
+        assert config.embedding_dimensions == 1024
+        assert config.openai_embedding_model == "text-embedding-3-small"
         assert config.vector_index_name == "chunk_embeddings"
         assert config.similarity_k == 6
         assert config.log_level == "INFO"
@@ -151,6 +154,9 @@ class TestGetConfig:
         assert config.openai_api_key == env_vars["OPENAI_API_KEY"]
         assert config.chat_model == env_vars["OPENAI_MODEL"]
         assert config.embedding_model == env_vars["EMBEDDING_MODEL"]
+        assert config.voyage_api_key == env_vars["VOYAGE_API_KEY"]
+        assert config.embedding_dimensions == int(env_vars["EMBEDDING_DIMENSIONS"])
+        assert config.openai_embedding_model == env_vars["OPENAI_EMBEDDING_MODEL"]
         assert config.vector_index_name == env_vars["VECTOR_INDEX_NAME"]
         assert config.similarity_k == int(env_vars["SIMILARITY_K"])
         assert config.log_level == env_vars["LOG_LEVEL"]

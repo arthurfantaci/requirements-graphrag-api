@@ -1,12 +1,14 @@
 {
   // Python Configuration (backend monorepo)
-  "python.defaultInterpreterPath": "/Users/arthurfantaci/Projects/requirements-graphrag-api/backend/.venv/bin/python",
+  "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/bin/python",
   "python.terminal.activateEnvironment": true,
+  "python.createEnvironment.trigger": "off",
 
   // Ruff - Use as primary linter and formatter (replaces Black, isort, Flake8)
   "[python]": {
     "editor.defaultFormatter": "charliermarsh.ruff",
     "editor.formatOnSave": true,
+    "editor.formatOnPaste": false,
     "editor.codeActionsOnSave": {
       "source.fixAll.ruff": "explicit",
       "source.organizeImports.ruff": "explicit"
@@ -14,9 +16,10 @@
   },
 
   // Ruff extension settings
-  "ruff.path": ["/Users/arthurfantaci/Projects/requirements-graphrag-api/backend/.venv/bin/ruff"],
+  "ruff.path": ["${workspaceFolder}/backend/.venv/bin/ruff"],
   "ruff.importStrategy": "fromEnvironment",
   "ruff.lint.enable": true,
+  "ruff.configuration": "./backend/pyproject.toml",
 
   // Testing with pytest
   "python.testing.pytestEnabled": true,
@@ -67,6 +70,7 @@
   "python.analysis.typeCheckingMode": "basic",
   "python.analysis.autoImportCompletions": true,
   "python.analysis.diagnosticMode": "workspace",
+  "python.analysis.inlayHints.functionReturnTypes": true,
 
   // JSON/TOML formatting
   "[json]": {

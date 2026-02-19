@@ -9,13 +9,14 @@ Updated Data Model (2026-01):
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from requirements_graphrag_api.core.retrieval import (
     GraphEnrichmentOptions,
     _enrich_with_media,
+    create_vector_retriever,
     explore_entity,
     graph_enriched_search,
     hybrid_search,
@@ -539,3 +540,48 @@ class TestEnrichWithMedia:
         result = _enrich_with_media(driver, ["4:abc:400"])
 
         assert "4:abc:400" not in result
+
+
+# =============================================================================
+# Create Vector Retriever Tests
+# =============================================================================
+
+
+class TestCreateVectorRetriever:
+    """Tests for create_vector_retriever factory function."""
+
+    @patch("requirements_graphrag_api.core.embeddings.VoyageAIEmbeddings")
+    @patch("neo4j_graphrag.retrievers.VectorRetriever")
+    def test_creates_voyage_embedder_with_correct_params(
+        self, mock_retriever_cls: MagicMock, mock_voyage_cls: MagicMock, mock_config: MagicMock
+    ) -> None:
+        """Test that VoyageAIEmbeddings is constructed with correct parameters."""
+        mock_driver = MagicMock()
+        create_vector_retriever(mock_driver, mock_config)
+
+        mock_voyage_cls.assert_called_once_with(
+            model=mock_config.embedding_model,
+            input_type="query",
+            dimensions=mock_config.embedding_dimensions,
+            api_key=mock_config.voyage_api_key,
+        )
+
+    @patch("requirements_graphrag_api.core.embeddings.VoyageAIEmbeddings")
+    @patch("neo4j_graphrag.retrievers.VectorRetriever")
+    def test_returns_vector_retriever_with_voyage_embedder(
+        self, mock_retriever_cls: MagicMock, mock_voyage_cls: MagicMock, mock_config: MagicMock
+    ) -> None:
+        """Test that returned VectorRetriever uses the Voyage embedder."""
+        mock_driver = MagicMock()
+        mock_embedder = MagicMock()
+        mock_voyage_cls.return_value = mock_embedder
+
+        result = create_vector_retriever(mock_driver, mock_config)
+
+        mock_retriever_cls.assert_called_once_with(
+            driver=mock_driver,
+            index_name=mock_config.vector_index_name,
+            embedder=mock_embedder,
+            return_properties=["text", "index"],
+        )
+        assert result == mock_retriever_cls.return_value

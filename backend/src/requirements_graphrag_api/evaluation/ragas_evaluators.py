@@ -34,6 +34,7 @@ from typing import TYPE_CHECKING, Any
 
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
+from requirements_graphrag_api.config import get_config
 from requirements_graphrag_api.prompts import PromptName, get_prompt
 
 if TYPE_CHECKING:
@@ -423,7 +424,8 @@ async def answer_semantic_similarity_evaluator(
             "comment": "Missing required fields: answer or ground_truth",
         }
 
-    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+    _config = get_config()
+    embeddings = OpenAIEmbeddings(model=_config.openai_embedding_model)
     answer_vec, gt_vec = await embeddings.aembed_documents([answer, ground_truth])
 
     score = _cosine_similarity(answer_vec, gt_vec)

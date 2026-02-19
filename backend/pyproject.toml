@@ -49,6 +49,8 @@ dependencies = [
     "slowapi>=0.1.9",
     "presidio-analyzer>=2.2.0",
     "presidio-anonymizer>=2.2.0",
+    # Voyage AI (query-time embeddings — must match graphrag-api-db pipeline)
+    "voyageai>=0.3.7",
     # Guardrails - Phase 2 (Content Safety)
     "better-profanity>=0.7.0",
     "asyncpg>=0.31.0",
@@ -120,6 +122,13 @@ select = [
     "SIM",    # flake8-simplify
     "TCH",    # flake8-type-checking
     "RUF",    # Ruff-specific rules
+    "TRY",    # tryceratops (exception handling)
+    "EM",     # flake8-errmsg (exception messages)
+    "PIE",    # flake8-pie (misc linting)
+    "PT",     # flake8-pytest-style
+    "RET",    # flake8-return
+    "ARG",    # flake8-unused-arguments
+    "PL",     # Pylint
 ]
 
 ignore = [
@@ -128,6 +137,22 @@ ignore = [
     "D107",   # Missing docstring in __init__
     "ANN401", # Dynamically typed expressions (Any)
     "S101",   # Use of assert (needed for tests)
+    "TRY003", # Long exception messages — project uses msg = "..." pattern
+    "TRY300", # try-consider-else — existing try/except patterns
+    "TRY400", # error-instead-of-exception — intentional logger.error in except blocks
+    "TRY401", # verbose-log-message — logger.error with exception context
+    "EM101",  # String literal in exception — too noisy with current patterns
+    "EM102",  # f-string in exception — same
+    "RET504", # Unnecessary variable before return — style preference
+    "PLR0913",# Too many function arguments — common in config-heavy code
+    "PLR0911",# Too many return statements — complex branching in retrieval
+    "PLR0912",# Too many branches — complex enrichment/routing logic
+    "PLR0915",# Too many statements — long but cohesive functions
+    "PLR2004",# Magic value in comparison — common in tests
+    "PLC0415",# import-outside-top-level — intentional lazy imports in functions
+    "PLW0603",# global-statement — used in cost tracker singleton pattern
+    "PLR1714",# repeated-equality-comparison — existing guard patterns
+    "ARG001", # unused-function-argument — interface-conforming signatures (evaluators, routes)
 ]
 
 [tool.ruff.lint.pydocstyle]
@@ -141,6 +166,9 @@ convention = "google"
     "SIM117",  # Allow nested with statements in tests
     "ANN",     # Don't require annotations in tests
     "D",       # Don't require docstrings in tests
+    "PLR2004", # Magic values in test assertions
+    "ARG",     # Unused fixture args common in pytest
+    "PT",      # Pytest style preferences (flexible in tests)
 ]
 "scripts/create_*_dataset*.py" = [
     "E501",    # Allow long lines in dataset creation scripts (test data strings)
@@ -170,6 +198,11 @@ exclude_lines = [
     "if TYPE_CHECKING:",
 ]
 fail_under = 60
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+strict = false
 
 [dependency-groups]
 dev = [
