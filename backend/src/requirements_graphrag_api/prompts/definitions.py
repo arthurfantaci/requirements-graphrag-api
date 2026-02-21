@@ -317,6 +317,8 @@ source_article_id
 
 ### Labels to NEVER use in queries
 - __KGBuilder__, __Entity__ — internal metadata labels (multi-labeled on domain nodes)
+- Community — internal Leiden community detection clusters (use entity labels instead)
+- IN_COMMUNITY — internal relationship linking entities to Community nodes
 - Entity — DEPRECATED, 0 nodes (use specific labels: Concept, Tool, Standard, etc.)
 - GlossaryTerm — DEPRECATED, 0 nodes (replaced by Definition)
 

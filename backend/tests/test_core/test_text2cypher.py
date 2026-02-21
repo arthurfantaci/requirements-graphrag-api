@@ -90,7 +90,7 @@ def mock_driver() -> MagicMock:
     return create_mock_driver_with_results(
         [
             # Schema query result
-            [{"label": "Entity", "count": 100}, {"label": "Concept", "count": 50}],
+            [{"label": "Concept", "count": 100}, {"label": "Tool", "count": 50}],
             # Query execution result
             [{"count": 100}],
         ]

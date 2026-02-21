@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 from requirements_graphrag_api.evaluation.constants import (
     DEPRECATED_LABELS,
     INTERNAL_LABELS,
+    INTERNAL_RELATIONSHIPS,
     JUDGE_MODEL,
     TIER1_PATTERNS,
     VALID_LABELS,
@@ -129,9 +130,15 @@ def _check_schema_adherence(
     if internal_used:
         return 0.3, f"Internal labels used: {internal_used} — should use concrete types"
 
-    invalid_rels = found_rels - VALID_RELATIONSHIPS
+    invalid_rels = found_rels - VALID_RELATIONSHIPS - INTERNAL_RELATIONSHIPS
     if invalid_rels:
-        return 0.3, f"Invalid/hallucinated relationships: {invalid_rels}"
+        return 0.0, f"Invalid/hallucinated relationships: {invalid_rels}"
+
+    internal_rels_used = found_rels & INTERNAL_RELATIONSHIPS
+    if internal_rels_used:
+        return 0.3, (
+            f"Internal relationships used: {internal_rels_used} — should use domain relationships"
+        )
 
     if not expected_labels:
         return 1.0, "No expected labels to check"

@@ -124,7 +124,10 @@ VALID_RELATIONSHIPS: Final[frozenset[str]] = frozenset(
 DEPRECATED_LABELS: Final[frozenset[str]] = frozenset({"Entity", "GlossaryTerm"})
 
 # Internal neo4j-graphrag labels — never surface to users.
-INTERNAL_LABELS: Final[frozenset[str]] = frozenset({"__Entity__", "__KGBuilder__"})
+INTERNAL_LABELS: Final[frozenset[str]] = frozenset({"__Entity__", "__KGBuilder__", "Community"})
+
+# Internal relationship types — pipeline artifacts, not user-queryable.
+INTERNAL_RELATIONSHIPS: Final[frozenset[str]] = frozenset({"IN_COMMUNITY"})
 
 
 # =============================================================================
@@ -253,6 +256,7 @@ __all__ = [
     "DEPRECATED_LABELS",
     "EXPERIMENT_PREFIX",
     "INTERNAL_LABELS",
+    "INTERNAL_RELATIONSHIPS",
     "JUDGE_MODEL",
     "QUEUE_CONVERSATIONAL",
     "QUEUE_EXPLANATORY",
