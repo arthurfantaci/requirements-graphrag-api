@@ -12,11 +12,13 @@
 - CI triggers only on PRs targeting `main` — RC→main is where CI runs
 - Ruff format hook auto-fixes imports → always re-stage after first commit attempt
 
-## Logging (Phase 3a+)
-- 14 core modules use `structlog.get_logger()` — do NOT use `logging.getLogger(__name__)`
-- Unmigrated modules (auth/*, guardrails/*, evaluation/*, observability, core/agentic/*) still use stdlib logging
+## Logging (structlog — fully migrated)
+- ALL modules use `structlog.get_logger()` — do NOT use `logging.getLogger(__name__)`
+- Named loggers: `structlog.get_logger("audit")`, `structlog.get_logger("guardrails")`
+- `import logging` retained ONLY for level constants (`logging.WARNING`, `logging.INFO`)
 - Printf-style log calls (`logger.info("msg %s", arg)`) — do NOT convert to keyword-style
-- Test log capture: `structlog.testing.capture_logs()` (not `caplog`) for structlog modules
+- Structured data as keyword args (`logger.warning("msg", key=value)`) — NOT `extra={}`
+- Test log capture: `structlog.testing.capture_logs()` (not `caplog`) for all modules
 
 ## Testing
 - 813+ tests, run with `uv run pytest --tb=short` from `backend/`
