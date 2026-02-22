@@ -39,14 +39,19 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
+import structlog
+
 if TYPE_CHECKING:
     from fastapi import Request
 
     from requirements_graphrag_api.auth.api_key import APIKeyInfo
 
+# Module-level logger for error handling
+logger = structlog.get_logger()
+
 # Dedicated audit logger with its own handlers
 # Configure in your logging setup to route to appropriate destination
-audit_log = logging.getLogger("audit")
+audit_log = structlog.get_logger("audit")
 
 
 class AuditEventType(StrEnum):
@@ -166,7 +171,7 @@ class LoggingAuditHandler(AuditHandler):
     by log aggregation systems.
     """
 
-    def __init__(self, logger: logging.Logger | None = None) -> None:
+    def __init__(self, logger: Any = None) -> None:
         """Initialize the logging handler.
 
         Args:
@@ -202,7 +207,7 @@ class LoggingAuditHandler(AuditHandler):
             event.event_type.value,
             event.method,
             event.endpoint,
-            extra={"audit_event": event.to_dict()},
+            audit_event=event.to_dict(),
         )
 
 
@@ -254,11 +259,11 @@ class AuditLogger:
             try:
                 await handler.handle(event)
             except Exception as e:
-                # Use standard logger to avoid infinite recursion
-                logging.getLogger(__name__).exception(
+                # Use module logger to avoid infinite recursion
+                logger.exception(
                     "Audit handler error: %s",
                     e,
-                    extra={"handler": handler.__class__.__name__},
+                    handler=handler.__class__.__name__,
                 )
 
     async def close(self) -> None:
@@ -270,7 +275,7 @@ class AuditLogger:
             try:
                 await handler.close()
             except Exception as e:
-                logging.getLogger(__name__).exception("Error closing audit handler: %s", e)
+                logger.exception("Error closing audit handler: %s", e)
 
 
 # Global audit logger instance
