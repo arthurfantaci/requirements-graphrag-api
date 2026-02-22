@@ -8,14 +8,15 @@ results based solely on whether sources were provided.
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
+import structlog
+
 from requirements_graphrag_api.observability import traceable_safe
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 class GroundingLevel(StrEnum):

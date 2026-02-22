@@ -18,10 +18,11 @@ Supported PII Types:
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any
+
+import structlog
 
 from requirements_graphrag_api.observability import traceable_safe
 
@@ -29,7 +30,7 @@ if TYPE_CHECKING:
     from presidio_analyzer import AnalyzerEngine, RecognizerResult
     from presidio_anonymizer import AnonymizerEngine
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 # Default PII entities to detect

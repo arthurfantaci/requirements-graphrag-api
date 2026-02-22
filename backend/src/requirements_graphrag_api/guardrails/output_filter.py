@@ -7,9 +7,10 @@ length only (text-based heuristics removed).
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from typing import Any
+
+import structlog
 
 from requirements_graphrag_api.guardrails.toxicity import (
     ToxicityConfig,
@@ -17,7 +18,7 @@ from requirements_graphrag_api.guardrails.toxicity import (
 )
 from requirements_graphrag_api.observability import traceable_safe
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 # Default blocked response message
@@ -133,10 +134,8 @@ async def filter_output(
         if toxicity.should_block:
             logger.warning(
                 "Output blocked due to toxicity",
-                extra={
-                    "categories": [c.value for c in toxicity.categories],
-                    "confidence": toxicity.confidence,
-                },
+                categories=[c.value for c in toxicity.categories],
+                confidence=toxicity.confidence,
             )
             return OutputFilterResult(
                 is_safe=False,
