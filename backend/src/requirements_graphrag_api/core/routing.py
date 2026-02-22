@@ -12,11 +12,11 @@ then LLM-based classification (INTENT_CLASSIFIER prompt) for ambiguous queries.
 from __future__ import annotations
 
 import json
-import logging
 import re
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
+import structlog
 from langchain_openai import ChatOpenAI
 
 from requirements_graphrag_api.evaluation.cost_analysis import get_global_cost_tracker
@@ -26,7 +26,7 @@ from requirements_graphrag_api.prompts import PromptName, get_prompt
 if TYPE_CHECKING:
     from requirements_graphrag_api.config import AppConfig
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 class QueryIntent(StrEnum):

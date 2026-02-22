@@ -204,6 +204,26 @@ def _reset_cost_tracker():
     reset_global_cost_tracker()
 
 
+@pytest.fixture(autouse=True)
+def _clear_singleton_caches():
+    """Clear @lru_cache singletons to prevent cross-test state leakage."""
+    from requirements_graphrag_api.middleware.rate_limit import get_rate_limiter
+
+    get_rate_limiter.cache_clear()
+    yield
+    get_rate_limiter.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _reset_structlog():
+    """Reset structlog configuration to prevent cached logger pollution."""
+    import structlog
+
+    structlog.reset_defaults()
+    yield
+    structlog.reset_defaults()
+
+
 @pytest.fixture
 def mock_guardrail_config() -> GuardrailConfig:
     """Create a mock guardrail configuration for testing.
