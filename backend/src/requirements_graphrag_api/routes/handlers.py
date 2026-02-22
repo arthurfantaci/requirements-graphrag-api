@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import os
 import uuid
 from contextlib import AsyncExitStack
 from typing import TYPE_CHECKING
 
+import structlog
 from langchain_core.messages import AIMessage, HumanMessage
 
 from requirements_graphrag_api.core import (
@@ -48,7 +48,7 @@ if TYPE_CHECKING:
     from requirements_graphrag_api.config import AppConfig, GuardrailConfig
     from requirements_graphrag_api.routes.chat import ChatMessage, ChatRequest
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 async def run_output_guardrails(

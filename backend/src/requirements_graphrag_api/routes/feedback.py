@@ -11,9 +11,9 @@ Feedback is correlated with LangSmith runs via run_id, enabling:
 
 from __future__ import annotations
 
-import logging
 import os
 
+import structlog
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
@@ -24,7 +24,7 @@ from requirements_graphrag_api.evaluation.constants import (
 from requirements_graphrag_api.guardrails import detect_and_redact_pii
 from requirements_graphrag_api.middleware.timeout import TIMEOUTS, with_timeout
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 router = APIRouter()
 

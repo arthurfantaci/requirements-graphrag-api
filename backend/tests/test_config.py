@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import logging
 from unittest.mock import patch
 
 import pytest
+import structlog.testing
 
 from requirements_graphrag_api.config import (
     SECURE_NEO4J_SCHEMES,
@@ -99,25 +99,25 @@ class TestAppConfig:
         with pytest.raises(AttributeError):
             mock_config.neo4j_uri = "neo4j://new-uri:7687"
 
-    def test_insecure_production_uri_logs_warning(self, caplog):
+    def test_insecure_production_uri_logs_warning(self):
         """Test that insecure production URI logs a warning."""
-        with caplog.at_level(logging.WARNING):
+        with structlog.testing.capture_logs() as cap_logs:
             AppConfig(
                 neo4j_uri="neo4j://production.aura.neo4j.io:7687",
                 neo4j_username="neo4j",
                 neo4j_password="password",  # noqa: S106
             )
-        assert "insecure Neo4j connection scheme" in caplog.text
+        assert any("insecure" in entry.get("event", "") for entry in cap_logs)
 
-    def test_secure_production_uri_no_warning(self, caplog):
+    def test_secure_production_uri_no_warning(self):
         """Test that secure production URI does not log a warning."""
-        with caplog.at_level(logging.WARNING):
+        with structlog.testing.capture_logs() as cap_logs:
             AppConfig(
                 neo4j_uri="neo4j+s://production.aura.neo4j.io",
                 neo4j_username="neo4j",
                 neo4j_password="password",  # noqa: S106
             )
-        assert "insecure" not in caplog.text
+        assert not any("insecure" in entry.get("event", "") for entry in cap_logs)
 
     def test_default_values(self):
         """Test that default values are correctly applied."""

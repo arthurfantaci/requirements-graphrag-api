@@ -7,10 +7,10 @@ Updated Data Model (2026-01):
 
 from __future__ import annotations
 
-import logging
 import uuid
 from typing import TYPE_CHECKING, Any
 
+import structlog
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 
     from requirements_graphrag_api.config import AppConfig, GuardrailConfig
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 router = APIRouter()
 

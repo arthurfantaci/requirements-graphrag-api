@@ -24,6 +24,7 @@ import os
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
+import structlog
 from fastapi import FastAPI, Security
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
@@ -62,7 +63,7 @@ from requirements_graphrag_api.routes import (
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 # Initialize Sentry before FastAPI app creation for maximum coverage.
 # No-op if SENTRY_DSN is not set (safe for local development).
@@ -94,10 +95,33 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Load configuration
     config = get_config()
 
-    # Configure logging
+    # Configure structured logging (Phase 3a)
+    structlog.configure(
+        processors=[
+            structlog.contextvars.merge_contextvars,
+            structlog.stdlib.PositionalArgumentsFormatter(),
+            structlog.processors.add_log_level,
+            structlog.processors.StackInfoRenderer(),
+            structlog.dev.set_exc_info,
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.dev.ConsoleRenderer()
+            if os.getenv("LOG_FORMAT", "console") == "console"
+            else structlog.processors.JSONRenderer(),
+        ],
+        wrapper_class=structlog.make_filtering_bound_logger(
+            getattr(logging, config.log_level.upper(), logging.INFO)
+        ),
+        context_class=dict,
+        logger_factory=structlog.PrintLoggerFactory(),
+        cache_logger_on_first_use=True,
+    )
+
+    # Keep minimal stdlib handler for named loggers not yet migrated (Phase 3b)
+    # auth/audit.py → "audit", guardrails/events.py → "guardrails"
     logging.basicConfig(
-        level=getattr(logging, config.log_level.upper()),
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        level=logging.WARNING,
+        format="%(name)s - %(levelname)s - %(message)s",
+        force=True,
     )
 
     # Configure LangSmith tracing

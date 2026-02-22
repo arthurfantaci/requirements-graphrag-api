@@ -9,15 +9,16 @@ Provides helper functions for Neo4j driver management following best practices:
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
+
+import structlog
 
 if TYPE_CHECKING:
     from neo4j import Driver
 
     from requirements_graphrag_api.config import AppConfig
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 def create_driver(config: AppConfig) -> Driver:

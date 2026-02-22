@@ -10,11 +10,12 @@ so the OTel span is active when this middleware runs.
 
 from __future__ import annotations
 
-import logging
 import uuid
 from typing import Any
 
-logger = logging.getLogger(__name__)
+import structlog
+
+logger = structlog.get_logger()
 
 
 class TraceCorrelationMiddleware:

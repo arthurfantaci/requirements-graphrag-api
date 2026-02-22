@@ -27,16 +27,16 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import logging
 from functools import wraps
 from typing import TYPE_CHECKING, ParamSpec, TypeVar
 
+import structlog
 from fastapi import HTTPException, status
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 P = ParamSpec("P")
 T = TypeVar("T")

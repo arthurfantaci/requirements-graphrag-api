@@ -16,10 +16,10 @@ Updated Data Model (2026-01):
 from __future__ import annotations
 
 import asyncio
-import logging
 import re
 from typing import TYPE_CHECKING, Any, Final, TypedDict
 
+import structlog
 from langchain_openai import ChatOpenAI
 from langsmith import get_current_run_tree
 from neo4j import Query
@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
     from requirements_graphrag_api.config import AppConfig
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 # Constants
 LOG_TRUNCATE_LENGTH: Final[int] = 100
