@@ -91,7 +91,7 @@ async def create_async_checkpointer(
 @asynccontextmanager
 async def async_checkpointer_context(
     database_url: str | None = None,
-) -> AsyncGenerator[AsyncPostgresSaver, None]:
+) -> AsyncGenerator[AsyncPostgresSaver]:
     """Context manager for async PostgreSQL checkpointer.
 
     Handles setup and cleanup of the checkpointer connection.

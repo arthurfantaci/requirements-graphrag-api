@@ -164,7 +164,7 @@ async def stream_agentic_events(
     *,
     app_config: AppConfig | None = None,
     trace_id: str | None = None,
-) -> AsyncGenerator[str, None]:
+) -> AsyncGenerator[str]:
     r"""Stream SSE events from agentic graph execution.
 
     This async generator yields SSE-formatted strings as the orchestrator

@@ -144,7 +144,7 @@ def mock_local_config() -> AppConfig:
 
 
 @pytest.fixture
-def env_vars() -> Generator[dict[str, str], None, None]:
+def env_vars() -> Generator[dict[str, str]]:
     """Set up environment variables for testing."""
     test_vars = {
         "NEO4J_URI": "neo4j+s://test.databases.neo4j.io",
@@ -168,7 +168,7 @@ def env_vars() -> Generator[dict[str, str], None, None]:
 
 
 @pytest.fixture
-def minimal_env_vars() -> Generator[dict[str, str], None, None]:
+def minimal_env_vars() -> Generator[dict[str, str]]:
     """Set up minimal required environment variables for testing."""
     test_vars = {
         "NEO4J_URI": "neo4j+s://test.databases.neo4j.io",
