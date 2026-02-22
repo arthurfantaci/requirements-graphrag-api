@@ -16,9 +16,9 @@ State:
 from __future__ import annotations
 
 import json
-import logging
 from typing import TYPE_CHECKING, Any, Literal
 
+import structlog
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 
@@ -29,7 +29,7 @@ from requirements_graphrag_api.prompts import PromptName, get_prompt
 if TYPE_CHECKING:
     from requirements_graphrag_api.config import AppConfig
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 # Constants
 MAX_REVISIONS = 1

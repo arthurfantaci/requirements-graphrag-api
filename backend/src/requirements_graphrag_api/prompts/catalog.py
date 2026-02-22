@@ -9,11 +9,11 @@ Provides centralized prompt management with:
 from __future__ import annotations
 
 import asyncio
-import logging
 import os
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final
 
+import structlog
 from langchain_core.prompts import ChatPromptTemplate
 
 if TYPE_CHECKING:
@@ -26,7 +26,7 @@ from requirements_graphrag_api.prompts.definitions import (
     PromptName,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 # Environment variables for LangSmith Hub configuration
 LANGSMITH_ORG_ENV: Final[str] = "LANGSMITH_ORG"

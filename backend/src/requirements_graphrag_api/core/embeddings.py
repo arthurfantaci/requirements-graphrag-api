@@ -13,12 +13,11 @@ Key design decisions:
 
 from __future__ import annotations
 
-import logging
-
+import structlog
 import voyageai
 from neo4j_graphrag.embeddings.base import Embedder
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 class VoyageAIEmbeddings(Embedder):

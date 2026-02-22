@@ -26,10 +26,11 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
+
+import structlog
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -40,7 +41,7 @@ if TYPE_CHECKING:
     from requirements_graphrag_api.core.agentic.orchestrator import StateGraph
     from requirements_graphrag_api.core.agentic.state import OrchestratorState
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 class AgenticEventType(StrEnum):

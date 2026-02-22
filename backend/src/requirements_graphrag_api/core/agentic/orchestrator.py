@@ -22,9 +22,9 @@ Usage:
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Any, Literal
 
+import structlog
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 
@@ -50,7 +50,7 @@ if TYPE_CHECKING:
 
     from requirements_graphrag_api.config import AppConfig
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 def create_orchestrator_graph(

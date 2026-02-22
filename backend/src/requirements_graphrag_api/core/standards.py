@@ -12,13 +12,14 @@ Updated Data Model (2026-01):
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import TYPE_CHECKING, Any
+
+import structlog
 
 if TYPE_CHECKING:
     from neo4j import Driver
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 async def lookup_standard(

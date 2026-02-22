@@ -14,9 +14,9 @@ Usage:
 from __future__ import annotations
 
 import json
-import logging
 from typing import TYPE_CHECKING, Any
 
+import structlog
 from langchain_openai import ChatOpenAI
 
 from requirements_graphrag_api.evaluation.constants import JUDGE_MODEL
@@ -25,7 +25,7 @@ from requirements_graphrag_api.prompts import PromptName, get_prompt
 if TYPE_CHECKING:
     from langsmith.schemas import Example, Run
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 def _extract_outputs(run: Run, example: Example | None) -> dict[str, str]:

@@ -27,11 +27,11 @@ Usage:
 from __future__ import annotations
 
 import json
-import logging
 import math
 import re
 from typing import TYPE_CHECKING, Any
 
+import structlog
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 from requirements_graphrag_api.config import get_config
@@ -40,7 +40,7 @@ from requirements_graphrag_api.prompts import PromptName, get_prompt
 if TYPE_CHECKING:
     from langsmith.schemas import Example, Run
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 # Default model for LLM-as-judge evaluations
 DEFAULT_JUDGE_MODEL = "gpt-4o-mini"
