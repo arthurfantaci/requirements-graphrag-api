@@ -31,7 +31,7 @@ _TEST_PASSWORD = "test"
 
 
 @pytest.fixture
-def clean_env() -> Generator[None, None, None]:
+def clean_env() -> Generator[None]:
     """Clean LangSmith environment variables before and after tests."""
     env_vars = [
         "LANGSMITH_TRACING",
