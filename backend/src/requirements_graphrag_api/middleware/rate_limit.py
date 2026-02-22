@@ -12,10 +12,10 @@ Rate Limits by Endpoint:
 
 from __future__ import annotations
 
-import logging
 import uuid
 from functools import lru_cache
 
+import structlog
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded  # noqa: TC002 - used at runtime in handler
 from slowapi.util import get_remote_address
@@ -28,7 +28,7 @@ from requirements_graphrag_api.guardrails.events import (
     log_guardrail_event,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 def get_rate_limit_key(request: Request) -> str:

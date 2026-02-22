@@ -13,6 +13,7 @@ from requirements_graphrag_api.auth.api_key import (
     APIKeyTier,
     InMemoryAPIKeyStore,
     generate_api_key,
+    hash_api_key,
 )
 from requirements_graphrag_api.auth.middleware import (
     AuthMiddleware,
@@ -128,12 +129,12 @@ class TestAuthMiddlewareWithValidKey:
     """Tests for middleware with valid API key."""
 
     @pytest.fixture
-    async def app_with_valid_key(self) -> tuple[FastAPI, str]:
+    def app_with_valid_key(self) -> tuple[FastAPI, str]:
         """Create app with a valid API key in store."""
         app = FastAPI()
         store = InMemoryAPIKeyStore()
 
-        # Create valid key
+        # Populate store synchronously via dict — no event loop needed
         raw_key = generate_api_key()
         info = APIKeyInfo(
             key_id="valid-key-id",
@@ -147,7 +148,7 @@ class TestAuthMiddlewareWithValidKey:
             scopes=("chat", "search", "feedback"),
             metadata={},
         )
-        await store.create(raw_key, info)
+        store._keys[hash_api_key(raw_key)] = info
 
         app.state.api_key_store = store
         app.add_middleware(AuthMiddleware, require_auth=True)
@@ -163,8 +164,7 @@ class TestAuthMiddlewareWithValidKey:
 
         return app, raw_key
 
-    @pytest.mark.asyncio
-    async def test_allows_valid_key(self, app_with_valid_key: tuple[FastAPI, str]):
+    def test_allows_valid_key(self, app_with_valid_key: tuple[FastAPI, str]):
         """Should allow requests with valid API key."""
         app, raw_key = app_with_valid_key
         with TestClient(app) as client:
@@ -175,8 +175,7 @@ class TestAuthMiddlewareWithValidKey:
             assert data["tier"] == "standard"
             assert data["organization"] == "Test Org"
 
-    @pytest.mark.asyncio
-    async def test_context_available_in_handler(self, app_with_valid_key: tuple[FastAPI, str]):
+    def test_context_available_in_handler(self, app_with_valid_key: tuple[FastAPI, str]):
         """Should make client available via get_current_client()."""
         app, raw_key = app_with_valid_key
         with TestClient(app) as client:
@@ -190,14 +189,14 @@ class TestAuthMiddlewareRevokedKey:
     """Tests for middleware with revoked API key."""
 
     @pytest.fixture
-    async def app_with_revoked_key(self) -> tuple[FastAPI, str]:
+    def app_with_revoked_key(self) -> tuple[FastAPI, str]:
         """Create app with a revoked API key."""
         app = FastAPI()
         store = InMemoryAPIKeyStore()
 
-        # Create and revoke key
+        # Populate store synchronously, then revoke by setting is_active=False
         raw_key = generate_api_key()
-        info = APIKeyInfo(
+        revoked_info = APIKeyInfo(
             key_id="revoked-key-id",
             name="Revoked Key",
             tier=APIKeyTier.STANDARD,
@@ -205,12 +204,11 @@ class TestAuthMiddlewareRevokedKey:
             created_at=datetime.now(UTC),
             expires_at=None,
             rate_limit="50/minute",
-            is_active=True,
+            is_active=False,
             scopes=("chat",),
             metadata={},
         )
-        await store.create(raw_key, info)
-        await store.revoke("revoked-key-id")
+        store._keys[hash_api_key(raw_key)] = revoked_info
 
         app.state.api_key_store = store
         app.add_middleware(AuthMiddleware, require_auth=True)
@@ -221,8 +219,7 @@ class TestAuthMiddlewareRevokedKey:
 
         return app, raw_key
 
-    @pytest.mark.asyncio
-    async def test_rejects_revoked_key(self, app_with_revoked_key: tuple[FastAPI, str]):
+    def test_rejects_revoked_key(self, app_with_revoked_key: tuple[FastAPI, str]):
         """Should reject revoked keys."""
         app, raw_key = app_with_revoked_key
         with TestClient(app) as client:

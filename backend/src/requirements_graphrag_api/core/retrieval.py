@@ -24,9 +24,10 @@ from __future__ import annotations
 
 import ast
 import asyncio
-import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
+
+import structlog
 
 from requirements_graphrag_api.observability import traceable_safe
 
@@ -36,7 +37,7 @@ if TYPE_CHECKING:
 
     from requirements_graphrag_api.config import AppConfig
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 @dataclass(frozen=True, slots=True)

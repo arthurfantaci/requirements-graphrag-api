@@ -14,9 +14,9 @@ by default since we control our own response generation).
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
+import structlog
 from fastapi import HTTPException, status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from starlette.requests import Request
     from starlette.responses import Response
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 # Size limits in bytes
 MAX_REQUEST_SIZE = 1 * 1024 * 1024  # 1 MB

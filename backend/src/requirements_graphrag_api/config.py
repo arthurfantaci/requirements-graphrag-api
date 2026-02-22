@@ -11,12 +11,12 @@ Neo4j Connection Best Practices:
 
 from __future__ import annotations
 
-import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
+import structlog
 from dotenv import load_dotenv
 
 # Load .env file for local development
@@ -33,7 +33,7 @@ if _backend_env.exists():
 elif _root_env.exists():
     load_dotenv(_root_env, override=False)
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 # Valid Neo4j URI schemes
 VALID_NEO4J_SCHEMES: Final[tuple[str, ...]] = (
