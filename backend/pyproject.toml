@@ -3,7 +3,7 @@ name = "requirements-graphrag-api"
 version = "0.1.0"
 description = "GraphRAG REST API for Requirements Management Knowledge Graph"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 license = { text = "MIT" }
 keywords = [
     "graphrag",
@@ -21,7 +21,7 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 
@@ -32,7 +32,7 @@ dependencies = [
     "sse-starlette>=2.0.0",
     # Neo4j
     "neo4j>=5.15.0",
-    "neo4j-graphrag>=1.0.0",
+    "neo4j-graphrag>=1.13.0",
     # LangChain (minimal - core and OpenAI only)
     "langchain-core>=0.3.0",
     "langchain-openai>=0.2.0",
@@ -71,6 +71,7 @@ dev = [
     "pytest-cov>=4.1.0",
     "pytest-mock>=3.12.0",
     "ruff>=0.6.0",
+    "ty>=0.0.8",
     "pre-commit>=4.0.0",
     # LangSmith CLI for local debugging (not deployed to Vercel)
     "langsmith-fetch>=0.3.1",
@@ -103,7 +104,7 @@ packages = ["src/requirements_graphrag_api"]
 # =============================================================================
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py313"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
@@ -199,15 +200,22 @@ exclude_lines = [
 ]
 fail_under = 60
 
-[tool.mypy]
-python_version = "3.12"
-ignore_missing_imports = true
-strict = false
+[tool.ty.environment]
+python-version = "3.13"
+
+[tool.ty.rules]
+invalid-argument-type = "warn"
+no-matching-overload = "warn"
+possibly-missing-attribute = "warn"
+invalid-return-type = "warn"
+invalid-context-manager = "warn"
+unsupported-operator = "warn"
+unresolved-import = "warn"
+call-non-callable = "warn"
 
 [dependency-groups]
 dev = [
     "langgraph-cli[inmem]>=0.4.12",
-    "mypy>=1.19.1",
     "radon>=6.0.1",
     "vulture>=2.14",
 ]
