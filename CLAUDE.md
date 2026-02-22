@@ -8,6 +8,7 @@
 ## Conventions
 - Conventional commits: `fix:`, `feat:`, `refactor:`, `docs:`
 - Git workflow: Issue → Branch → PR (always use RC branch strategy for phases)
+- **CLAUDE.md exception**: Updates to `CLAUDE.md` skip the Issue step — commit directly to a branch, open a minimal PR, merge. No issue, no RC branch, no ceremony.
 - CI triggers only on PRs targeting `main` — RC→main is where CI runs
 - Ruff format hook auto-fixes imports → always re-stage after first commit attempt
 
