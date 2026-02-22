@@ -981,7 +981,8 @@ async def search_entities_by_name(
                 MATCH (n)
                 WHERE (n:Concept OR n:Challenge OR n:Bestpractice OR n:Standard
                        OR n:Methodology OR n:Artifact OR n:Tool OR n:Role
-                       OR n:Processstage OR n:Industry)
+                       OR n:Processstage OR n:Industry OR n:Organization
+                       OR n:Outcome)
                       AND (toLower(n.name) CONTAINS toLower($term)
                            OR toLower(n.display_name) CONTAINS toLower($term))
                 WITH n, labels(n)[0] AS label
@@ -1070,7 +1071,8 @@ async def explore_entity(
                 MATCH (e)
                 WHERE (e:Concept OR e:Challenge OR e:Bestpractice OR e:Standard
                        OR e:Methodology OR e:Artifact OR e:Tool OR e:Role
-                       OR e:Processstage OR e:Industry)
+                       OR e:Processstage OR e:Industry OR e:Organization
+                       OR e:Outcome)
                   AND (toLower(e.name) CONTAINS toLower($name)
                        OR toLower(e.display_name) CONTAINS toLower($name))
                 RETURN e, labels(e) AS labels

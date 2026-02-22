@@ -89,6 +89,8 @@ VALID_LABELS: Final[frozenset[str]] = frozenset(
         "Image",
         "Industry",
         "Methodology",
+        "Organization",
+        "Outcome",
         "Processstage",
         "Role",
         "Standard",
@@ -100,11 +102,13 @@ VALID_LABELS: Final[frozenset[str]] = frozenset(
 
 VALID_RELATIONSHIPS: Final[frozenset[str]] = frozenset(
     {
+        "ACHIEVES",
         "ADDRESSES",
         "ALTERNATIVE_TO",
         "APPLIES_TO",
         "COMPONENT_OF",
         "DEFINES",
+        "DEVELOPS",
         "FROM_ARTICLE",
         "HAS_IMAGE",
         "HAS_VIDEO",
@@ -113,7 +117,9 @@ VALID_RELATIONSHIPS: Final[frozenset[str]] = frozenset(
         "NEXT_CHUNK",
         "PREREQUISITE_FOR",
         "PRODUCES",
+        "PUBLISHES",
         "REFERENCES",
+        "REGULATES",
         "RELATED_TO",
         "REQUIRES",
         "USED_BY",

@@ -266,6 +266,8 @@ article_id, content_type, document_type, path
 - Artifact: name, display_name, abbreviation, artifact_type
 - Role: name, display_name, responsibilities
 - Bestpractice: name, display_name, rationale
+- Organization: name, display_name, organization_type, abbreviation
+- Outcome: name, display_name, outcome_type
 
 **Media Nodes** (embedded resources):
 - Image: url, alt_text, context, resource_id, source_article_id
@@ -297,11 +299,14 @@ source_article_id
 - (Concept)-[:PREREQUISITE_FOR]->(Concept)
 - (Concept)-[:REQUIRES]->(Concept|Artifact)
 - (Concept)-[:ADDRESSES]->(Challenge)
+- (Concept)-[:ACHIEVES]->(Outcome)
 - (Tool)-[:ADDRESSES]->(Challenge)
 - (Tool)-[:REQUIRES]->(Concept)
 - (Tool)-[:ALTERNATIVE_TO]->(Tool)
+- (Tool)-[:ACHIEVES]->(Outcome)
 - (Methodology)-[:ADDRESSES]->(Challenge)
 - (Methodology)-[:ALTERNATIVE_TO]->(Methodology)
+- (Methodology)-[:ACHIEVES]->(Outcome)
 - (Processstage)-[:COMPONENT_OF]->(Methodology)
 - (Processstage)-[:PREREQUISITE_FOR]->(Processstage)
 - (Processstage)-[:REQUIRES]->(Artifact)
@@ -309,15 +314,19 @@ source_article_id
 - (Bestpractice)-[:ADDRESSES]->(Challenge)
 - (Bestpractice)-[:APPLIES_TO]->(Processstage)
 - (Bestpractice)-[:REQUIRES]->(Concept)
+- (Bestpractice)-[:ACHIEVES]->(Outcome)
 - (Role)-[:PRODUCES]->(Artifact)
 - (Role)-[:USED_BY]->(Artifact|Tool)
 - (Industry)-[:USED_BY]->(Tool)
+- (Organization)-[:PUBLISHES]->(Standard)
+- (Organization)-[:REGULATES]->(Industry)
+- (Organization)-[:DEVELOPS]->(Tool)
 - (Artifact)-[:COMPONENT_OF]->(Artifact)
 - (Artifact)-[:PREREQUISITE_FOR]->(Processstage)
 
 ### Labels to NEVER use in queries
 - __KGBuilder__, __Entity__ — internal metadata labels (multi-labeled on domain nodes)
-- Entity — DEPRECATED, 0 nodes (use specific labels: Concept, Tool, Standard, etc.)
+- Entity — DEPRECATED, 0 nodes (use specific labels: Concept, Standard, Organization, etc.)
 - GlossaryTerm — DEPRECATED, 0 nodes (replaced by Definition)
 
 ## Few-Shot Examples
