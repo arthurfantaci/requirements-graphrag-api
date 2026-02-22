@@ -21,12 +21,13 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import logging
 import os
 from dataclasses import dataclass, field
 from typing import Any
 
-logger = logging.getLogger(__name__)
+import structlog
+
+logger = structlog.get_logger()
 
 # Centralized dataset name — used by all scripts and CI.
 DATASET_NAME = "graphrag-rag-golden"

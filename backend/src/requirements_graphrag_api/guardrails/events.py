@@ -23,8 +23,10 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
+import structlog
+
 # Configure guardrail-specific logger
-guardrail_logger = logging.getLogger("guardrails")
+guardrail_logger = structlog.get_logger("guardrails")
 
 
 class GuardrailEventType(StrEnum):
@@ -174,7 +176,7 @@ def log_guardrail_event(
 
     message = " ".join(message_parts)
 
-    guardrail_logger.log(log_level, message, extra={"guardrail_event": event.to_dict()})
+    guardrail_logger.log(log_level, message, guardrail_event=event.to_dict())
 
 
 def create_injection_event(

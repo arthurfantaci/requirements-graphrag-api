@@ -27,11 +27,11 @@ Connection Pooling:
 
 from __future__ import annotations
 
-import logging
 import os
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
+import structlog
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 if TYPE_CHECKING:
@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 
     from langchain_core.runnables import RunnableConfig
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 # Default configuration
 DEFAULT_CHECKPOINT_DATABASE_URL = os.getenv("CHECKPOINT_DATABASE_URL")

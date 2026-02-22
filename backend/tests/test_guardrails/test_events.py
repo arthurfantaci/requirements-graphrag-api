@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import logging
 from datetime import UTC, datetime
-from unittest.mock import patch
+
+import structlog
 
 from requirements_graphrag_api.guardrails.events import (
     ActionTaken,
@@ -221,70 +221,68 @@ class TestCreateRateLimitEvent:
 class TestLogGuardrailEvent:
     """Test event logging functionality."""
 
-    def test_logs_blocked_event_as_warning(self, caplog):
+    def test_logs_blocked_event_as_warning(self):
         event = GuardrailEvent(
             event_type=GuardrailEventType.PROMPT_INJECTION_BLOCKED,
             request_id="req-100",
             action_taken=ActionTaken.BLOCKED,
             risk_level="high",
         )
-        with caplog.at_level(logging.WARNING, logger="guardrails"):
+        with structlog.testing.capture_logs() as captured:
             log_guardrail_event(event)
-        assert "prompt_injection_blocked" in caplog.text
-        assert "req-100" in caplog.text
+        assert any("prompt_injection_blocked" in entry.get("event", "") for entry in captured)
+        assert any("req-100" in entry.get("event", "") for entry in captured)
 
-    def test_logs_redacted_event_as_info(self, caplog):
+    def test_logs_redacted_event_as_info(self):
         event = GuardrailEvent(
             event_type=GuardrailEventType.PII_REDACTED,
             request_id="req-101",
             action_taken=ActionTaken.REDACTED,
         )
-        with caplog.at_level(logging.INFO, logger="guardrails"):
+        with structlog.testing.capture_logs() as captured:
             log_guardrail_event(event)
-        assert "pii_redacted" in caplog.text
+        assert any("pii_redacted" in entry.get("event", "") for entry in captured)
 
-    def test_logs_allowed_event_as_debug(self, caplog):
+    def test_logs_allowed_event_as_debug(self):
         event = GuardrailEvent(
             event_type=GuardrailEventType.PII_DETECTED,
             request_id="req-102",
             action_taken=ActionTaken.ALLOWED,
         )
-        with caplog.at_level(logging.DEBUG, logger="guardrails"):
+        with structlog.testing.capture_logs() as captured:
             log_guardrail_event(event)
-        assert "req-102" in caplog.text
+        assert any("req-102" in entry.get("event", "") for entry in captured)
 
-    def test_includes_details_in_log(self, caplog):
+    def test_includes_details_in_log(self):
         event = GuardrailEvent(
             event_type=GuardrailEventType.RATE_LIMIT_EXCEEDED,
             request_id="req-103",
             action_taken=ActionTaken.BLOCKED,
             details={"endpoint": "/chat", "limit": "20/minute"},
         )
-        with caplog.at_level(logging.WARNING, logger="guardrails"):
+        with structlog.testing.capture_logs() as captured:
             log_guardrail_event(event)
-        assert "endpoint=/chat" in caplog.text or "/chat" in caplog.text
+        assert any("/chat" in entry.get("event", "") for entry in captured)
 
-    def test_can_exclude_details(self, caplog):
+    def test_can_exclude_details(self):
         event = GuardrailEvent(
             event_type=GuardrailEventType.RATE_LIMIT_EXCEEDED,
             request_id="req-104",
             action_taken=ActionTaken.BLOCKED,
             details={"secret": "should_not_appear"},
         )
-        with caplog.at_level(logging.WARNING, logger="guardrails"):
+        with structlog.testing.capture_logs() as captured:
             log_guardrail_event(event, include_details=False)
-        assert "should_not_appear" not in caplog.text
+        assert all("should_not_appear" not in entry.get("event", "") for entry in captured)
 
-    def test_logs_extra_data(self, caplog):
-        """Verify structured logging includes event data in extra."""
+    def test_logs_extra_data(self):
+        """Verify structured logging includes guardrail_event as keyword arg."""
         event = GuardrailEvent(
             event_type=GuardrailEventType.PROMPT_INJECTION_BLOCKED,
             request_id="req-105",
             action_taken=ActionTaken.BLOCKED,
         )
-        with patch("requirements_graphrag_api.guardrails.events.guardrail_logger") as mock_logger:
+        with structlog.testing.capture_logs() as captured:
             log_guardrail_event(event)
-            mock_logger.log.assert_called_once()
-            # Check that extra data is passed
-            call_kwargs = mock_logger.log.call_args[1]
-            assert "guardrail_event" in call_kwargs.get("extra", {})
+        assert len(captured) >= 1
+        assert "guardrail_event" in captured[0]

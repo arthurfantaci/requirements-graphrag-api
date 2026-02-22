@@ -13,9 +13,9 @@ This module intentionally bypasses the LangGraph StateGraph because:
 from __future__ import annotations
 
 import json
-import logging
 from typing import TYPE_CHECKING, Any
 
+import structlog
 from langchain_openai import ChatOpenAI
 from langsmith import get_current_run_tree
 
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
     from requirements_graphrag_api.config import AppConfig
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 # Graceful response for empty history
 _EMPTY_HISTORY_RESPONSE = (

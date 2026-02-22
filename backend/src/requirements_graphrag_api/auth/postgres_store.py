@@ -17,10 +17,10 @@ Usage:
 from __future__ import annotations
 
 import json
-import logging
 from typing import TYPE_CHECKING
 
 import asyncpg
+import structlog
 
 from requirements_graphrag_api.auth.api_key import (
     APIKeyInfo,
@@ -32,7 +32,7 @@ from requirements_graphrag_api.auth.api_key import (
 if TYPE_CHECKING:
     from typing import Any
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 def _parse_metadata(value: Any) -> dict[str, Any]:

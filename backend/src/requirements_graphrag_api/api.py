@@ -116,14 +116,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         cache_logger_on_first_use=True,
     )
 
-    # Keep minimal stdlib handler for named loggers not yet migrated (Phase 3b)
-    # auth/audit.py → "audit", guardrails/events.py → "guardrails"
-    logging.basicConfig(
-        level=logging.WARNING,
-        format="%(name)s - %(levelname)s - %(message)s",
-        force=True,
-    )
-
     # Configure LangSmith tracing
     configure_tracing(config)
 
