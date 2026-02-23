@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING
 import structlog
 from fastapi import FastAPI, Security
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, ConfigDict
 from slowapi.errors import RateLimitExceeded
 
 from requirements_graphrag_api.auth import (
@@ -322,7 +323,18 @@ app.include_router(
 )
 
 
-@app.get("/")
+class RootResponse(BaseModel):
+    """Response from root endpoint."""
+
+    model_config = ConfigDict(extra="allow")
+
+    name: str
+    version: str
+    docs: str
+    health: str
+
+
+@app.get("/", response_model=RootResponse)
 async def root() -> dict[str, str]:
     """Root endpoint with API information."""
     return {

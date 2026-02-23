@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 import structlog
 from fastapi import APIRouter, Request, Security
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from slowapi.util import get_remote_address
 
 from requirements_graphrag_api.auth import UNAUTHORIZED_RESPONSE, api_key_security
@@ -530,7 +530,28 @@ async def chat_endpoint(
     )
 
 
-@router.get("/chat/routing-guide")
+class QueryTypeInfo(BaseModel):
+    """Information about a query type for routing guidance."""
+
+    type: str
+    intent: str
+    description: str
+    examples: list[str]
+    keywords: list[str]
+
+
+class RoutingGuideResponse(BaseModel):
+    """Response from routing guide endpoint."""
+
+    model_config = ConfigDict(extra="allow")
+
+    title: str
+    description: str
+    query_types: list[QueryTypeInfo]
+    tips: list[str]
+
+
+@router.get("/chat/routing-guide", response_model=RoutingGuideResponse)
 async def routing_guide_endpoint() -> dict[str, Any]:
     """Get user-facing documentation for query routing.
 

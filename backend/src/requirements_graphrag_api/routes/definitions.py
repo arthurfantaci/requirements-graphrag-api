@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from pydantic import BaseModel, ConfigDict
 
 from requirements_graphrag_api.core import list_all_terms, lookup_term, search_terms
 
@@ -19,7 +20,41 @@ if TYPE_CHECKING:
 router = APIRouter()
 
 
-@router.get("/definitions/{term}")
+class TermResponse(BaseModel):
+    """Response from single term lookup."""
+
+    model_config = ConfigDict(extra="allow")
+
+    term: str
+    definition: str
+    acronym: str | None = None
+    url: str | None = None
+    term_id: str | None = None
+    score: float
+
+
+class TermSummary(BaseModel):
+    """Summary of a definition term."""
+
+    model_config = ConfigDict(extra="allow")
+
+    term: str
+    definition: str
+    acronym: str | None = None
+    url: str | None = None
+    score: float | None = None
+
+
+class TermListResponse(BaseModel):
+    """Response from term listing/search."""
+
+    model_config = ConfigDict(extra="allow")
+
+    terms: list[TermSummary]
+    total: int
+
+
+@router.get("/definitions/{term}", response_model=TermResponse)
 async def get_term(
     request: Request,
     term: str,
@@ -45,7 +80,7 @@ async def get_term(
     return result
 
 
-@router.get("/definitions")
+@router.get("/definitions", response_model=TermListResponse)
 async def list_definitions(
     request: Request,
     q: str | None = Query(default=None, description="Search query"),
