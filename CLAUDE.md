@@ -5,6 +5,13 @@
 - Python 3.13, managed with `uv` (use `uv run` prefix for all tools)
 - `uv lock` must run before push (`--frozen` in CI)
 
+## Implementation Plan
+- **Authoritative plan**: `~/Projects/graphrag-api-db/docs/best-practices-plan.md` (vetted v2)
+- **Tracking issue**: #212 (best practices phases 2-5b)
+- **Phase status**: Check MEMORY.md "Next Phase" table — it auto-loads every session
+- **Do NOT enter plan mode** for tracked phases — the plan is fully vetted, read it and implement
+- **Phase handoffs**: See `memory/phase-handoffs.md` for per-phase prompts and completion ritual
+
 ## Conventions
 - Conventional commits: `fix:`, `feat:`, `refactor:`, `docs:`
 - Git workflow: Issue → Branch → PR (always use RC branch strategy for phases)
