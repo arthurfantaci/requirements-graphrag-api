@@ -53,7 +53,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
     from neo4j import Driver
-    from neo4j_graphrag.retrievers import VectorRetriever
+    from neo4j_graphrag.retrievers import HybridRetriever, VectorRetriever
 
     from requirements_graphrag_api.config import AppConfig, GuardrailConfig
 
@@ -136,6 +136,7 @@ async def _generate_sse_events(
     user_ip: str | None = None,
     request_id: str | None = None,
     trace_id: str | None = None,
+    hybrid_retriever: HybridRetriever | None = None,
 ) -> AsyncIterator[str]:
     """Generate SSE events from streaming chat response with automatic routing.
 
@@ -148,6 +149,7 @@ async def _generate_sse_events(
         user_ip: Client IP address for logging.
         request_id: Unique request identifier.
         trace_id: OTel trace ID for cross-system correlation.
+        hybrid_retriever: Optional HybridRetriever for combined search.
 
     Yields:
         Formatted SSE event strings.
@@ -382,6 +384,7 @@ async def _generate_sse_events(
                 safe_message,
                 guardrail_config=guardrail_config,
                 trace_id=trace_id,
+                hybrid_retriever=hybrid_retriever,
             ):
                 yield event_str
 
@@ -503,6 +506,7 @@ async def chat_endpoint(
     retriever: VectorRetriever = request.app.state.retriever
     driver: Driver = request.app.state.driver
     guardrail_config: GuardrailConfig = request.app.state.guardrail_config
+    hybrid_retriever: HybridRetriever | None = getattr(request.app.state, "hybrid_retriever", None)
 
     # Get client info for logging
     user_ip = get_remote_address(request)
@@ -519,6 +523,7 @@ async def chat_endpoint(
             user_ip=user_ip,
             request_id=request_id,
             trace_id=trace_id,
+            hybrid_retriever=hybrid_retriever,
         ),
         media_type="text/event-stream",
         headers={

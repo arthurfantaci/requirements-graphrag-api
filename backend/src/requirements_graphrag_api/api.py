@@ -39,7 +39,10 @@ from requirements_graphrag_api.auth import (
     configure_audit_logging,
 )
 from requirements_graphrag_api.config import get_auth_config, get_config, get_guardrail_config
-from requirements_graphrag_api.core.retrieval import create_vector_retriever
+from requirements_graphrag_api.core.retrieval import (
+    create_hybrid_retriever,
+    create_vector_retriever,
+)
 from requirements_graphrag_api.middleware import (
     SizeLimitMiddleware,
     TraceCorrelationMiddleware,
@@ -150,6 +153,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     retriever = create_vector_retriever(driver, config)
     logger.info("VectorRetriever initialized with index: %s", config.vector_index_name)
 
+    # Create HybridRetriever (Phase 5a — combines vector + fulltext search)
+    hybrid_retriever = create_hybrid_retriever(driver, config)
+    logger.info(
+        "HybridRetriever initialized with indexes: %s + %s",
+        config.vector_index_name,
+        config.fulltext_index_name,
+    )
+
     # Initialize guardrails
     guardrail_config = get_guardrail_config()
     limiter = get_rate_limiter()
@@ -179,6 +190,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.config = config
     app.state.driver = driver
     app.state.retriever = retriever
+    app.state.hybrid_retriever = hybrid_retriever
     app.state.guardrail_config = guardrail_config
     app.state.limiter = limiter
     app.state.auth_config = auth_config

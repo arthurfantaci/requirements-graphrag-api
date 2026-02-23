@@ -129,6 +129,9 @@ class AppConfig:
     prompt_hub_enabled: bool = True
     # Conversational model (lightweight, for meta-conversation queries)
     conversational_model: str = "gpt-4o-mini"
+    # HybridRetriever settings (Phase 5a)
+    fulltext_index_name: str = "chunk_text_fulltext"
+    use_legacy_hybrid_search: bool = False
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
@@ -398,4 +401,7 @@ def get_config() -> AppConfig:
         prompt_cache_ttl=int(os.getenv("PROMPT_CACHE_TTL", "300")),
         prompt_hub_enabled=prompt_hub_enabled,
         conversational_model=os.getenv("CONVERSATIONAL_MODEL", "gpt-4o-mini"),
+        fulltext_index_name=os.getenv("FULLTEXT_INDEX_NAME", "chunk_text_fulltext"),
+        use_legacy_hybrid_search=os.getenv("USE_LEGACY_HYBRID_SEARCH", "false").lower()
+        in ("true", "1", "yes"),
     )

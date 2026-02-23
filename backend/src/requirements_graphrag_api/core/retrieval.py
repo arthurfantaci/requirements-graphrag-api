@@ -32,8 +32,9 @@ import structlog
 from requirements_graphrag_api.observability import traceable_safe
 
 if TYPE_CHECKING:
+    import neo4j
     from neo4j import Driver
-    from neo4j_graphrag.retrievers import VectorRetriever
+    from neo4j_graphrag.retrievers import HybridRetriever, VectorRetriever
 
     from requirements_graphrag_api.config import AppConfig
 
@@ -126,6 +127,72 @@ def create_vector_retriever(
         index_name=config.vector_index_name,
         embedder=embedder,
         return_properties=["text", "index"],
+    )
+
+
+def _hybrid_result_formatter(record: neo4j.Record) -> Any:
+    """Format HybridRetriever results with element ID and clean text content.
+
+    The default neo4j-graphrag formatter loses the element ID needed for
+    article metadata joins. This custom formatter extracts it from the
+    record's top-level ``elementId`` key.
+
+    Args:
+        record: Neo4j record from HybridRetriever's internal Cypher query.
+
+    Returns:
+        RetrieverResultItem with text content and metadata including element ID.
+    """
+    from neo4j_graphrag.types import RetrieverResultItem
+
+    node = record.get("node")
+    text = node.get("text", "") if isinstance(node, dict) else ""
+    index = node.get("index") if isinstance(node, dict) else None
+
+    return RetrieverResultItem(
+        content=text,
+        metadata={
+            "score": record.get("score", 0.0),
+            "id": record.get("elementId"),
+            "index": index,
+        },
+    )
+
+
+def create_hybrid_retriever(
+    driver: Driver,
+    config: AppConfig,
+) -> HybridRetriever:
+    """Create a HybridRetriever for combined vector + keyword search.
+
+    Uses the neo4j-graphrag library's HybridRetriever with a custom result
+    formatter that preserves element IDs for article metadata joins.
+
+    Args:
+        driver: Neo4j driver instance.
+        config: Application configuration.
+
+    Returns:
+        Configured HybridRetriever instance.
+    """
+    from neo4j_graphrag.retrievers import HybridRetriever
+
+    from requirements_graphrag_api.core.embeddings import VoyageAIEmbeddings
+
+    embedder = VoyageAIEmbeddings(
+        model=config.embedding_model,
+        input_type="query",
+        dimensions=config.embedding_dimensions,
+        api_key=config.voyage_api_key,
+    )
+
+    return HybridRetriever(
+        driver=driver,
+        vector_index_name=config.vector_index_name,
+        fulltext_index_name=config.fulltext_index_name,
+        embedder=embedder,
+        return_properties=["text", "index"],
+        result_formatter=_hybrid_result_formatter,
     )
 
 
@@ -242,8 +309,7 @@ async def vector_search(
     return formatted
 
 
-@traceable_safe(name="hybrid_search", run_type="retriever")
-async def hybrid_search(
+async def _legacy_hybrid_search(
     retriever: VectorRetriever,
     driver: Driver,
     query: str,
@@ -251,23 +317,16 @@ async def hybrid_search(
     limit: int = 6,
     keyword_weight: float = 0.3,
 ) -> list[dict[str, Any]]:
-    """Perform hybrid search combining vector similarity and keyword matching.
+    """Legacy hybrid search using manual Cypher queries.
 
-    Combines semantic understanding (vectors) with exact term matching (keywords)
-    for improved recall on queries with specific technical terms.
+    Preserved behind ``use_legacy_hybrid_search`` config flag for rollback.
+    Will be removed after one release cycle.
 
-    Args:
-        retriever: Configured VectorRetriever instance.
-        driver: Neo4j driver for keyword search.
-        query: Natural language search query.
-        limit: Maximum number of results to return.
-        keyword_weight: Weight for keyword results (0-1). Vector weight = 1 - keyword_weight.
-
-    Returns:
-        List of results with content, score, source, and metadata.
+    Note: The keyword leg uses 'chunk_fulltext' (indexed on non-existent
+    ``heading`` property), so it effectively returns vector-only results.
     """
     logger.info(
-        "Hybrid search: query='%s', limit=%d, keyword_weight=%.2f",
+        "Legacy hybrid search: query='%s', limit=%d, keyword_weight=%.2f",
         query,
         limit,
         keyword_weight,
@@ -359,8 +418,141 @@ async def hybrid_search(
     merged.sort(key=lambda x: x["score"], reverse=True)
     results = merged[:limit]
 
-    logger.info("Hybrid search returned %d results", len(results))
+    logger.info("Legacy hybrid search returned %d results", len(results))
     return results
+
+
+@traceable_safe(name="hybrid_search", run_type="retriever")
+async def hybrid_search(
+    retriever: VectorRetriever,
+    driver: Driver,
+    query: str,
+    *,
+    limit: int = 6,
+    keyword_weight: float = 0.3,
+    hybrid_retriever: HybridRetriever | None = None,
+    use_legacy: bool = False,
+) -> list[dict[str, Any]]:
+    """Perform hybrid search combining vector similarity and keyword matching.
+
+    Uses the neo4j-graphrag HybridRetriever with LINEAR ranker when available,
+    falling back to the legacy manual implementation if ``use_legacy`` is True
+    or no ``hybrid_retriever`` is provided.
+
+    The HybridRetriever handles score fusion internally using:
+        ``score = alpha * vector_normalized + (1-alpha) * fulltext_normalized``
+    where ``alpha = 1 - keyword_weight``.
+
+    Post-processing preserves:
+    - Article-level deduplication (HybridRetriever only dedupes at chunk level)
+    - ``source`` provenance field tagging
+    - Article metadata via separate FROM_ARTICLE join
+
+    Args:
+        retriever: Configured VectorRetriever instance (used for legacy path).
+        driver: Neo4j driver for article metadata queries.
+        query: Natural language search query.
+        limit: Maximum number of results to return.
+        keyword_weight: Weight for keyword results (0-1). Maps to alpha = 1 - keyword_weight.
+        hybrid_retriever: Optional HybridRetriever instance for new path.
+        use_legacy: Force legacy implementation (config flag for rollback).
+
+    Returns:
+        List of results with content, score, source, and metadata.
+    """
+    # Dispatch to legacy if requested or no hybrid retriever available
+    if use_legacy or hybrid_retriever is None:
+        return await _legacy_hybrid_search(
+            retriever, driver, query, limit=limit, keyword_weight=keyword_weight
+        )
+
+    alpha = 1 - keyword_weight
+    logger.info(
+        "Hybrid search: query='%s', limit=%d, keyword_weight=%.2f, alpha=%.2f",
+        query,
+        limit,
+        keyword_weight,
+        alpha,
+    )
+
+    # Use HybridRetriever with LINEAR ranker (sync API, offload to thread)
+    # Request extra results for article-level dedup filtering
+    raw_results = await asyncio.to_thread(
+        hybrid_retriever.search,
+        query_text=query,
+        top_k=limit * 2,
+        ranker="linear",
+        alpha=alpha,
+    )
+
+    # Filter degenerate chunks (bare headings without content — Issue #202)
+    items = [item for item in raw_results.items if _is_meaningful_content(item.content or "")]
+
+    # Collect chunk IDs for article metadata join
+    chunk_ids = [item.metadata["id"] for item in items if item.metadata.get("id")]
+
+    # Fetch article metadata for chunks
+    article_context: dict[str, dict[str, Any]] = {}
+    if chunk_ids:
+
+        def _fetch_article_context() -> dict[str, dict[str, Any]]:
+            ctx: dict[str, dict[str, Any]] = {}
+            with driver.session() as session:
+                context_result = session.run(
+                    """
+                    MATCH (c:Chunk)-[:FROM_ARTICLE]->(a:Article)
+                    WHERE elementId(c) IN $chunk_ids
+                    RETURN elementId(c) AS chunk_id,
+                           a.article_title AS title,
+                           a.url AS url,
+                           a.article_id AS article_id,
+                           a.chapter_title AS chapter
+                    """,
+                    chunk_ids=chunk_ids,
+                )
+                for record in context_result:
+                    ctx[record["chunk_id"]] = {
+                        "title": record["title"],
+                        "url": record["url"],
+                        "article_id": record["article_id"],
+                        "chapter": record["chapter"],
+                    }
+            return ctx
+
+        article_context = await asyncio.to_thread(_fetch_article_context)
+
+    # Article-level deduplication + provenance tagging
+    seen_articles: set[str] = set()
+    formatted: list[dict[str, Any]] = []
+
+    for item in items:
+        chunk_id = item.metadata.get("id")
+        score = item.metadata.get("score", 0.0)
+        metadata = article_context.get(chunk_id, {}).copy()
+        metadata["chunk_id"] = chunk_id
+        metadata["chunk_index"] = item.metadata.get("index")
+
+        # Article-level dedup
+        article_id = metadata.get("article_id")
+        if article_id and article_id in seen_articles:
+            continue
+        if article_id:
+            seen_articles.add(article_id)
+
+        formatted.append(
+            {
+                "content": item.content or "",
+                "score": round(float(score), 4),
+                "metadata": metadata,
+                "source": "hybrid",
+            }
+        )
+
+        if len(formatted) >= limit:
+            break
+
+    logger.info("Hybrid search returned %d results", len(formatted))
+    return formatted
 
 
 # =============================================================================
@@ -824,6 +1016,8 @@ async def graph_enriched_search(
     *,
     limit: int = 6,
     options: GraphEnrichmentOptions | None = None,
+    hybrid_retriever: HybridRetriever | None = None,
+    use_legacy: bool = False,
 ) -> list[dict[str, Any]]:
     """Perform hybrid search enriched with multi-level graph context.
 
@@ -849,11 +1043,13 @@ async def graph_enriched_search(
         - Glossary definitions
 
     Args:
-        retriever: Configured VectorRetriever instance.
+        retriever: Configured VectorRetriever instance (used for legacy path).
         driver: Neo4j driver for traversal.
         query: Natural language search query.
         limit: Maximum number of base results.
         options: Configuration for enrichment levels. Uses defaults if None.
+        hybrid_retriever: Optional HybridRetriever for new hybrid search path.
+        use_legacy: Force legacy hybrid search implementation.
 
     Returns:
         List of enriched results with content, score, metadata, and graph context.
@@ -869,7 +1065,14 @@ async def graph_enriched_search(
     )
 
     # Get base results using hybrid search (vector + keyword) for better recall
-    base_results = await hybrid_search(retriever, driver, query, limit=limit)
+    base_results = await hybrid_search(
+        retriever,
+        driver,
+        query,
+        limit=limit,
+        hybrid_retriever=hybrid_retriever,
+        use_legacy=use_legacy,
+    )
 
     # Collect all chunk IDs for batch queries
     chunk_ids = [
