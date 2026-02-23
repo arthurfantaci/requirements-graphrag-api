@@ -137,6 +137,7 @@ async def _generate_sse_events(
     request_id: str | None = None,
     trace_id: str | None = None,
     hybrid_retriever: HybridRetriever | None = None,
+    community_index_available: bool = False,
 ) -> AsyncIterator[str]:
     """Generate SSE events from streaming chat response with automatic routing.
 
@@ -150,6 +151,7 @@ async def _generate_sse_events(
         request_id: Unique request identifier.
         trace_id: OTel trace ID for cross-system correlation.
         hybrid_retriever: Optional HybridRetriever for combined search.
+        community_index_available: Whether community vector index exists.
 
     Yields:
         Formatted SSE event strings.
@@ -385,6 +387,7 @@ async def _generate_sse_events(
                 guardrail_config=guardrail_config,
                 trace_id=trace_id,
                 hybrid_retriever=hybrid_retriever,
+                community_index_available=community_index_available,
             ):
                 yield event_str
 
@@ -507,6 +510,7 @@ async def chat_endpoint(
     driver: Driver = request.app.state.driver
     guardrail_config: GuardrailConfig = request.app.state.guardrail_config
     hybrid_retriever: HybridRetriever | None = getattr(request.app.state, "hybrid_retriever", None)
+    community_index_available: bool = getattr(request.app.state, "community_index_available", False)
 
     # Get client info for logging
     user_ip = get_remote_address(request)
@@ -524,6 +528,7 @@ async def chat_endpoint(
             request_id=request_id,
             trace_id=trace_id,
             hybrid_retriever=hybrid_retriever,
+            community_index_available=community_index_available,
         ),
         media_type="text/event-stream",
         headers={

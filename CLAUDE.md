@@ -7,10 +7,8 @@
 
 ## Implementation Plan
 - **Authoritative plan**: `~/Projects/graphrag-api-db/docs/best-practices-plan.md` (vetted v2)
-- **Tracking issue**: #212 (best practices phases 2-5b)
-- **Phase status**: Check MEMORY.md "Next Phase" table — it auto-loads every session
-- **Do NOT enter plan mode** for tracked phases — the plan is fully vetted, read it and implement
-- **Phase handoffs**: See `memory/phase-handoffs.md` for per-phase prompts and completion ritual
+- **Tracking issue**: #212 (best practices phases 2-5b) — **ALL PHASES COMPLETE**
+- **Phase handoffs**: See `memory/phase-handoffs.md` for historical context
 
 ## Conventions
 - Conventional commits: `fix:`, `feat:`, `refactor:`, `docs:`
@@ -27,6 +25,15 @@
 - Structured data as keyword args (`logger.warning("msg", key=value)`) — NOT `extra={}`
 - Test log capture: `structlog.testing.capture_logs()` (not `caplog`) for all modules
 
+## HybridRetriever (Phase 5a)
+- `create_hybrid_retriever()` in `core/retrieval.py` — mirrors `create_vector_retriever()` pattern
+- Custom `_hybrid_result_formatter()` required — default formatter loses element IDs for article joins
+- Legacy fallback: `_legacy_hybrid_search()` behind `USE_LEGACY_HYBRID_SEARCH` config flag
+- `hybrid_retriever` threaded through entire call chain (api.py → routes → handlers → orchestrator → rag → search)
+- Test fixtures for search routes must set `app.state.hybrid_retriever` (even if `None`)
+- Neo4j indexes: `chunk_embeddings` (vector, 1024d COSINE), `chunk_text_fulltext` (fulltext on `Chunk.text`)
+- Do NOT use `chunk_fulltext` index — it indexes non-existent `heading` property (broken)
+
 ## Response Models (Phase 4)
 - All 15 endpoints have typed Pydantic `response_model` — do NOT add untyped endpoints
 - New response models use `ConfigDict(extra="allow")` — tighten later
@@ -35,10 +42,19 @@
 - Degenerate chunk filtering: `_is_meaningful_content()` in `core/retrieval.py` (≥20 non-whitespace chars)
 
 ## Testing
-- 813+ tests, run with `uv run pytest --tb=short` from `backend/`
+- 837+ tests, run with `uv run pytest --tb=short` from `backend/`
 - Autouse fixtures (conftest.py): `_disable_langsmith_tracing`, `_reset_cost_tracker`, `_clear_singleton_caches`, `_reset_structlog`
 - Async fixture gotcha: prefer sync fixtures with direct dict/object population over `await` calls
 - Lazy import mocking: patch at source module (`neo4j_graphrag.retrievers.VectorRetriever`) not import site
+
+## Community Retrieval (Phase 5b)
+- `community_search()` in `core/retrieval.py` — VectorRetriever on `community_summary_embeddings` index
+- Always-parallel: runs via `asyncio.gather` alongside RAG subgraph in orchestrator's `run_rag` node
+- Graceful degradation: `app.state.community_index_available` set at startup via `SHOW VECTOR INDEXES`
+- `community_index_available` threaded through call chain (api.py → chat.py → handlers.py → orchestrator.py)
+- Context formatting: `## Community Context` section appended after `## Knowledge Graph Context` in `format_context()`
+- Config: `COMMUNITY_INDEX_NAME` env var (default: `community_summary_embeddings`)
+- Test fixtures for routes must set `app.state.community_index_available` (even if `False`)
 
 ## Verification Before PR
 ```bash

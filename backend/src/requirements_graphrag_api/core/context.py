@@ -5,9 +5,11 @@ by both the production orchestrator and the evaluation pipeline.
 
 The hybrid format places per-chunk entity names inline and appends a
 deduplicated Knowledge Graph Context section (glossary, relationships,
-industry standards) after the chunks.  Media resources are extracted to
-a separate structure for SSE delivery but excluded from the context
-string to keep token usage focused on textual knowledge.
+industry standards) after the chunks.  An optional Community Context
+section with thematic summaries from community detection is appended
+after the KG section.  Media resources are extracted to a separate
+structure for SSE delivery but excluded from the context string to keep
+token usage focused on textual knowledge.
 
 Usage:
     from requirements_graphrag_api.core.context import NormalizedDocument, format_context
@@ -111,8 +113,8 @@ class FormattedContext:
     """Result of :func:`format_context`.
 
     Attributes:
-        context: Hybrid context string (chunks + KG section) for the
-            ``{context}`` prompt variable.
+        context: Hybrid context string (chunks + KG section + optional
+            community section) for the ``{context}`` prompt variable.
         sources: Source metadata list for SSE ``sources`` event.
         entities_by_name: Deduplicated entities keyed by name.
         entities_str: Comma-joined entity names (for logging / light use).
@@ -135,6 +137,7 @@ def format_context(
     documents: list[NormalizedDocument],
     *,
     definitions: list[dict[str, Any]] | None = None,
+    community_results: list[dict[str, Any]] | None = None,
     max_documents: int = 10,
     max_resources_per_type: int = 3,
 ) -> FormattedContext:
@@ -146,6 +149,8 @@ def format_context(
     2. A deduplicated **Knowledge Graph Context** section containing
        glossary definitions, semantic relationships, and industry
        standards gathered across all chunks.
+    3. An optional **Community Context** section with thematic
+       summaries from community detection (Phase 5b).
 
     Media resources are extracted into ``FormattedContext.resources``
     but are **not** embedded in the context string.
@@ -155,6 +160,8 @@ def format_context(
         definitions: Optional glossary lookup results (from evaluation
             pipeline's ``search_terms``).  Prepended as definition
             blocks when present.
+        community_results: Optional community search results (Phase 5b).
+            Each dict has ``summary``, ``members``, ``community_id``.
         max_documents: Cap on the number of chunk sections.
         max_resources_per_type: Max images/webinars/videos per source.
 
@@ -325,14 +332,38 @@ def format_context(
         kg_parts.extend(all_standards)
 
     # -----------------------------------------------------------------
+    # Community Context section (Phase 5b)
+    # -----------------------------------------------------------------
+    community_parts: list[str] = []
+    if community_results:
+        for cr in community_results:
+            summary = cr.get("summary", "")
+            if not summary:
+                continue
+            members = cr.get("members", [])
+            member_names = [
+                m.get("name", "") for m in members if isinstance(m, dict) and m.get("name")
+            ]
+            section = f"- {summary}"
+            if member_names:
+                section += f"\n  Key entities: {', '.join(member_names[:8])}"
+            community_parts.append(section)
+
+    # -----------------------------------------------------------------
     # Assemble final context
     # -----------------------------------------------------------------
-    if not context_parts and not kg_parts:
+    if not context_parts and not kg_parts and not community_parts:
         context = "No relevant context found."
     else:
         context = "\n\n---\n\n".join(context_parts)
         if kg_parts:
             context += "\n\n---\n\n## Knowledge Graph Context\n\n" + "\n".join(kg_parts)
+        if community_parts:
+            context += (
+                "\n\n---\n\n## Community Context\n\n"
+                "Thematic summaries from community detection analysis:\n\n"
+                + "\n\n".join(community_parts)
+            )
 
     sorted_names = sorted(all_entities.keys())[:20]
     entities_str = ", ".join(sorted_names) if sorted_names else "None identified"

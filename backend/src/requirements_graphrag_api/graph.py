@@ -17,6 +17,7 @@ from neo4j import GraphDatabase
 from requirements_graphrag_api.config import get_config
 from requirements_graphrag_api.core.agentic.orchestrator import create_orchestrator_graph
 from requirements_graphrag_api.core.retrieval import (
+    check_community_index,
     create_hybrid_retriever,
     create_vector_retriever,
 )
@@ -40,7 +41,16 @@ driver = GraphDatabase.driver(
 retriever = create_vector_retriever(driver, config)
 hybrid_retriever = create_hybrid_retriever(driver, config)
 
+# Check community index availability (mirrors api.py lifespan check)
+community_index_available = check_community_index(driver, config.community_index_name)
+
 # Compile the orchestrator graph (no checkpointer for dev server)
-graph = create_orchestrator_graph(config, driver, retriever, hybrid_retriever=hybrid_retriever)
+graph = create_orchestrator_graph(
+    config,
+    driver,
+    retriever,
+    hybrid_retriever=hybrid_retriever,
+    community_index_available=community_index_available,
+)
 
 logger.info("LangGraph dev server: orchestrator graph compiled")

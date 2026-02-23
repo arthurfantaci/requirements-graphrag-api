@@ -586,6 +586,10 @@ and limitations at the end, never the beginning. Do not start with what you lack
 5. **Structure clearly** - Use headings, bullets for complex answers
 6. **Use Knowledge Graph Context** - The context includes glossary definitions, \
 semantic relationships, and industry standards. Use these for precise terminology
+7. **Use Community Context** - When present, the context includes thematic community \
+summaries from graph analysis. Use these for high-level themes, broad overviews, and \
+cross-cutting concerns. Community context is especially useful for questions about \
+"main themes", "key areas", or "how topics relate"
 
 ## Self-Critique (CRITICAL)
 

@@ -17,6 +17,7 @@ from requirements_graphrag_api.core.retrieval import (
     GraphEnrichmentOptions,
     _enrich_with_media,
     _hybrid_result_formatter,
+    community_search,
     create_hybrid_retriever,
     create_vector_retriever,
     explore_entity,
@@ -886,3 +887,288 @@ class TestHybridSearchLegacyFallback:
 
         mock_retriever.search.assert_called()
         assert len(results) > 0
+
+
+# =============================================================================
+# Community Search Tests
+# =============================================================================
+
+
+def _make_community_config() -> MagicMock:
+    """Create a mock AppConfig with community-relevant fields."""
+    cfg = MagicMock()
+    cfg.embedding_model = "voyage-4"
+    cfg.embedding_dimensions = 1024
+    cfg.voyage_api_key = "test-key"
+    cfg.community_index_name = "community_summary_embeddings"
+    return cfg
+
+
+class TestCommunitySearch:
+    """Tests for community_search function."""
+
+    @pytest.mark.asyncio
+    @patch("requirements_graphrag_api.core.embeddings.VoyageAIEmbeddings")
+    @patch("neo4j_graphrag.retrievers.VectorRetriever")
+    async def test_returns_results_with_members(
+        self, mock_retriever_cls: MagicMock, mock_voyage_cls: MagicMock
+    ) -> None:
+        """community_search returns parsed results with member entities."""
+        # Mock retriever results — content as string repr of dict (as VectorRetriever returns)
+        mock_item = MagicMock()
+        mock_item.content = (
+            "{'summary': 'Safety standards and compliance',"
+            " 'communityId': 'c-1', 'member_count': 5}"
+        )
+        mock_item.metadata = {"score": 0.92}
+
+        mock_result = MagicMock()
+        mock_result.items = [mock_item]
+        mock_retriever_cls.return_value.search.return_value = mock_result
+
+        # Mock driver for member lookup
+        mock_driver = MagicMock()
+        mock_session = MagicMock()
+        member_record = MagicMock()
+        member_record.__getitem__ = lambda s, k: {
+            "cid": "c-1",
+            "members": [
+                {"name": "ISO 26262", "type": "Standard"},
+                {"name": "FMEA", "type": "Concept"},
+            ],
+        }[k]
+        mock_member_result = MagicMock()
+        mock_member_result.__iter__ = lambda self: iter([member_record])
+        mock_session.run.return_value = mock_member_result
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_driver.session.return_value = mock_session
+
+        config = _make_community_config()
+        results = await community_search(mock_driver, config, "safety standards")
+
+        assert len(results) == 1
+        assert results[0]["summary"] == "Safety standards and compliance"
+        assert results[0]["community_id"] == "c-1"
+        assert results[0]["score"] == 0.92
+        assert len(results[0]["members"]) == 2
+        assert results[0]["members"][0]["name"] == "ISO 26262"
+
+    @pytest.mark.asyncio
+    @patch("requirements_graphrag_api.core.embeddings.VoyageAIEmbeddings")
+    @patch("neo4j_graphrag.retrievers.VectorRetriever")
+    async def test_graceful_degradation_on_retriever_error(
+        self, mock_retriever_cls: MagicMock, mock_voyage_cls: MagicMock
+    ) -> None:
+        """Returns empty list when VectorRetriever raises (index missing, etc.)."""
+        mock_retriever_cls.return_value.search.side_effect = Exception(
+            "Index 'community_summary_embeddings' not found"
+        )
+
+        config = _make_community_config()
+        mock_driver = MagicMock()
+        results = await community_search(mock_driver, config, "anything")
+
+        assert results == []
+
+    @pytest.mark.asyncio
+    @patch("requirements_graphrag_api.core.embeddings.VoyageAIEmbeddings")
+    @patch("neo4j_graphrag.retrievers.VectorRetriever")
+    async def test_empty_results(
+        self, mock_retriever_cls: MagicMock, mock_voyage_cls: MagicMock
+    ) -> None:
+        """Returns empty list when retriever returns no items."""
+        mock_result = MagicMock()
+        mock_result.items = []
+        mock_retriever_cls.return_value.search.return_value = mock_result
+
+        config = _make_community_config()
+        mock_driver = MagicMock()
+        results = await community_search(mock_driver, config, "obscure query")
+
+        assert results == []
+
+    @pytest.mark.asyncio
+    @patch("requirements_graphrag_api.core.embeddings.VoyageAIEmbeddings")
+    @patch("neo4j_graphrag.retrievers.VectorRetriever")
+    async def test_no_members_found(
+        self, mock_retriever_cls: MagicMock, mock_voyage_cls: MagicMock
+    ) -> None:
+        """Communities with no IN_COMMUNITY relationships have empty members list."""
+        mock_item = MagicMock()
+        mock_item.content = (
+            "{'summary': 'Orphaned community', 'communityId': 'c-orphan', 'member_count': 0}"
+        )
+        mock_item.metadata = {"score": 0.75}
+
+        mock_result = MagicMock()
+        mock_result.items = [mock_item]
+        mock_retriever_cls.return_value.search.return_value = mock_result
+
+        # Driver returns empty member results
+        mock_driver = MagicMock()
+        mock_session = MagicMock()
+        mock_member_result = MagicMock()
+        mock_member_result.__iter__ = lambda self: iter([])
+        mock_session.run.return_value = mock_member_result
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_driver.session.return_value = mock_session
+
+        config = _make_community_config()
+        results = await community_search(mock_driver, config, "orphan topic")
+
+        assert len(results) == 1
+        assert results[0]["summary"] == "Orphaned community"
+        assert results[0]["members"] == []
+
+    @pytest.mark.asyncio
+    @patch("requirements_graphrag_api.core.embeddings.VoyageAIEmbeddings")
+    @patch("neo4j_graphrag.retrievers.VectorRetriever")
+    async def test_content_as_plain_string(
+        self, mock_retriever_cls: MagicMock, mock_voyage_cls: MagicMock
+    ) -> None:
+        """Handles content that can't be parsed as dict (plain string fallback)."""
+        mock_item = MagicMock()
+        mock_item.content = "Just a plain summary text"
+        mock_item.metadata = {"score": 0.6}
+
+        mock_result = MagicMock()
+        mock_result.items = [mock_item]
+        mock_retriever_cls.return_value.search.return_value = mock_result
+
+        config = _make_community_config()
+        mock_driver = MagicMock()
+        results = await community_search(mock_driver, config, "plain text")
+
+        assert len(results) == 1
+        assert results[0]["summary"] == "Just a plain summary text"
+        assert results[0]["community_id"] == ""
+        assert results[0]["members"] == []
+
+    @pytest.mark.asyncio
+    @patch("requirements_graphrag_api.core.embeddings.VoyageAIEmbeddings")
+    @patch("neo4j_graphrag.retrievers.VectorRetriever")
+    async def test_multiple_communities(
+        self, mock_retriever_cls: MagicMock, mock_voyage_cls: MagicMock
+    ) -> None:
+        """Multiple community results with different scores."""
+        items = []
+        for summary, cid, score in [
+            ("Requirements traceability themes", "c-1", 0.95),
+            ("Safety and compliance cluster", "c-2", 0.88),
+            ("V&V methodologies", "c-3", 0.72),
+        ]:
+            item = MagicMock()
+            item.content = f"{{'summary': '{summary}', 'communityId': '{cid}', 'member_count': 3}}"
+            item.metadata = {"score": score}
+            items.append(item)
+
+        mock_result = MagicMock()
+        mock_result.items = items
+        mock_retriever_cls.return_value.search.return_value = mock_result
+
+        # Mock member lookup for all communities
+        mock_driver = MagicMock()
+        mock_session = MagicMock()
+        records = []
+        for cid in ["c-1", "c-2", "c-3"]:
+            rec = MagicMock()
+            rec.__getitem__ = lambda s, k, _cid=cid: {
+                "cid": _cid,
+                "members": [{"name": f"Entity-{_cid}", "type": "Concept"}],
+            }[k]
+            records.append(rec)
+        mock_member_result = MagicMock()
+        mock_member_result.__iter__ = lambda self: iter(records)
+        mock_session.run.return_value = mock_member_result
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_driver.session.return_value = mock_session
+
+        config = _make_community_config()
+        results = await community_search(mock_driver, config, "traceability")
+
+        assert len(results) == 3
+        assert results[0]["score"] == 0.95
+        assert results[1]["score"] == 0.88
+        assert results[2]["score"] == 0.72
+        # Each community should have its member
+        for r in results:
+            assert len(r["members"]) == 1
+
+    @pytest.mark.asyncio
+    @patch("requirements_graphrag_api.core.embeddings.VoyageAIEmbeddings")
+    @patch("neo4j_graphrag.retrievers.VectorRetriever")
+    async def test_content_as_native_dict(
+        self, mock_retriever_cls: MagicMock, mock_voyage_cls: MagicMock
+    ) -> None:
+        """Handles content returned as a native dict (not string repr)."""
+        mock_item = MagicMock()
+        mock_item.content = {"summary": "Native dict summary", "communityId": "c-1"}
+        mock_item.metadata = {"score": 0.85}
+
+        mock_result = MagicMock()
+        mock_result.items = [mock_item]
+        mock_retriever_cls.return_value.search.return_value = mock_result
+
+        # Mock member lookup
+        mock_driver = MagicMock()
+        mock_session = MagicMock()
+        member_record = MagicMock()
+        member_record.__getitem__ = lambda s, k: {
+            "cid": "c-1",
+            "members": [{"name": "Entity-A", "type": "Concept"}],
+        }[k]
+        mock_member_result = MagicMock()
+        mock_member_result.__iter__ = lambda self: iter([member_record])
+        mock_session.run.return_value = mock_member_result
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_driver.session.return_value = mock_session
+
+        config = _make_community_config()
+        results = await community_search(mock_driver, config, "dict content")
+
+        assert len(results) == 1
+        assert results[0]["summary"] == "Native dict summary"
+        assert results[0]["community_id"] == "c-1"
+        assert results[0]["score"] == 0.85
+
+    @pytest.mark.asyncio
+    @patch("requirements_graphrag_api.core.embeddings.VoyageAIEmbeddings")
+    @patch("neo4j_graphrag.retrievers.VectorRetriever")
+    async def test_metadata_none_defaults_score(
+        self, mock_retriever_cls: MagicMock, mock_voyage_cls: MagicMock
+    ) -> None:
+        """When item.metadata is None, score defaults to 0.0."""
+        mock_item = MagicMock()
+        mock_item.content = (
+            "{'summary': 'No metadata community', 'communityId': 'c-x', 'member_count': 1}"
+        )
+        mock_item.metadata = None
+
+        mock_result = MagicMock()
+        mock_result.items = [mock_item]
+        mock_retriever_cls.return_value.search.return_value = mock_result
+
+        # Mock member lookup
+        mock_driver = MagicMock()
+        mock_session = MagicMock()
+        member_record = MagicMock()
+        member_record.__getitem__ = lambda s, k: {
+            "cid": "c-x",
+            "members": [{"name": "Orphan", "type": "Concept"}],
+        }[k]
+        mock_member_result = MagicMock()
+        mock_member_result.__iter__ = lambda self: iter([member_record])
+        mock_session.run.return_value = mock_member_result
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_driver.session.return_value = mock_session
+
+        config = _make_community_config()
+        results = await community_search(mock_driver, config, "null metadata")
+
+        assert len(results) == 1
+        assert results[0]["score"] == 0.0

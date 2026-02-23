@@ -12,7 +12,8 @@ Updated Data Model (2026-01):
 Retrieval Patterns:
 1. Vector Search - Pure semantic similarity using embeddings
 2. Hybrid Search - Combines vector + keyword (fulltext) search
-3. Graph-Enriched - Multi-level graph traversal with:
+3. Community Search - Vector search on community summary embeddings
+4. Graph-Enriched - Multi-level graph traversal with:
    - Window expansion (NEXT_CHUNK)
    - Entity extraction with properties
    - Semantic relationship traversal (RELATED_TO, ADDRESSES, REQUIRES)
@@ -553,6 +554,194 @@ async def hybrid_search(
 
     logger.info("Hybrid search returned %d results", len(formatted))
     return formatted
+
+
+# =============================================================================
+# Community Index Check
+# =============================================================================
+
+
+def check_community_index(driver: Driver, index_name: str) -> bool:
+    """Check whether the community summary vector index exists.
+
+    Shared helper used by both ``api.py`` lifespan and ``graph.py`` dev
+    server to avoid duplicating the ``SHOW VECTOR INDEXES`` query.
+
+    Args:
+        driver: Neo4j driver instance.
+        index_name: Expected community vector index name.
+
+    Returns:
+        True if the index exists, False otherwise.
+    """
+    try:
+        with driver.session() as session:
+            index_result = session.run("SHOW VECTOR INDEXES YIELD name")
+            index_names = [r["name"] for r in index_result]
+            available = index_name in index_names
+        if available:
+            logger.info("Community index available: %s", index_name)
+        else:
+            logger.warning(
+                "Community index '%s' not found — community search disabled",
+                index_name,
+            )
+        return available
+    except Exception as e:
+        # Distinguish connection failures from general errors
+        try:
+            from neo4j.exceptions import ServiceUnavailable
+
+            if isinstance(e, ServiceUnavailable):
+                logger.error("Neo4j unavailable during community index check: %s", e)
+            else:
+                logger.exception("Failed to check community index")
+        except ImportError:
+            logger.exception("Failed to check community index")
+        return False
+
+
+# =============================================================================
+# Community Search
+# =============================================================================
+
+
+@traceable_safe(name="community_search", run_type="retriever")
+async def community_search(
+    driver: Driver,
+    config: AppConfig,
+    query: str,
+    *,
+    limit: int = 3,
+    max_members: int = 8,
+) -> list[dict[str, Any]]:
+    """Search community summaries for thematic/global context.
+
+    Performs vector similarity search on the ``community_summary_embeddings``
+    index and fetches top member entities via ``IN_COMMUNITY`` relationships.
+
+    Community results complement chunk-level retrieval by providing
+    high-level thematic context (e.g., "What are the main themes in
+    requirements management?").
+
+    Args:
+        driver: Neo4j driver instance.
+        config: Application configuration (provides embedder settings).
+        query: Natural language search query.
+        limit: Maximum number of community results.
+        max_members: Maximum member entities per community.
+
+    Returns:
+        List of community dicts with summary, score, community_id, members.
+        Empty list if the community index doesn't exist or search fails.
+    """
+    from neo4j_graphrag.retrievers import VectorRetriever
+
+    from requirements_graphrag_api.core.embeddings import VoyageAIEmbeddings
+
+    logger.info("Community search: query='%s', limit=%d", query, limit)
+
+    # Embedder + retriever construction is NOT wrapped in try/except — if
+    # VOYAGE_API_KEY is missing or config is invalid, we fail loud (design
+    # decision: no silent fallback for missing credentials).
+    embedder = VoyageAIEmbeddings(
+        model=config.embedding_model,
+        input_type="query",
+        dimensions=config.embedding_dimensions,
+        api_key=config.voyage_api_key,
+    )
+
+    community_retriever = VectorRetriever(
+        driver=driver,
+        index_name=config.community_index_name,
+        embedder=embedder,
+        return_properties=["summary", "communityId", "member_count"],
+    )
+
+    try:
+        results = await asyncio.to_thread(community_retriever.search, query_text=query, top_k=limit)
+    except Exception:
+        logger.exception("Community search failed")
+        return []
+
+    if not results.items:
+        logger.info("Community search returned 0 results")
+        return []
+
+    # Parse results and collect community IDs for member lookup
+    communities: list[dict[str, Any]] = []
+    community_ids: list[str] = []
+
+    for item in results.items:
+        # VectorRetriever returns content as string repr of dict — use
+        # ast.literal_eval (safe: only parses Python literals, same as
+        # vector_search above)
+        if isinstance(item.content, dict):
+            summary = item.content.get("summary", "")
+            community_id = item.content.get("communityId", "")
+        elif isinstance(item.content, str):
+            try:
+                parsed = ast.literal_eval(item.content)
+                summary = parsed.get("summary", "") if isinstance(parsed, dict) else item.content
+                community_id = parsed.get("communityId", "") if isinstance(parsed, dict) else ""
+            except (ValueError, SyntaxError):
+                logger.debug("Could not parse community content as dict, using raw string")
+                summary = item.content
+                community_id = ""
+        else:
+            summary = str(item.content) if item.content else ""
+            community_id = ""
+
+        score = item.metadata.get("score", 0.0) if item.metadata else 0.0
+
+        communities.append(
+            {
+                "summary": summary,
+                "score": round(float(score), 4),
+                "community_id": community_id,
+                "members": [],
+            }
+        )
+        if community_id:
+            community_ids.append(community_id)
+
+    # Fetch member entities for all communities in a single query
+    if community_ids:
+
+        def _fetch_members() -> dict[str, list[dict[str, str]]]:
+            members_by_community: dict[str, list[dict[str, str]]] = {}
+            with driver.session() as session:
+                result = session.run(
+                    """
+                    UNWIND $community_ids AS cid
+                    MATCH (e)-[:IN_COMMUNITY]->(c:Community {communityId: cid})
+                    WITH cid,
+                         [l IN labels(e) WHERE NOT l STARTS WITH '__'][0] AS type,
+                         e.display_name AS name
+                    WHERE type IS NOT NULL
+                    WITH cid, type, name
+                    ORDER BY type, name
+                    WITH cid, collect({name: name, type: type})[..$max_members] AS members
+                    RETURN cid, members
+                    """,
+                    community_ids=community_ids,
+                    max_members=max_members,
+                )
+                for record in result:
+                    members_by_community[record["cid"]] = record["members"]
+            return members_by_community
+
+        try:
+            members_lookup = await asyncio.to_thread(_fetch_members)
+            for community in communities:
+                cid = community["community_id"]
+                if cid in members_lookup:
+                    community["members"] = members_lookup[cid]
+        except Exception:
+            logger.exception("Failed to fetch community members")
+
+    logger.info("Community search returned %d results", len(communities))
+    return communities
 
 
 # =============================================================================

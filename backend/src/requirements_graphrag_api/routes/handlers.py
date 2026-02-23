@@ -299,12 +299,13 @@ async def generate_explanatory_events(
     *,
     trace_id: str | None = None,
     hybrid_retriever: HybridRetriever | None = None,
+    community_index_available: bool = False,
 ) -> AsyncIterator[str]:
     """Generate SSE events for explanatory (RAG) queries using agentic orchestrator.
 
     Uses the LangGraph-based agentic system that composes:
     - RAG subgraph: Query expansion + parallel retrieval + deduplication
-    - Research subgraph: Entity identification + conditional exploration
+    - Community search: Parallel thematic retrieval from community summaries
     - Synthesis subgraph: Draft + critique + revision loop
 
     After streaming completes, output guardrails (output_filter, hallucination)
@@ -319,6 +320,7 @@ async def generate_explanatory_events(
         guardrail_config: Guardrail configuration for output checks.
         trace_id: OTel trace ID for cross-system correlation.
         hybrid_retriever: Optional HybridRetriever for combined search.
+        community_index_available: Whether community vector index exists.
 
     Yields:
         Formatted SSE event strings.
@@ -338,6 +340,7 @@ async def generate_explanatory_events(
             retriever,
             checkpointer=checkpointer,
             hybrid_retriever=hybrid_retriever,
+            community_index_available=community_index_available,
         )
 
         # Refine query for multi-turn context (resolve pronouns, add context)
