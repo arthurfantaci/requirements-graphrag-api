@@ -19,13 +19,13 @@ Usage:
 
 from __future__ import annotations
 
-import logging
 import time
 import uuid
 from contextvars import ContextVar
 from datetime import UTC
 from typing import TYPE_CHECKING
 
+import structlog
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from requirements_graphrag_api.auth.api_key import (
@@ -51,7 +51,7 @@ if TYPE_CHECKING:
     # Type alias for the call_next function
     RequestResponseEndpoint = Callable[[Request], Response]
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 # Context variables for request-scoped state
 # These are async-safe and provide isolation between concurrent requests
@@ -246,11 +246,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if self.require_auth:
                 logger.warning(
                     "Missing API key on protected endpoint",
-                    extra={
-                        "path": request.url.path,
-                        "method": request.method,
-                        "client_ip": request.client.host if request.client else None,
-                    },
+                    path=request.url.path,
+                    method=request.method,
+                    client_ip=request.client.host if request.client else None,
                 )
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -267,11 +265,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if not validate_api_key_format(api_key):
             logger.warning(
                 "Invalid API key format",
-                extra={
-                    "path": request.url.path,
-                    "method": request.method,
-                    "client_ip": request.client.host if request.client else None,
-                },
+                path=request.url.path,
+                method=request.method,
+                client_ip=request.client.host if request.client else None,
             )
             if self.require_auth:
                 raise HTTPException(
@@ -294,11 +290,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if key_info is None:
             logger.warning(
                 "API key not found",
-                extra={
-                    "path": request.url.path,
-                    "method": request.method,
-                    "client_ip": request.client.host if request.client else None,
-                },
+                path=request.url.path,
+                method=request.method,
+                client_ip=request.client.host if request.client else None,
             )
             if self.require_auth:
                 raise HTTPException(
@@ -314,12 +308,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if not key_info.is_active:
             logger.warning(
                 "Revoked API key used",
-                extra={
-                    "path": request.url.path,
-                    "method": request.method,
-                    "key_id": key_info.key_id,
-                    "client_ip": request.client.host if request.client else None,
-                },
+                path=request.url.path,
+                method=request.method,
+                key_id=key_info.key_id,
+                client_ip=request.client.host if request.client else None,
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -335,12 +327,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if key_info.expires_at and datetime.now(UTC) > key_info.expires_at:
             logger.warning(
                 "Expired API key used",
-                extra={
-                    "path": request.url.path,
-                    "method": request.method,
-                    "key_id": key_info.key_id,
-                    "client_ip": request.client.host if request.client else None,
-                },
+                path=request.url.path,
+                method=request.method,
+                key_id=key_info.key_id,
+                client_ip=request.client.host if request.client else None,
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -353,11 +343,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Successfully authenticated
         logger.debug(
             "API key authenticated",
-            extra={
-                "key_id": key_info.key_id,
-                "tier": key_info.tier,
-                "organization": key_info.organization,
-            },
+            key_id=key_info.key_id,
+            tier=key_info.tier,
+            organization=key_info.organization,
         )
 
         return key_info

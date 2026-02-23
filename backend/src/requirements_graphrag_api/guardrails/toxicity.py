@@ -7,14 +7,15 @@ for a single-user authenticated API.
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from enum import StrEnum
 from functools import lru_cache
 
+import structlog
+
 from requirements_graphrag_api.observability import traceable_safe
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 class ToxicityCategory(StrEnum):

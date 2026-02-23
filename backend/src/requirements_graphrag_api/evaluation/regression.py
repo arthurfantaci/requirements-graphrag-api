@@ -14,13 +14,14 @@ Usage:
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+import structlog
+
 from requirements_graphrag_api.evaluation.constants import REGRESSION_THRESHOLDS
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 @dataclass

@@ -11,15 +11,14 @@ Usage:
 
 from __future__ import annotations
 
-import logging
-
+import structlog
 from neo4j import GraphDatabase
 
 from requirements_graphrag_api.config import get_config
 from requirements_graphrag_api.core.agentic.orchestrator import create_orchestrator_graph
 from requirements_graphrag_api.core.retrieval import create_vector_retriever
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 # Load config from environment (.env is auto-loaded by config module)
 config = get_config()

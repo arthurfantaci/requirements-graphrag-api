@@ -20,13 +20,13 @@ Usage:
 
 from __future__ import annotations
 
-import logging
 import os
 import re
 from dataclasses import asdict, is_dataclass
 from functools import wraps
 from typing import TYPE_CHECKING, Any, Final
 
+import structlog
 from langsmith import traceable
 
 if TYPE_CHECKING:
@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
     from requirements_graphrag_api.config import AppConfig
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 # Patterns for sensitive field names (case-insensitive)
 SENSITIVE_FIELD_PATTERNS: Final[tuple[str, ...]] = (
