@@ -70,6 +70,8 @@ def client(
     mock_app.state.config = mock_config
     mock_app.state.driver = MagicMock()
     mock_app.state.retriever = MagicMock()
+    mock_app.state.hybrid_retriever = None
+    mock_app.state.community_index_available = False
     mock_app.state.guardrail_config = mock_guardrail_config
     return TestClient(mock_app)
 

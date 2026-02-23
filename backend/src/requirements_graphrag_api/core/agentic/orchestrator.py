@@ -1,9 +1,10 @@
-"""Main orchestrator graph composing RAG and Synthesis subgraphs.
+"""Main orchestrator graph composing RAG, Community, and Synthesis subgraphs.
 
 This module defines the top-level StateGraph that:
 1. Analyzes query complexity and routes appropriately
-2. Composes RAG and Synthesis subgraphs
-3. Integrates with PostgresSaver for checkpoint persistence
+2. Runs RAG retrieval and community search in parallel
+3. Composes results into a unified context for synthesis
+4. Integrates with PostgresSaver for checkpoint persistence
 
 Flow:
     START -> initialize -> run_rag -> [quality gate] -> synthesis -> END
@@ -22,6 +23,7 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any, Literal
 
 import structlog
@@ -60,6 +62,7 @@ def create_orchestrator_graph(
     *,
     checkpointer: AsyncPostgresSaver | None = None,
     hybrid_retriever: HybridRetriever | None = None,
+    community_index_available: bool = False,
 ) -> StateGraph:
     """Create the main orchestrator graph composing all subgraphs.
 
@@ -69,6 +72,7 @@ def create_orchestrator_graph(
         retriever: Vector retriever instance.
         checkpointer: Optional PostgresSaver for conversation persistence.
         hybrid_retriever: Optional hybrid retriever for combined vector+keyword search.
+        community_index_available: Whether the community vector index exists.
 
     Returns:
         Compiled orchestrator graph.
@@ -114,10 +118,14 @@ def create_orchestrator_graph(
     # Node: run_rag
     # -------------------------------------------------------------------------
     async def run_rag(state: OrchestratorState) -> dict[str, Any]:
-        """Execute the RAG subgraph for retrieval.
+        """Execute the RAG subgraph and community search in parallel.
 
-        Invokes the RAG subgraph and extracts results.
+        Runs chunk-level retrieval (RAG subgraph) and community-level
+        retrieval concurrently, then merges results into a unified
+        context string for synthesis.
         """
+        from requirements_graphrag_api.core.retrieval import community_search
+
         query = state["query"]
         logger.info("Running RAG subgraph for: %s", query[:50])
 
@@ -125,28 +133,44 @@ def create_orchestrator_graph(
         rag_input: RAGState = {"query": query}
 
         try:
-            # Invoke RAG subgraph
-            rag_result = await rag_subgraph.ainvoke(rag_input)
+            # Run RAG subgraph and community search in parallel
+            async def _community() -> list[dict[str, Any]]:
+                if not community_index_available:
+                    return []
+                try:
+                    return await community_search(driver, config, query)
+                except Exception:
+                    logger.exception("Community search failed in orchestrator")
+                    return []
+
+            rag_result, community_results = await asyncio.gather(
+                rag_subgraph.ainvoke(rag_input),
+                _community(),
+            )
 
             # Extract results
             ranked_results = rag_result.get("ranked_results", [])
             expanded_queries = rag_result.get("expanded_queries", [])
             quality_pass = rag_result.get("quality_pass", True)
 
-            # Build hybrid context string (inline entities + KG section)
+            # Build hybrid context string (inline entities + KG + community)
             normalized = []
             for doc in ranked_results[:10]:
                 if isinstance(doc, RetrievedDocument):
                     normalized.append(NormalizedDocument.from_retrieved_document(doc))
                 elif isinstance(doc, dict):
                     normalized.append(NormalizedDocument.from_raw_result(doc))
-            formatted = format_context(normalized)
+            formatted = format_context(
+                normalized,
+                community_results=community_results,
+            )
             context = formatted.context
 
             logger.info(
-                "RAG complete: %d results, %d queries, quality_pass=%s",
+                "RAG complete: %d results, %d queries, %d communities, quality_pass=%s",
                 len(ranked_results),
                 len(expanded_queries),
+                len(community_results),
                 quality_pass,
             )
 

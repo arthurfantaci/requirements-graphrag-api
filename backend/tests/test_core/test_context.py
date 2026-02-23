@@ -404,3 +404,143 @@ class TestFormatContext:
         result = format_context(docs)
         assert "## Knowledge Graph Context" not in result.context
         assert "[Source 1: S1]" in result.context
+
+
+# =============================================================================
+# Community Context tests (Phase 5b)
+# =============================================================================
+
+
+class TestFormatContextCommunity:
+    """Tests for format_context with community_results parameter."""
+
+    def test_community_section_appears_in_context(self) -> None:
+        """Community results produce a ## Community Context section."""
+        docs = [NormalizedDocument(content="Chunk text", source="S1")]
+        community_results = [
+            {
+                "summary": "Safety standards and compliance cluster",
+                "score": 0.92,
+                "community_id": "c-1",
+                "members": [
+                    {"name": "ISO 26262", "type": "Standard"},
+                    {"name": "FMEA", "type": "Concept"},
+                ],
+            },
+        ]
+        result = format_context(docs, community_results=community_results)
+
+        assert "## Community Context" in result.context
+        assert "Thematic summaries from community detection analysis" in result.context
+        assert "Safety standards and compliance cluster" in result.context
+        assert "Key entities: ISO 26262, FMEA" in result.context
+
+    def test_no_community_section_when_none(self) -> None:
+        """No Community Context section when community_results is None."""
+        docs = [NormalizedDocument(content="Chunk text", source="S1")]
+        result = format_context(docs, community_results=None)
+
+        assert "## Community Context" not in result.context
+
+    def test_no_community_section_when_empty_list(self) -> None:
+        """No Community Context section when community_results is empty list."""
+        docs = [NormalizedDocument(content="Chunk text", source="S1")]
+        result = format_context(docs, community_results=[])
+
+        assert "## Community Context" not in result.context
+
+    def test_community_with_no_members(self) -> None:
+        """Community result with empty members omits Key entities line."""
+        docs = [NormalizedDocument(content="Chunk", source="S1")]
+        community_results = [
+            {
+                "summary": "Orphaned community summary",
+                "members": [],
+            },
+        ]
+        result = format_context(docs, community_results=community_results)
+
+        assert "Orphaned community summary" in result.context
+        assert "Key entities:" not in result.context
+
+    def test_community_skips_empty_summaries(self) -> None:
+        """Communities with empty summary string are skipped."""
+        docs = [NormalizedDocument(content="Chunk", source="S1")]
+        community_results = [
+            {"summary": "", "members": [{"name": "A", "type": "Concept"}]},
+            {"summary": "Valid summary", "members": []},
+        ]
+        result = format_context(docs, community_results=community_results)
+
+        assert "## Community Context" in result.context
+        assert "Valid summary" in result.context
+        # The empty-summary community should not appear — only one bullet
+        community_section = result.context.split("## Community Context")[1]
+        assert community_section.count("\n- ") == 1
+
+    def test_multiple_communities(self) -> None:
+        """Multiple community results each get their own bullet."""
+        docs = [NormalizedDocument(content="Chunk", source="S1")]
+        community_results = [
+            {
+                "summary": "Traceability and V&V theme",
+                "members": [{"name": "Traceability", "type": "Concept"}],
+            },
+            {
+                "summary": "Safety compliance theme",
+                "members": [{"name": "ISO 26262", "type": "Standard"}],
+            },
+        ]
+        result = format_context(docs, community_results=community_results)
+
+        assert "Traceability and V&V theme" in result.context
+        assert "Safety compliance theme" in result.context
+        assert "Key entities: Traceability" in result.context
+        assert "Key entities: ISO 26262" in result.context
+
+    def test_community_members_capped_at_8(self) -> None:
+        """Member names displayed are capped at 8 per community."""
+        docs = [NormalizedDocument(content="Chunk", source="S1")]
+        members = [{"name": f"Entity_{i}", "type": "Concept"} for i in range(12)]
+        community_results = [
+            {"summary": "Large community", "members": members},
+        ]
+        result = format_context(docs, community_results=community_results)
+
+        # format_context uses member_names[:8]
+        assert "Entity_7" in result.context
+        assert "Entity_8" not in result.context
+
+    def test_community_combined_with_kg_section(self) -> None:
+        """Community Context appears after KG Context section."""
+        docs = [
+            NormalizedDocument(
+                content="Chunk",
+                source="S1",
+                glossary_definitions=[
+                    {"term": "ALM", "definition": "Application Lifecycle Management"},
+                ],
+            ),
+        ]
+        community_results = [
+            {"summary": "ALM community theme", "members": []},
+        ]
+        result = format_context(docs, community_results=community_results)
+
+        kg_pos = result.context.index("## Knowledge Graph Context")
+        community_pos = result.context.index("## Community Context")
+        assert community_pos > kg_pos
+
+    def test_community_only_no_chunks(self) -> None:
+        """Community results with zero chunks should NOT return 'No relevant context found'."""
+        community_results = [
+            {
+                "summary": "Requirements traceability themes across domains",
+                "members": [{"name": "Traceability", "type": "Concept"}],
+            },
+        ]
+        result = format_context([], community_results=community_results)
+
+        assert "No relevant context found" not in result.context
+        assert "## Community Context" in result.context
+        assert "Requirements traceability themes across domains" in result.context

@@ -132,6 +132,8 @@ class AppConfig:
     # HybridRetriever settings (Phase 5a)
     fulltext_index_name: str = "chunk_text_fulltext"
     use_legacy_hybrid_search: bool = False
+    # Community retrieval settings (Phase 5b)
+    community_index_name: str = "community_summary_embeddings"
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
@@ -404,4 +406,5 @@ def get_config() -> AppConfig:
         fulltext_index_name=os.getenv("FULLTEXT_INDEX_NAME", "chunk_text_fulltext"),
         use_legacy_hybrid_search=os.getenv("USE_LEGACY_HYBRID_SEARCH", "false").lower()
         in ("true", "1", "yes"),
+        community_index_name=os.getenv("COMMUNITY_INDEX_NAME", "community_summary_embeddings"),
     )

@@ -40,6 +40,7 @@ from requirements_graphrag_api.auth import (
 )
 from requirements_graphrag_api.config import get_auth_config, get_config, get_guardrail_config
 from requirements_graphrag_api.core.retrieval import (
+    check_community_index,
     create_hybrid_retriever,
     create_vector_retriever,
 )
@@ -161,6 +162,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         config.fulltext_index_name,
     )
 
+    # Check for community summary embeddings index (Phase 5b)
+    community_index_available = check_community_index(driver, config.community_index_name)
+
     # Initialize guardrails
     guardrail_config = get_guardrail_config()
     limiter = get_rate_limiter()
@@ -191,6 +195,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.driver = driver
     app.state.retriever = retriever
     app.state.hybrid_retriever = hybrid_retriever
+    app.state.community_index_available = community_index_available
     app.state.guardrail_config = guardrail_config
     app.state.limiter = limiter
     app.state.auth_config = auth_config
