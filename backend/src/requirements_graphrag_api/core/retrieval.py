@@ -39,6 +39,28 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger()
 
+# Minimum meaningful content length for chunk filtering (Issue #202)
+_MIN_CONTENT_LENGTH = 20
+
+
+def _is_meaningful_content(content: str) -> bool:
+    """Check if chunk content has enough non-whitespace text to be useful.
+
+    Filters degenerate chunks like bare markdown headings ("#### Traceable")
+    that score highly in vector search but contain no information.
+
+    Args:
+        content: Chunk text content.
+
+    Returns:
+        True if content has enough meaningful text.
+    """
+    stripped = content.strip()
+    # Remove markdown heading markers
+    if stripped.startswith("#"):
+        stripped = stripped.lstrip("#").strip()
+    return len(stripped) >= _MIN_CONTENT_LENGTH
+
 
 @dataclass(frozen=True, slots=True)
 class GraphEnrichmentOptions:
@@ -213,6 +235,9 @@ async def vector_search(
             }
         )
 
+    # Filter degenerate chunks (bare headings without content — Issue #202)
+    formatted = [r for r in formatted if _is_meaningful_content(r["content"])]
+
     logger.info("Vector search returned %d results", len(formatted))
     return formatted
 
@@ -289,6 +314,9 @@ async def hybrid_search(
             return []
 
     keyword_results = await asyncio.to_thread(_keyword_search)
+
+    # Filter degenerate chunks from keyword results (Issue #202)
+    keyword_results = [r for r in keyword_results if _is_meaningful_content(r.get("content", ""))]
 
     # Merge and deduplicate results
     seen_ids = set()
@@ -483,8 +511,7 @@ def _enrich_with_semantic_relationships(
             f"""
             MATCH (entity)-[:MENTIONED_IN]->(c:Chunk)
             WHERE elementId(c) IN $chunk_ids
-            OPTIONAL MATCH (entity)-[r:{rel_pattern}]->(related)
-            WHERE related IS NOT NULL
+            MATCH (entity)-[r:{rel_pattern}]->(related)
             WITH elementId(c) AS chunk_id,
                  collect(DISTINCT {{
                      from_entity: entity.display_name,
@@ -726,12 +753,15 @@ def _enrich_with_definitions(
 def _assemble_enriched_result(
     result: dict[str, Any],
     enrichment_data: dict[str, dict[str, Any]],
+    seen_relationships: set[tuple[str, str, str]] | None = None,
 ) -> dict[str, Any]:
     """Assemble enrichment data into a single result dictionary.
 
     Args:
         result: Base search result with content, score, metadata.
         enrichment_data: Dictionary containing all enrichment lookups.
+        seen_relationships: Optional set tracking relationship keys across results
+            for deduplication (Issue #202). Mutated in-place.
 
     Returns:
         Enriched result with all graph context attached.
@@ -747,9 +777,23 @@ def _assemble_enriched_result(
     # Level 2: Entities with properties
     result["entities"] = enrichment_data["entities"].get(chunk_id, [])
 
-    # Level 3: Semantic relationships
+    # Level 3: Semantic relationships (deduplicate across results — Issue #202)
     if chunk_id in enrichment_data["relationships"]:
-        result["semantic_relationships"] = enrichment_data["relationships"][chunk_id]
+        rels = enrichment_data["relationships"][chunk_id]
+        if seen_relationships is not None:
+            deduped = []
+            for rel in rels:
+                key = (
+                    rel.get("from_entity", ""),
+                    rel.get("relationship", ""),
+                    rel.get("to_entity", ""),
+                )
+                if key not in seen_relationships:
+                    seen_relationships.add(key)
+                    deduped.append(rel)
+            rels = deduped
+        if rels:
+            result["semantic_relationships"] = rels
 
     # Level 4: Domain context
     if chunk_id in enrichment_data["industry"]:
@@ -901,7 +945,11 @@ async def graph_enriched_search(
         "definitions": definitions_by_chunk,
     }
 
-    enriched = [_assemble_enriched_result(result, enrichment_data) for result in base_results]
+    # Track seen relationships across results for deduplication (Issue #202)
+    seen_rels: set[tuple[str, str, str]] = set()
+    enriched = [
+        _assemble_enriched_result(result, enrichment_data, seen_rels) for result in base_results
+    ]
 
     # Log enrichment summary
     enrichment_stats = {

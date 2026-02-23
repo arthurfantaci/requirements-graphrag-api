@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from pydantic import BaseModel, ConfigDict
 
 from requirements_graphrag_api.core import (
     get_standards_by_industry,
@@ -23,7 +24,67 @@ if TYPE_CHECKING:
 router = APIRouter()
 
 
-@router.get("/standards/{name}")
+class StandardRelatedEntity(BaseModel):
+    """Entity related to a standard."""
+
+    name: str | None = None
+    display_name: str | None = None
+    relationship: str | None = None
+    labels: list[str] = []
+
+
+class StandardMention(BaseModel):
+    """Article that mentions a standard."""
+
+    title: str | None = None
+    url: str | None = None
+
+
+class StandardDetailResponse(BaseModel):
+    """Response from single standard lookup."""
+
+    model_config = ConfigDict(extra="allow")
+
+    name: str
+    display_name: str | None = None
+    organization: str | None = None
+    domain: str | None = None
+    labels: list[str] = []
+    related: list[StandardRelatedEntity] = []
+    mentioned_in: list[StandardMention] = []
+
+
+class StandardSummary(BaseModel):
+    """Summary of a standard."""
+
+    model_config = ConfigDict(extra="allow")
+
+    name: str
+    display_name: str | None = None
+    organization: str | None = None
+    domain: str | None = None
+
+
+class StandardListResponse(BaseModel):
+    """Response from standard listing/search."""
+
+    model_config = ConfigDict(extra="allow")
+
+    standards: list[StandardSummary]
+    total: int
+
+
+class IndustryStandardsResponse(BaseModel):
+    """Response from industry-specific standards lookup."""
+
+    model_config = ConfigDict(extra="allow")
+
+    industry: str
+    standards: list[StandardSummary]
+    total: int
+
+
+@router.get("/standards/{name}", response_model=StandardDetailResponse)
 async def get_standard(
     request: Request,
     name: str,
@@ -49,7 +110,7 @@ async def get_standard(
     return result
 
 
-@router.get("/standards")
+@router.get("/standards", response_model=StandardListResponse)
 async def list_standards(
     request: Request,
     q: str | None = Query(default=None, description="Search query"),
@@ -85,7 +146,7 @@ async def list_standards(
     }
 
 
-@router.get("/standards/industry/{industry}")
+@router.get("/standards/industry/{industry}", response_model=IndustryStandardsResponse)
 async def get_by_industry(
     request: Request,
     industry: str,

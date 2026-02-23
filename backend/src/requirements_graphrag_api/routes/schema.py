@@ -10,6 +10,7 @@ import asyncio
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Request
+from pydantic import BaseModel, ConfigDict
 
 from requirements_graphrag_api.core import explore_entity
 
@@ -19,7 +20,61 @@ if TYPE_CHECKING:
 router = APIRouter()
 
 
-@router.get("/schema")
+class NodeLabelCount(BaseModel):
+    """Node label with instance count."""
+
+    label: str
+    count: int
+
+
+class RelationshipTypeCount(BaseModel):
+    """Relationship type with instance count."""
+
+    type: str
+    count: int
+
+
+class SchemaResponse(BaseModel):
+    """Response from schema endpoint."""
+
+    model_config = ConfigDict(extra="allow")
+
+    node_labels: list[NodeLabelCount]
+    relationship_types: list[RelationshipTypeCount]
+
+
+class RelatedEntity(BaseModel):
+    """Entity related to a explored entity."""
+
+    name: str | None = None
+    display_name: str | None = None
+    relationship: str | None = None
+    labels: list[str] = []
+
+
+class ArticleMention(BaseModel):
+    """Article where an entity is mentioned."""
+
+    article: str | None = None
+    url: str | None = None
+
+
+class EntityDetailResponse(BaseModel):
+    """Response from entity detail endpoint."""
+
+    model_config = ConfigDict(extra="allow")
+
+    name: str
+    found: bool
+    display_name: str | None = None
+    labels: list[str] = []
+    properties: dict[str, Any] = {}
+    related: list[RelatedEntity] = []
+    mentioned_in: list[ArticleMention] = []
+    message: str | None = None
+
+
+@router.get("/schema", response_model=SchemaResponse)
 async def get_schema(request: Request) -> dict[str, Any]:
     """Get the knowledge graph schema.
 
@@ -66,7 +121,7 @@ async def get_schema(request: Request) -> dict[str, Any]:
     }
 
 
-@router.get("/schema/entity/{name}")
+@router.get("/schema/entity/{name}", response_model=EntityDetailResponse)
 async def get_entity(
     request: Request,
     name: str,

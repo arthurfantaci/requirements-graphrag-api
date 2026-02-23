@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from requirements_graphrag_api.core import (
     graph_enriched_search,
@@ -78,7 +78,7 @@ class HybridSearchRequest(SearchRequest):
 class EntityInfo(BaseModel):
     """Entity information from graph enrichment."""
 
-    name: str | None = None
+    name: str
     type: str | None = None
     definition: str | None = None
     benefit: str | None = None
@@ -96,11 +96,41 @@ class GlossaryDefinition(BaseModel):
 class SemanticRelationship(BaseModel):
     """Semantic relationship between entities."""
 
-    from_entity: str | None = None
-    relationship: str | None = None
+    from_entity: str
+    relationship: str
     to_entity: str | None = None
     to_type: str | None = None
     to_definition: str | None = None
+
+
+class ChunkMetadata(BaseModel):
+    """Metadata for a search result chunk."""
+
+    model_config = ConfigDict(extra="allow")
+
+    title: str | None = None
+    url: str | None = None
+    article_id: str | None = None
+    chapter: str | None = None
+    chunk_id: str | None = None
+    chunk_index: int | None = None
+
+
+class RelatedArticle(BaseModel):
+    """Cross-referenced article from graph enrichment."""
+
+    title: str | None = None
+    url: str | None = None
+    chapter: str | None = None
+
+
+class IndustryStandardInfo(BaseModel):
+    """Industry standard information from graph enrichment."""
+
+    industry: str | None = None
+    standard: str | None = None
+    organization: str | None = None
+    standard_definition: str | None = None
 
 
 class ContextWindow(BaseModel):
@@ -146,7 +176,7 @@ class SearchResult(BaseModel):
 
     content: str
     score: float
-    metadata: dict[str, Any]
+    metadata: ChunkMetadata
     # Level 1: Window context
     context_window: ContextWindow | None = None
     # Level 2: Entities with properties
@@ -154,9 +184,9 @@ class SearchResult(BaseModel):
     # Level 3: Semantic relationships
     semantic_relationships: list[SemanticRelationship] = []
     # Level 4: Domain context
-    industry_standards: list[dict[str, Any]] = []
+    industry_standards: list[IndustryStandardInfo] = []
     media: MediaContent | None = None
-    related_articles: list[dict[str, Any]] = []
+    related_articles: list[RelatedArticle] = []
     glossary_definitions: list[GlossaryDefinition] = []
 
 

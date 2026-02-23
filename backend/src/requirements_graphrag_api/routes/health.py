@@ -10,6 +10,7 @@ import asyncio
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Request
+from pydantic import BaseModel, ConfigDict
 
 if TYPE_CHECKING:
     from neo4j import Driver
@@ -17,7 +18,17 @@ if TYPE_CHECKING:
 router = APIRouter()
 
 
-@router.get("/health")
+class HealthResponse(BaseModel):
+    """Response from health check endpoint."""
+
+    model_config = ConfigDict(extra="allow")
+
+    status: str
+    neo4j: str
+    version: str
+
+
+@router.get("/health", response_model=HealthResponse)
 async def health_check(request: Request) -> dict[str, Any]:
     """Check the health of the API and its dependencies.
 
