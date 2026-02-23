@@ -6,9 +6,7 @@
 - `uv lock` must run before push (`--frozen` in CI)
 
 ## Implementation Plan
-- **Authoritative plan**: `~/Projects/graphrag-api-db/docs/best-practices-plan.md` (vetted v2)
-- **Tracking issue**: #212 (best practices phases 2-5b) — **ALL PHASES COMPLETE**
-- **Phase handoffs**: See `memory/phase-handoffs.md` for historical context
+- **Best practices plan** (`~/Projects/graphrag-api-db/docs/best-practices-plan.md`): ALL PHASES COMPLETE (#212 closed)
 
 ## Conventions
 - Conventional commits: `fix:`, `feat:`, `refactor:`, `docs:`
@@ -42,7 +40,7 @@
 - Degenerate chunk filtering: `_is_meaningful_content()` in `core/retrieval.py` (≥20 non-whitespace chars)
 
 ## Testing
-- 837+ tests, run with `uv run pytest --tb=short` from `backend/`
+- 840+ tests, run with `uv run pytest --tb=short` from `backend/`
 - Autouse fixtures (conftest.py): `_disable_langsmith_tracing`, `_reset_cost_tracker`, `_clear_singleton_caches`, `_reset_structlog`
 - Async fixture gotcha: prefer sync fixtures with direct dict/object population over `await` calls
 - Lazy import mocking: patch at source module (`neo4j_graphrag.retrievers.VectorRetriever`) not import site
@@ -50,11 +48,18 @@
 ## Community Retrieval (Phase 5b)
 - `community_search()` in `core/retrieval.py` — VectorRetriever on `community_summary_embeddings` index
 - Always-parallel: runs via `asyncio.gather` alongside RAG subgraph in orchestrator's `run_rag` node
-- Graceful degradation: `app.state.community_index_available` set at startup via `SHOW VECTOR INDEXES`
+- Graceful degradation: `app.state.community_index_available` set at startup via `check_community_index()` helper
+- `check_community_index()` shared helper in `core/retrieval.py` — used by both `api.py` and `graph.py`
 - `community_index_available` threaded through call chain (api.py → chat.py → handlers.py → orchestrator.py)
 - Context formatting: `## Community Context` section appended after `## Knowledge Graph Context` in `format_context()`
 - Config: `COMMUNITY_INDEX_NAME` env var (default: `community_summary_embeddings`)
 - Test fixtures for routes must set `app.state.community_index_available` (even if `False`)
+
+## Error Handling Patterns
+- **Fail loud on config errors**: embedder/retriever construction OUTSIDE try/except — missing credentials crash at startup, not silently at runtime
+- **Wrap only runtime calls**: try/except around search execution, not object initialization
+- **Use `logger.exception`** (not `logger.warning`) for caught exceptions — preserves traceback + triggers Sentry
+- **Orchestrator error boundaries**: async wrapper functions (e.g., `_community()`) catch exceptions and return safe defaults (`[]`)
 
 ## Verification Before PR
 ```bash
