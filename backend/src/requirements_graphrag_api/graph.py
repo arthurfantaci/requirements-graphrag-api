@@ -16,7 +16,10 @@ from neo4j import GraphDatabase
 
 from requirements_graphrag_api.config import get_config
 from requirements_graphrag_api.core.agentic.orchestrator import create_orchestrator_graph
-from requirements_graphrag_api.core.retrieval import create_vector_retriever
+from requirements_graphrag_api.core.retrieval import (
+    create_hybrid_retriever,
+    create_vector_retriever,
+)
 
 logger = structlog.get_logger()
 
@@ -33,10 +36,11 @@ driver = GraphDatabase.driver(
     max_connection_lifetime=config.neo4j_max_connection_lifetime,
 )
 
-# Initialize VectorRetriever
+# Initialize retrievers
 retriever = create_vector_retriever(driver, config)
+hybrid_retriever = create_hybrid_retriever(driver, config)
 
 # Compile the orchestrator graph (no checkpointer for dev server)
-graph = create_orchestrator_graph(config, driver, retriever)
+graph = create_orchestrator_graph(config, driver, retriever, hybrid_retriever=hybrid_retriever)
 
 logger.info("LangGraph dev server: orchestrator graph compiled")

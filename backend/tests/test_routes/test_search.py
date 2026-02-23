@@ -60,8 +60,10 @@ def client(
     """Create a test client with mocked dependencies."""
     mock_app.state.driver = mock_driver
     mock_app.state.retriever = mock_retriever
+    mock_app.state.hybrid_retriever = None
     mock_app.state.guardrail_config = mock_guardrail_config
     mock_app.state.config = MagicMock()
+    mock_app.state.config.use_legacy_hybrid_search = False
     return TestClient(mock_app)
 
 

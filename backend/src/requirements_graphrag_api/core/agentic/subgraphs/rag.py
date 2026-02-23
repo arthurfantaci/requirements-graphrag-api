@@ -32,7 +32,7 @@ from requirements_graphrag_api.prompts import PromptName, get_prompt
 
 if TYPE_CHECKING:
     from neo4j import Driver
-    from neo4j_graphrag.retrievers import VectorRetriever
+    from neo4j_graphrag.retrievers import HybridRetriever, VectorRetriever
 
     from requirements_graphrag_api.config import AppConfig
 
@@ -48,6 +48,7 @@ def create_rag_subgraph(
     config: AppConfig,
     driver: Driver,
     retriever: VectorRetriever,
+    hybrid_retriever: HybridRetriever | None = None,
 ) -> StateGraph:
     """Create the RAG retrieval subgraph.
 
@@ -55,6 +56,7 @@ def create_rag_subgraph(
         config: Application configuration.
         driver: Neo4j driver instance.
         retriever: Vector retriever instance.
+        hybrid_retriever: Optional hybrid retriever for combined vector+keyword search.
 
     Returns:
         Compiled RAG subgraph.
@@ -138,6 +140,8 @@ def create_rag_subgraph(
                     driver=driver,
                     query=q,
                     limit=MAX_RESULTS_PER_QUERY,
+                    hybrid_retriever=hybrid_retriever,
+                    use_legacy=config.use_legacy_hybrid_search,
                 )
                 # Tag results with source query
                 for r in results:

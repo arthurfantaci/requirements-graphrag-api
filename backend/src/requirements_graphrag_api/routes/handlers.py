@@ -43,7 +43,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
     from neo4j import Driver
-    from neo4j_graphrag.retrievers import VectorRetriever
+    from neo4j_graphrag.retrievers import HybridRetriever, VectorRetriever
 
     from requirements_graphrag_api.config import AppConfig, GuardrailConfig
     from requirements_graphrag_api.routes.chat import ChatMessage, ChatRequest
@@ -298,6 +298,7 @@ async def generate_explanatory_events(
     guardrail_config: GuardrailConfig | None = None,
     *,
     trace_id: str | None = None,
+    hybrid_retriever: HybridRetriever | None = None,
 ) -> AsyncIterator[str]:
     """Generate SSE events for explanatory (RAG) queries using agentic orchestrator.
 
@@ -317,6 +318,7 @@ async def generate_explanatory_events(
         safe_message: Sanitized message with PII redacted.
         guardrail_config: Guardrail configuration for output checks.
         trace_id: OTel trace ID for cross-system correlation.
+        hybrid_retriever: Optional HybridRetriever for combined search.
 
     Yields:
         Formatted SSE event strings.
@@ -330,7 +332,13 @@ async def generate_explanatory_events(
             logger.warning("CHECKPOINT_DATABASE_URL not set — chat memory disabled")
 
         # Create the orchestrator graph with persistence
-        graph = create_orchestrator_graph(config, driver, retriever, checkpointer=checkpointer)
+        graph = create_orchestrator_graph(
+            config,
+            driver,
+            retriever,
+            checkpointer=checkpointer,
+            hybrid_retriever=hybrid_retriever,
+        )
 
         # Refine query for multi-turn context (resolve pronouns, add context)
         refined_query = safe_message

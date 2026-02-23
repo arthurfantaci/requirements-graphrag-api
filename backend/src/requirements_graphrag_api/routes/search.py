@@ -390,6 +390,8 @@ async def hybrid_search_endpoint(
         safe_query,
         limit=body.limit,
         keyword_weight=body.keyword_weight,
+        hybrid_retriever=request.app.state.hybrid_retriever,
+        use_legacy=config.use_legacy_hybrid_search,
     )
 
     return {
@@ -431,6 +433,8 @@ async def graph_search_endpoint(
         driver,
         safe_query,
         limit=body.limit,
+        hybrid_retriever=request.app.state.hybrid_retriever,
+        use_legacy=config.use_legacy_hybrid_search,
     )
 
     return {

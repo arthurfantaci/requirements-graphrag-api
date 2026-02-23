@@ -27,6 +27,13 @@
 - Structured data as keyword args (`logger.warning("msg", key=value)`) — NOT `extra={}`
 - Test log capture: `structlog.testing.capture_logs()` (not `caplog`) for all modules
 
+## Response Models (Phase 4)
+- All 15 endpoints have typed Pydantic `response_model` — do NOT add untyped endpoints
+- New response models use `ConfigDict(extra="allow")` — tighten later
+- Search models: `EntityInfo.name` required, `SemanticRelationship.from_entity`/`.relationship` required
+- Typed sub-models: `ChunkMetadata`, `RelatedArticle`, `IndustryStandardInfo` (not `dict[str, Any]`)
+- Degenerate chunk filtering: `_is_meaningful_content()` in `core/retrieval.py` (≥20 non-whitespace chars)
+
 ## Testing
 - 813+ tests, run with `uv run pytest --tb=short` from `backend/`
 - Autouse fixtures (conftest.py): `_disable_langsmith_tracing`, `_reset_cost_tracker`, `_clear_singleton_caches`, `_reset_structlog`

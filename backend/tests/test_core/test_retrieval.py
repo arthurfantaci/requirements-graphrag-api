@@ -16,6 +16,8 @@ import pytest
 from requirements_graphrag_api.core.retrieval import (
     GraphEnrichmentOptions,
     _enrich_with_media,
+    _hybrid_result_formatter,
+    create_hybrid_retriever,
     create_vector_retriever,
     explore_entity,
     graph_enriched_search,
@@ -585,3 +587,302 @@ class TestCreateVectorRetriever:
             return_properties=["text", "index"],
         )
         assert result == mock_retriever_cls.return_value
+
+
+# =============================================================================
+# Hybrid Result Formatter Tests
+# =============================================================================
+
+
+class TestHybridResultFormatter:
+    """Tests for _hybrid_result_formatter function."""
+
+    def test_formats_dict_node_correctly(self) -> None:
+        """Test formatting when node is a dict (return_properties set)."""
+        record = MagicMock()
+        record.get = lambda k, d=None: {
+            "node": {"text": "chunk text content", "index": 3},
+            "score": 0.87,
+            "elementId": "4:abc:999",
+        }.get(k, d)
+
+        result = _hybrid_result_formatter(record)
+
+        assert result.content == "chunk text content"
+        assert result.metadata["score"] == 0.87
+        assert result.metadata["id"] == "4:abc:999"
+        assert result.metadata["index"] == 3
+
+    def test_handles_non_dict_node(self) -> None:
+        """Test fallback when node is not a dict."""
+        record = MagicMock()
+        record.get = lambda k, d=None: {
+            "node": "not-a-dict",
+            "score": 0.5,
+            "elementId": "4:abc:111",
+        }.get(k, d)
+
+        result = _hybrid_result_formatter(record)
+
+        assert result.content == ""
+        assert result.metadata["score"] == 0.5
+        assert result.metadata["id"] == "4:abc:111"
+        assert result.metadata["index"] is None
+
+    def test_handles_missing_fields(self) -> None:
+        """Test with missing optional fields."""
+        record = MagicMock()
+        record.get = lambda k, d=None: {"node": {"text": "content"}}.get(k, d)
+
+        result = _hybrid_result_formatter(record)
+
+        assert result.content == "content"
+        assert result.metadata["score"] == 0.0
+        assert result.metadata["id"] is None
+
+
+# =============================================================================
+# Create Hybrid Retriever Tests
+# =============================================================================
+
+
+class TestCreateHybridRetriever:
+    """Tests for create_hybrid_retriever factory function."""
+
+    @patch("requirements_graphrag_api.core.embeddings.VoyageAIEmbeddings")
+    @patch("neo4j_graphrag.retrievers.HybridRetriever")
+    def test_creates_hybrid_retriever_with_correct_params(
+        self, mock_hybrid_cls: MagicMock, mock_voyage_cls: MagicMock, mock_config: MagicMock
+    ) -> None:
+        """Test that HybridRetriever is constructed with correct parameters."""
+        mock_driver = MagicMock()
+        mock_embedder = MagicMock()
+        mock_voyage_cls.return_value = mock_embedder
+
+        result = create_hybrid_retriever(mock_driver, mock_config)
+
+        mock_voyage_cls.assert_called_once_with(
+            model=mock_config.embedding_model,
+            input_type="query",
+            dimensions=mock_config.embedding_dimensions,
+            api_key=mock_config.voyage_api_key,
+        )
+        mock_hybrid_cls.assert_called_once_with(
+            driver=mock_driver,
+            vector_index_name=mock_config.vector_index_name,
+            fulltext_index_name=mock_config.fulltext_index_name,
+            embedder=mock_embedder,
+            return_properties=["text", "index"],
+            result_formatter=_hybrid_result_formatter,
+        )
+        assert result == mock_hybrid_cls.return_value
+
+
+# =============================================================================
+# Hybrid Search with HybridRetriever Tests
+# =============================================================================
+
+
+class TestHybridSearchWithRetriever:
+    """Tests for hybrid_search using the new HybridRetriever path."""
+
+    @pytest.mark.asyncio
+    async def test_uses_hybrid_retriever_when_provided(self) -> None:
+        """Test that new path is used when hybrid_retriever is given."""
+        mock_vector_retriever = MagicMock()
+        mock_hybrid_retriever = MagicMock()
+
+        # Simulate HybridRetriever.search() result
+        item1 = MagicMock()
+        item1.content = "Requirements traceability content"
+        item1.metadata = {"id": "4:abc:100", "score": 0.9, "index": 0}
+
+        mock_result = MagicMock()
+        mock_result.items = [item1]
+        mock_hybrid_retriever.search.return_value = mock_result
+
+        mock_driver = create_mock_driver_with_results(
+            [
+                [
+                    {
+                        "chunk_id": "4:abc:100",
+                        "title": "Test Article",
+                        "url": "https://example.com",
+                        "article_id": "a-1",
+                        "chapter": "Ch1",
+                    }
+                ],
+            ]
+        )
+
+        results = await hybrid_search(
+            mock_vector_retriever,
+            mock_driver,
+            "requirements",
+            hybrid_retriever=mock_hybrid_retriever,
+        )
+
+        assert len(results) == 1
+        assert results[0]["source"] == "hybrid"
+        assert results[0]["content"] == "Requirements traceability content"
+        assert results[0]["metadata"]["title"] == "Test Article"
+        mock_hybrid_retriever.search.assert_called_once()
+        mock_vector_retriever.search.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_alpha_mapping_from_keyword_weight(self) -> None:
+        """Test that keyword_weight is correctly mapped to alpha."""
+        mock_hybrid = MagicMock()
+        mock_result = MagicMock()
+        mock_result.items = []
+        mock_hybrid.search.return_value = mock_result
+
+        mock_driver = MagicMock()
+        mock_driver.session.return_value.__enter__ = MagicMock(return_value=MagicMock())
+        mock_driver.session.return_value.__exit__ = MagicMock(return_value=False)
+
+        await hybrid_search(
+            MagicMock(),
+            mock_driver,
+            "test",
+            keyword_weight=0.3,
+            hybrid_retriever=mock_hybrid,
+        )
+
+        call_kwargs = mock_hybrid.search.call_args
+        assert call_kwargs.kwargs.get("alpha") == pytest.approx(0.7)
+        assert call_kwargs.kwargs.get("ranker") == "linear"
+
+    @pytest.mark.asyncio
+    async def test_article_level_dedup(self) -> None:
+        """Test that results from the same article are deduplicated."""
+        mock_hybrid = MagicMock()
+
+        item1 = MagicMock()
+        item1.content = "Chunk 1 from article A"
+        item1.metadata = {"id": "4:abc:100", "score": 0.9, "index": 0}
+
+        item2 = MagicMock()
+        item2.content = "Chunk 2 from article A"
+        item2.metadata = {"id": "4:abc:101", "score": 0.8, "index": 1}
+
+        mock_result = MagicMock()
+        mock_result.items = [item1, item2]
+        mock_hybrid.search.return_value = mock_result
+
+        # Both chunks from same article_id
+        mock_driver = create_mock_driver_with_results(
+            [
+                [
+                    {
+                        "chunk_id": "4:abc:100",
+                        "title": "Same Article",
+                        "url": "https://example.com/a",
+                        "article_id": "a-1",
+                        "chapter": "Ch1",
+                    },
+                    {
+                        "chunk_id": "4:abc:101",
+                        "title": "Same Article",
+                        "url": "https://example.com/a",
+                        "article_id": "a-1",
+                        "chapter": "Ch1",
+                    },
+                ],
+            ]
+        )
+
+        results = await hybrid_search(
+            MagicMock(),
+            mock_driver,
+            "test",
+            hybrid_retriever=mock_hybrid,
+        )
+
+        assert len(results) == 1
+        assert results[0]["content"] == "Chunk 1 from article A"
+
+    @pytest.mark.asyncio
+    async def test_filters_degenerate_chunks(self) -> None:
+        """Test that degenerate chunks (short/whitespace) are filtered."""
+        mock_hybrid = MagicMock()
+
+        good_item = MagicMock()
+        good_item.content = "This is substantial content about requirements management"
+        good_item.metadata = {"id": "4:abc:100", "score": 0.9, "index": 0}
+
+        degenerate_item = MagicMock()
+        degenerate_item.content = "Heading"
+        degenerate_item.metadata = {"id": "4:abc:101", "score": 0.8, "index": 1}
+
+        mock_result = MagicMock()
+        mock_result.items = [good_item, degenerate_item]
+        mock_hybrid.search.return_value = mock_result
+
+        mock_driver = create_mock_driver_with_results(
+            [
+                [
+                    {
+                        "chunk_id": "4:abc:100",
+                        "title": "Article",
+                        "url": "https://example.com",
+                        "article_id": "a-1",
+                        "chapter": "Ch1",
+                    }
+                ],
+            ]
+        )
+
+        results = await hybrid_search(
+            MagicMock(),
+            mock_driver,
+            "test",
+            hybrid_retriever=mock_hybrid,
+        )
+
+        assert len(results) == 1
+        assert results[0]["content"] == "This is substantial content about requirements management"
+
+
+# =============================================================================
+# Hybrid Search Legacy Fallback Tests
+# =============================================================================
+
+
+class TestHybridSearchLegacyFallback:
+    """Tests for hybrid_search legacy fallback behavior."""
+
+    @pytest.mark.asyncio
+    async def test_uses_legacy_when_use_legacy_true(
+        self, mock_retriever: MagicMock, mock_driver: MagicMock
+    ) -> None:
+        """Test that use_legacy=True forces legacy path even with hybrid_retriever."""
+        mock_hybrid = MagicMock()
+
+        results = await hybrid_search(
+            mock_retriever,
+            mock_driver,
+            "test",
+            hybrid_retriever=mock_hybrid,
+            use_legacy=True,
+        )
+
+        # Legacy path uses VectorRetriever, not HybridRetriever
+        mock_retriever.search.assert_called()
+        mock_hybrid.search.assert_not_called()
+        assert len(results) > 0
+
+    @pytest.mark.asyncio
+    async def test_uses_legacy_when_no_hybrid_retriever(
+        self, mock_retriever: MagicMock, mock_driver: MagicMock
+    ) -> None:
+        """Test that legacy path is used when hybrid_retriever is None."""
+        results = await hybrid_search(
+            mock_retriever,
+            mock_driver,
+            "test",
+            hybrid_retriever=None,
+        )
+
+        mock_retriever.search.assert_called()
+        assert len(results) > 0

@@ -46,7 +46,7 @@ from requirements_graphrag_api.core.context import (
 if TYPE_CHECKING:
     from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
     from neo4j import Driver
-    from neo4j_graphrag.retrievers import VectorRetriever
+    from neo4j_graphrag.retrievers import HybridRetriever, VectorRetriever
 
     from requirements_graphrag_api.config import AppConfig
 
@@ -59,6 +59,7 @@ def create_orchestrator_graph(
     retriever: VectorRetriever,
     *,
     checkpointer: AsyncPostgresSaver | None = None,
+    hybrid_retriever: HybridRetriever | None = None,
 ) -> StateGraph:
     """Create the main orchestrator graph composing all subgraphs.
 
@@ -67,12 +68,13 @@ def create_orchestrator_graph(
         driver: Neo4j driver instance.
         retriever: Vector retriever instance.
         checkpointer: Optional PostgresSaver for conversation persistence.
+        hybrid_retriever: Optional hybrid retriever for combined vector+keyword search.
 
     Returns:
         Compiled orchestrator graph.
     """
     # Create subgraphs
-    rag_subgraph = create_rag_subgraph(config, driver, retriever)
+    rag_subgraph = create_rag_subgraph(config, driver, retriever, hybrid_retriever)
     synthesis_subgraph = create_synthesis_subgraph(config)
 
     # -------------------------------------------------------------------------

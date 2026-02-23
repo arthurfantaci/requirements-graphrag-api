@@ -33,6 +33,7 @@ from requirements_graphrag_api.core.definitions import (
 from requirements_graphrag_api.core.retrieval import (
     DEFAULT_ENRICHMENT_OPTIONS,
     GraphEnrichmentOptions,
+    create_hybrid_retriever,
     create_vector_retriever,
     explore_entity,
     get_entities_from_chunks,
@@ -64,6 +65,7 @@ __all__ = [
     "StreamEvent",
     "StreamEventType",
     "classify_intent",
+    "create_hybrid_retriever",
     "create_vector_retriever",
     "explore_entity",
     "format_context",
