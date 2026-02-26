@@ -1,0 +1,32 @@
+{
+  // markdownlint configuration
+  // Rules reference: https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+
+  // --- Disabled rules (would fight your writing style) ---
+
+  // MD013: Line length — too noisy for docs and CLAUDE.md files
+  "MD013": false,
+
+  // MD024: No duplicate headings — conflicts with structured docs (e.g., repeated "## Summary")
+  "MD024": false,
+
+  // MD033: No inline HTML — sometimes needed for tables, details/summary, etc.
+  "MD033": false,
+
+  // MD041: First line should be a top-level heading — CLAUDE.md files start with comments
+  "MD041": false,
+
+  // --- Customized rules ---
+
+  // MD007: Unordered list indentation — match 2-space indent (common convention)
+  "MD007": { "indent": 2 },
+
+  // MD010: No hard tabs — spaces only
+  "MD010": true,
+
+  // MD012: No multiple consecutive blank lines
+  "MD012": true,
+
+  // MD047: Files should end with a single newline (matches your VS Code setting)
+  "MD047": true
+}
