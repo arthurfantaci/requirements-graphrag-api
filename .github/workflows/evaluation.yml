@@ -69,7 +69,7 @@ jobs:
           LANGSMITH_TRACING: "true"
 
       - name: Upload Tier 2 results
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: tier2-smoke-results-${{ github.sha }}
@@ -114,7 +114,7 @@ jobs:
           LANGSMITH_TRACING: "true"
 
       - name: Upload Tier 3 results
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: tier3-benchmark-results-${{ github.ref_name || github.sha }}
@@ -197,7 +197,7 @@ jobs:
           LANGSMITH_TRACING: "true"
 
       - name: Upload Tier 4 results
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: tier4-deep-eval-${{ github.run_number }}
