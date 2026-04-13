@@ -55,7 +55,7 @@ dependencies = [
     "better-profanity>=0.7.0",
     "asyncpg>=0.31.0",
     "langgraph>=1.0.7",
-    "langgraph-checkpoint-postgres>=3.0.4",
+    "langgraph-checkpoint-postgres>=3.0.5",
     "psycopg-binary>=3.3.3",
     "sentry-sdk[fastapi,langchain,langgraph]>=2.52.0",
     # Structured logging (Phase 3a)
