@@ -219,5 +219,5 @@ call-non-callable = "warn"
 dev = [
     "langgraph-cli[inmem]>=0.4.12",
     "radon>=6.0.1",
-    "vulture>=2.14",
+    "vulture>=2.16",
 ]
