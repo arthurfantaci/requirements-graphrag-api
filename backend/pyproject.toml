@@ -57,7 +57,7 @@ dependencies = [
     "langgraph>=1.0.7",
     "langgraph-checkpoint-postgres>=3.0.5",
     "psycopg-binary>=3.3.3",
-    "sentry-sdk[fastapi,langchain,langgraph]>=2.52.0",
+    "sentry-sdk[fastapi,langchain,langgraph]>=2.57.0",
     # Structured logging (Phase 3a)
     "structlog>=25.5.0",
     "opentelemetry-api>=1.39.1",
