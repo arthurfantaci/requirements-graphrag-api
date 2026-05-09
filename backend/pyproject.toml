@@ -34,7 +34,7 @@ dependencies = [
     "neo4j>=5.15.0",
     "neo4j-graphrag>=1.13.0",
     # LangChain (minimal - core and OpenAI only)
-    "langchain-core>=0.3.0",
+    "langchain-core>=1.3.3",
     "langchain-openai>=1.1.12",
     # Data validation
     "pydantic>=2.12.5",
