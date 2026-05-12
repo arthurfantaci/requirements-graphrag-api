@@ -102,3 +102,7 @@ backend/.langgraph_api/
 # Raw performance data
 backend/scripts/profile_results_*.json
 browser-performance-traces/
+
+# Claude Code local config
+.claudeignore
+.claude/worktrees/
