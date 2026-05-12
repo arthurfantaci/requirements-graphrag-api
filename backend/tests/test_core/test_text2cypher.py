@@ -34,9 +34,9 @@ def create_mock_record(data: dict[str, Any]) -> MagicMock:
     record.get = lambda k, d=None: data.get(k, d)
     record.data = lambda: data
     # For dict(record) conversion
-    record.keys = lambda: data.keys()
-    record.values = lambda: data.values()
-    record.items = lambda: data.items()
+    record.keys = data.keys
+    record.values = data.values
+    record.items = data.items
     return record
 
 

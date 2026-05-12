@@ -3,7 +3,7 @@
     "vercel@claude-plugins-official": true,
     "typescript-lsp@claude-plugins-official": true,
     "frontend-design@claude-plugins-official": true,
-    "playwright@claude-plugins-official": true
+    "playwright@claude-plugins-official": false
   },
   "hooks": {
     "PreToolUse": [
@@ -12,33 +12,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$(git rev-parse --show-toplevel)/.claude/hooks/validate-bash.sh \"$TOOL_INPUT\""
-          },
-          {
-            "type": "command",
-            "command": "$(git rev-parse --show-toplevel)/.claude/hooks/check-pr-closing-keyword.sh \"$TOOL_INPUT\""
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write|MultiEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$(git rev-parse --show-toplevel)/.claude/hooks/format-python.sh \"$TOOL_INPUT\""
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$(git rev-parse --show-toplevel)/.claude/hooks/post-task-check.sh"
+            "command": "$(git rev-parse --show-toplevel)/.claude/hooks/validate-docs-placement.sh \"$TOOL_INPUT\""
           }
         ]
       }
