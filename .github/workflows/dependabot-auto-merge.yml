@@ -1,7 +1,9 @@
-# Auto-merge Dependabot PRs for minor and patch updates
+# Auto-merge Dependabot PRs for low-risk updates after required checks pass.
 name: Dependabot Auto-Merge
 
-on: pull_request_target
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, labeled]
 
 permissions:
   contents: write
@@ -19,7 +21,16 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Auto-approve and enable auto-merge
-        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+        if: |
+          steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
+          (
+            steps.metadata.outputs.update-type == 'dependency-group' &&
+            (
+              endsWith(steps.metadata.outputs.dependency-group, '-patch') ||
+              endsWith(steps.metadata.outputs.dependency-group, '-minor')
+            )
+          )
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,125 @@
+# Route Dependabot PRs for auto-merge or manual review based on update risk.
+name: Dependabot Review Routing
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  route:
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]'
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Route review labels and reviewer
+        uses: actions/github-script@v8
+        env:
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          DEPENDENCY_GROUP: ${{ steps.metadata.outputs.dependency-group }}
+          REVIEWER_LOGIN: arthurfantaci
+        with:
+          script: |
+            const repoLabels = {
+              "automerge:candidate": "1d76db",
+              "manual-review": "5319e7",
+              "semver:patch": "0e8a16",
+              "semver:minor": "fbca04",
+              "semver:major": "b60205",
+            };
+
+            for (const [name, color] of Object.entries(repoLabels)) {
+              try {
+                await github.rest.issues.getLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name,
+                });
+              } catch (error) {
+                if (error.status !== 404) {
+                  throw error;
+                }
+
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name,
+                  color,
+                });
+              }
+            }
+
+            const updateType = process.env.UPDATE_TYPE;
+            const dependencyGroup = process.env.DEPENDENCY_GROUP || "";
+            const managedLabels = [
+              "automerge:candidate",
+              "manual-review",
+              "semver:patch",
+              "semver:minor",
+              "semver:major",
+            ];
+
+            const labelsToAdd = [];
+            if (
+              updateType === "version-update:semver-patch" ||
+              dependencyGroup.endsWith("-patch")
+            ) {
+              labelsToAdd.push("semver:patch", "automerge:candidate");
+            } else if (
+              updateType === "version-update:semver-minor" ||
+              dependencyGroup.endsWith("-minor")
+            ) {
+              labelsToAdd.push("semver:minor", "automerge:candidate");
+            } else if (updateType === "version-update:semver-major") {
+              labelsToAdd.push("semver:major", "manual-review");
+            } else {
+              labelsToAdd.push("manual-review");
+            }
+
+            const currentLabels = context.payload.pull_request.labels.map((label) => label.name);
+
+            for (const name of managedLabels) {
+              if (currentLabels.includes(name) && !labelsToAdd.includes(name)) {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  name,
+                });
+              }
+            }
+
+            if (labelsToAdd.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                labels: labelsToAdd,
+              });
+            }
+
+            const reviewer = process.env.REVIEWER_LOGIN;
+            const requestedReviewers = context.payload.pull_request.requested_reviewers.map(
+              (account) => account.login,
+            );
+
+            if (
+              reviewer !== context.payload.pull_request.user.login &&
+              !requestedReviewers.includes(reviewer)
+            ) {
+              await github.rest.pulls.requestReviewers({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+                reviewers: [reviewer],
+              });
+            }
