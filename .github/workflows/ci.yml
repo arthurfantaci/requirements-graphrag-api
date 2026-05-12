@@ -66,7 +66,7 @@ jobs:
         run: uv run python scripts/ci_evaluation.py --tier 1 --output tier1_results.json
 
       - name: Upload Tier 1 results
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: tier1-prompt-validation
@@ -113,7 +113,7 @@ jobs:
           fail_ci_if_error: false
 
       - name: Upload coverage HTML report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: backend/htmlcov/
