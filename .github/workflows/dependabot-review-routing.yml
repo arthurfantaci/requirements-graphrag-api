@@ -22,7 +22,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Route review labels and reviewer
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
           DEPENDENCY_GROUP: ${{ steps.metadata.outputs.dependency-group }}
