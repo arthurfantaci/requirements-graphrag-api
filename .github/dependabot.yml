@@ -29,6 +29,16 @@ updates:
     commit-message:
       prefix: "chore(deps):"
     open-pull-requests-limit: 5
+    # Disable auto-opened major-version PRs for npm. Peer-dep coupled majors
+    # (vite/plugin-react, eslint/@eslint/js, etc.) hit Vercel ERESOLVE when
+    # opened as separate PRs — three incidents (PRs #254, #317/#318, #329/#332/
+    # #333) confirmed this is the recurring failure mode for this project.
+    # Security advisories (GHSA) still fire regardless of ignore rules.
+    # Minor + patch updates continue to flow and auto-merge via #321 infra.
+    # Major bumps are now human-initiated when needed.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       # Pair vite with its plugins (peer-dep coupled). Must come before the
       # broader minor-and-patch group so first-match-wins routes these packages
