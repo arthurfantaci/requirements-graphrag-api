@@ -30,6 +30,18 @@ updates:
       prefix: "chore(deps):"
     open-pull-requests-limit: 5
     groups:
+      # Pair vite with its plugins (peer-dep coupled). Must come before the
+      # broader minor-and-patch group so first-match-wins routes these packages
+      # here for all update types. See issue #327 for the ERESOLVE rationale.
+      vite-ecosystem:
+        applies-to: version-updates
+        patterns:
+          - "vite"
+          - "@vitejs/plugin-*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
       npm-minor-and-patch:
         applies-to: version-updates
         update-types:
