@@ -16,7 +16,7 @@ function UserMessage({ content }) {
 /**
  * Message list component that renders all messages
  */
-export function MessageList({ messages }) {
+export function MessageList({ messages, conversationId }) {
   return (
     <>
       {messages.map((message) => (
@@ -24,7 +24,7 @@ export function MessageList({ messages }) {
           {message.role === 'user' ? (
             <UserMessage content={message.content} />
           ) : (
-            <AssistantMessage message={message} />
+            <AssistantMessage message={message} conversationId={conversationId} />
           )}
         </div>
       ))}

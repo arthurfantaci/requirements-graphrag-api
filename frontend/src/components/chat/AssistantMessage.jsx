@@ -22,7 +22,7 @@ const LOADING_LABELS = {
  *
  * Handles explanatory (RAG), structured (Cypher), and conversational response types
  */
-export function AssistantMessage({ message }) {
+export function AssistantMessage({ message, conversationId }) {
   const {
     id,
     content,
@@ -134,7 +134,7 @@ export function AssistantMessage({ message }) {
 
       {/* Response actions - show when complete */}
       {status === 'complete' && (
-        <ResponseActions content={content} runId={runId} messageId={id} traceId={traceId} intent={intent} />
+        <ResponseActions content={content} runId={runId} messageId={id} traceId={traceId} intent={intent} conversationId={conversationId} />
       )}
     </div>
   )
