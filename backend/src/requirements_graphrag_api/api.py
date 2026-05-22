@@ -278,10 +278,14 @@ _cors_origins = (
     if _cors_origins_env
     else ["http://localhost:3000", "http://localhost:5173"]
 )
+# Optional regex for dynamic origins (Vercel preview branches use per-deploy URLs
+# that can't be enumerated in CORS_ORIGINS).
+_cors_origin_regex = os.getenv("CORS_ORIGIN_REGEX") or None
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
+    allow_origin_regex=_cors_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
