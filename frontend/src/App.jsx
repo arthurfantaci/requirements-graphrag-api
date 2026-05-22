@@ -14,6 +14,16 @@ function SidebarToggleIcon() {
   )
 }
 
+function NewConversationIcon() {
+  return (
+    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2.5" />
+      <line x1="12" y1="8" x2="12" y2="16" />
+      <line x1="8" y1="12" x2="16" y2="12" />
+    </svg>
+  )
+}
+
 function GitHubIcon() {
   return (
     <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
@@ -23,7 +33,7 @@ function GitHubIcon() {
 }
 
 function App() {
-  const { messages, isLoading, sendMessage } = useSSEChat()
+  const { messages, isLoading, sendMessage, clearMessages } = useSSEChat()
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
   const toggleSidebar = () => setSidebarOpen((prev) => !prev)
@@ -48,6 +58,15 @@ function App() {
             </span>
           </div>
           <nav className="flex items-center gap-4 text-xs text-charcoal-muted">
+            <button
+              type="button"
+              onClick={clearMessages}
+              className="flex items-center gap-1 hover:text-charcoal transition-colors"
+              aria-label="Start new conversation"
+            >
+              <NewConversationIcon />
+              <span>New chat</span>
+            </button>
             <a
               href="https://github.com/arthurfantaci/requirements-graphrag-api"
               target="_blank"
