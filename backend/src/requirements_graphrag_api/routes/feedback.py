@@ -186,20 +186,21 @@ async def submit_feedback(
             body.category if body.category else ("positive" if body.score >= 0.5 else "negative")
         )
 
-        # System metadata goes in `extra` so it's queryable separately from the user's comment.
-        # `comment` is the user's free-text feedback only (PII-redacted) — clean, scannable in
-        # the LangSmith UI, and matchable in analytics queries without metadata bleed.
-        extra_metadata: dict[str, str] = {}
+        # System metadata goes in `feedback_source.metadata` via the `source_info` kwarg,
+        # not `extra` — LangSmith silently drops `extra` on `create_feedback` (every stored
+        # record shows `extra: {"error": false}` regardless of what's passed). `source_info`
+        # lands the dict on `feedback_source.metadata`, which IS persisted and queryable.
+        source_metadata: dict[str, str] = {}
         if body.category:
-            extra_metadata["category"] = body.category
+            source_metadata["category"] = body.category
         if body.message_id:
-            extra_metadata["message_id"] = body.message_id
+            source_metadata["message_id"] = body.message_id
         if body.conversation_id:
-            extra_metadata["conversation_id"] = body.conversation_id
+            source_metadata["conversation_id"] = body.conversation_id
         if body.intent:
-            extra_metadata["intent"] = body.intent
+            source_metadata["intent"] = body.intent
         if body.trace_id:
-            extra_metadata["trace_id"] = body.trace_id
+            source_metadata["trace_id"] = body.trace_id
 
         feedback = client.create_feedback(
             run_id=body.run_id,
@@ -208,7 +209,8 @@ async def submit_feedback(
             comment=safe_comment,
             value=feedback_value,
             correction={"text": safe_correction} if safe_correction else None,
-            extra=extra_metadata if extra_metadata else None,
+            feedback_source_type="api",
+            source_info=source_metadata if source_metadata else None,
         )
 
         feedback_id = str(feedback.id) if feedback else None

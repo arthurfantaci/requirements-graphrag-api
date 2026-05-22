@@ -373,12 +373,19 @@ class TestRubricScores:
 
 
 # =========================================================================
-# E. Comment / Extra Separation (Phase 4 — LangSmith feedback capture fix)
+# E. Comment / Source-Info Separation (Phase 4 — LangSmith feedback capture)
+#
+# NOTE on test scope: these mocked tests assert what the route passes to
+# `client.create_feedback`. They cannot detect that the LangSmith server
+# silently drops the `extra=` kwarg (it does — confirmed 2026-05-22 via a
+# round-trip probe in production). The metadata must travel via
+# `source_info=` paired with `feedback_source_type="api"`, which lands on
+# `feedback_source.metadata` on the stored Feedback record.
 # =========================================================================
 
 
-class TestCommentAndExtra:
-    """User free-text comment is passed AS-IS; system metadata lives in `extra`."""
+class TestCommentAndSourceInfo:
+    """User free-text comment passes AS-IS; system metadata lives in `source_info`."""
 
     def test_user_comment_passes_through_unchanged(
         self, client: TestClient, mock_langsmith_client: MagicMock
@@ -398,10 +405,10 @@ class TestCommentAndExtra:
         assert "Category:" not in (call.kwargs["comment"] or "")
         assert "Intent:" not in (call.kwargs["comment"] or "")
 
-    def test_metadata_goes_to_extra_not_comment(
+    def test_metadata_goes_to_source_info_not_comment(
         self, client: TestClient, mock_langsmith_client: MagicMock
     ) -> None:
-        """category/intent/message_id/conversation_id/trace_id land in `extra`, not `comment`."""
+        """All system metadata lands in `source_info`, not in `comment`."""
         response = client.post(
             "/feedback",
             json={
@@ -419,7 +426,8 @@ class TestCommentAndExtra:
         assert response.status_code == 200
         call = mock_langsmith_client.create_feedback.call_args
         assert call.kwargs["comment"] == "Free text only"
-        assert call.kwargs["extra"] == {
+        assert call.kwargs["feedback_source_type"] == "api"
+        assert call.kwargs["source_info"] == {
             "category": "incorrect",
             "intent": "explanatory",
             "message_id": "msg-abc",
@@ -430,7 +438,7 @@ class TestCommentAndExtra:
     def test_empty_comment_with_metadata_yields_none_comment(
         self, client: TestClient, mock_langsmith_client: MagicMock
     ) -> None:
-        """No user text + metadata → `comment=None`, metadata still flows via `extra`."""
+        """No user text + metadata → `comment=None`, metadata still flows via `source_info`."""
         response = client.post(
             "/feedback",
             json={
@@ -444,12 +452,12 @@ class TestCommentAndExtra:
         assert response.status_code == 200
         call = mock_langsmith_client.create_feedback.call_args
         assert call.kwargs["comment"] is None
-        assert call.kwargs["extra"] == {"category": "incorrect", "intent": "structured"}
+        assert call.kwargs["source_info"] == {"category": "incorrect", "intent": "structured"}
 
-    def test_no_metadata_no_extra(
+    def test_no_metadata_no_source_info(
         self, client: TestClient, mock_langsmith_client: MagicMock
     ) -> None:
-        """Comment-only submission produces `extra=None` (not an empty dict)."""
+        """Comment-only submission produces `source_info=None` (not an empty dict)."""
         response = client.post(
             "/feedback",
             json={"run_id": "run-1", "score": 1.0, "comment": "Great response"},
@@ -458,7 +466,7 @@ class TestCommentAndExtra:
         assert response.status_code == 200
         call = mock_langsmith_client.create_feedback.call_args
         assert call.kwargs["comment"] == "Great response"
-        assert call.kwargs["extra"] is None
+        assert call.kwargs["source_info"] is None
 
     def test_correction_remains_structured(
         self, client: TestClient, mock_langsmith_client: MagicMock
