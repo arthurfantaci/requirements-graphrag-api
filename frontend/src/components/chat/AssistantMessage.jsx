@@ -10,6 +10,13 @@ import { ResultsTable } from '../metadata/ResultsTable'
 import { StructuredEmptyState } from '../metadata/StructuredEmptyState'
 import { ResponseActions } from '../feedback'
 
+const LOADING_LABELS = {
+  explanatory: 'Searching the knowledge graph…',
+  structured: 'Running Cypher query…',
+  conversational: 'Thinking…',
+  default: 'Thinking…',
+}
+
 /**
  * Assistant message component with rich metadata display
  *
@@ -80,7 +87,7 @@ export function AssistantMessage({ message }) {
 
       {/* Streaming indicator */}
       {status === 'streaming' && !hasContent && (
-        <div className="py-1">
+        <div className="py-1 flex items-center gap-3">
           <div className="flex space-x-2">
             <div className="w-2 h-2 bg-charcoal-muted rounded-full animate-bounce" />
             <div
@@ -92,6 +99,11 @@ export function AssistantMessage({ message }) {
               style={{ animationDelay: '0.2s' }}
             />
           </div>
+          {intent && (
+            <span className="text-sm italic text-charcoal-muted">
+              {LOADING_LABELS[intent] || LOADING_LABELS.default}
+            </span>
+          )}
         </div>
       )}
 
