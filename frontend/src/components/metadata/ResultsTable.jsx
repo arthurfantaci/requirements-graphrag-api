@@ -1,4 +1,48 @@
+import { useState } from 'react'
+
 const MAX_ROWS = 50
+const ARRAY_PREVIEW_COUNT = 2
+
+/**
+ * Inline expandable array cell: shows the first N items + "+M more" toggle.
+ * Mirrors the overflow pattern in EntityBadges.jsx so the affordance reads the same across the UI.
+ */
+function ArrayCell({ items }) {
+  const [expanded, setExpanded] = useState(false)
+
+  if (items.length <= ARRAY_PREVIEW_COUNT) {
+    return items.join(', ')
+  }
+
+  if (expanded) {
+    return (
+      <>
+        {items.join(', ')}
+        <button
+          type="button"
+          onClick={() => setExpanded(false)}
+          className="ml-2 inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-ivory-medium text-charcoal-muted hover:bg-ivory transition-colors"
+        >
+          Show less
+        </button>
+      </>
+    )
+  }
+
+  const hiddenCount = items.length - ARRAY_PREVIEW_COUNT
+  return (
+    <>
+      {items.slice(0, ARRAY_PREVIEW_COUNT).join(', ')}
+      <button
+        type="button"
+        onClick={() => setExpanded(true)}
+        className="ml-2 inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-ivory-medium text-charcoal-muted hover:bg-ivory transition-colors"
+      >
+        +{hiddenCount} more
+      </button>
+    </>
+  )
+}
 
 /**
  * Format a cell value for display
@@ -8,7 +52,7 @@ function formatCellValue(value) {
     return <span className="text-charcoal-muted italic">null</span>
   }
   if (Array.isArray(value)) {
-    return value.join(', ')
+    return <ArrayCell items={value} />
   }
   if (typeof value === 'object') {
     return JSON.stringify(value)
