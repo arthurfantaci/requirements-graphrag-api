@@ -33,7 +33,7 @@ function GitHubIcon() {
 }
 
 function App() {
-  const { messages, isLoading, sendMessage, clearMessages } = useSSEChat()
+  const { messages, isLoading, sendMessage, clearMessages, conversationId } = useSSEChat()
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
   const toggleSidebar = () => setSidebarOpen((prev) => !prev)
@@ -126,7 +126,7 @@ function App() {
             {messages.length === 0 ? (
               <WelcomeScreen onQuickStart={sendMessage} />
             ) : (
-              <MessageList messages={messages} />
+              <MessageList messages={messages} conversationId={conversationId} />
             )}
           </main>
 

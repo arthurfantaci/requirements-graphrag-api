@@ -279,5 +279,6 @@ export function useSSEChat() {
     isLoading,
     sendMessage,
     clearMessages,
+    conversationId,
   }
 }
