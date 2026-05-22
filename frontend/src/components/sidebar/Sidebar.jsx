@@ -109,7 +109,9 @@ export function Sidebar({ isOpen, onClose, onQuickStart }) {
                 <button
                   onClick={() => {
                     onQuickStart(text)
-                    onClose()
+                    if (window.matchMedia('(max-width: 767px)').matches) {
+                      onClose()
+                    }
                   }}
                   className="w-full text-left px-3 py-2 rounded border border-black/10 bg-ivory text-xs text-charcoal hover:bg-ivory-medium hover:border-black/15 transition-colors"
                 >
