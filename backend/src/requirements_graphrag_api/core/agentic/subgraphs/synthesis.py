@@ -16,6 +16,7 @@ State:
 from __future__ import annotations
 
 import json
+import re
 from typing import TYPE_CHECKING, Any, Literal
 
 import structlog
@@ -274,12 +275,35 @@ Focus on improving completeness and addressing the gaps identified above."""
         """
         draft = state.get("draft_answer", "")
         citations = state.get("citations", [])
+        context = state.get("context", "")
         critique = state.get("critique")
 
         logger.info("Formatting final output")
 
-        # Build final answer with citation footer
-        final = draft
+        # The synthesis LLM embeds [Source N] markers using the *input* numbering
+        # from `context` (typically Sources 1..10), but `citations` is a filtered
+        # subset returned in arbitrary order. Below we renumber inline markers in
+        # `draft` to match the position of each cited title in `citations`, so the
+        # body's references align with the "Sources:" footer rendered below.
+        # Markers whose source isn't in `citations` are dropped (LLM cited an
+        # input source it didn't include in its citations list).
+        ctx_titles = {
+            n: title.strip()
+            for n, title in re.findall(r"\[Source (\d+):\s*([^\]]+)\]", context)
+        }
+        cit_index = {title.strip(): i + 1 for i, title in enumerate(citations)}
+
+        def _remap(match: re.Match[str]) -> str:
+            n = match.group(1)
+            title = ctx_titles.get(n, "")
+            new_idx = cit_index.get(title)
+            return f"[Source {new_idx}]" if new_idx else ""
+
+        final = re.sub(r"\[Source (\d+)\]", _remap, draft)
+        # Collapse whitespace left by any dropped markers (e.g. " ." -> ".").
+        final = re.sub(r"\s+([,.;:])", r"\1", final)
+        final = re.sub(r" {2,}", " ", final).strip()
+
         if citations:
             citation_text = "\n\n**Sources:**\n"
             for i, source in enumerate(citations, 1):
