@@ -186,37 +186,29 @@ async def submit_feedback(
             body.category if body.category else ("positive" if body.score >= 0.5 else "negative")
         )
 
-        # Build comment string with all metadata for human review
-        comment_parts: list[str] = []
-        if safe_comment:
-            comment_parts.append(safe_comment)
+        # System metadata goes in `extra` so it's queryable separately from the user's comment.
+        # `comment` is the user's free-text feedback only (PII-redacted) — clean, scannable in
+        # the LangSmith UI, and matchable in analytics queries without metadata bleed.
+        extra_metadata: dict[str, str] = {}
         if body.category:
-            comment_parts.append(f"Category: {body.category}")
-        if safe_correction:
-            comment_parts.append(f"Correction: {safe_correction}")
+            extra_metadata["category"] = body.category
         if body.message_id:
-            comment_parts.append(f"Message ID: {body.message_id}")
+            extra_metadata["message_id"] = body.message_id
         if body.conversation_id:
-            comment_parts.append(f"Conversation ID: {body.conversation_id}")
+            extra_metadata["conversation_id"] = body.conversation_id
         if body.intent:
-            comment_parts.append(f"Intent: {body.intent}")
+            extra_metadata["intent"] = body.intent
         if body.trace_id:
-            comment_parts.append(f"Trace ID: {body.trace_id}")
+            extra_metadata["trace_id"] = body.trace_id
 
-        comment = " | ".join(comment_parts) if comment_parts else None
-
-        # Create feedback in LangSmith
-        # - score: numeric value (0.0-1.0) for quantitative metrics
-        # - value: simple string for categorical filtering in charts
-        # - comment: detailed metadata for human review
-        # - correction: structured correction dict (if provided)
         feedback = client.create_feedback(
             run_id=body.run_id,
             key="user-feedback",
             score=body.score,
-            comment=comment,
+            comment=safe_comment,
             value=feedback_value,
             correction={"text": safe_correction} if safe_correction else None,
+            extra=extra_metadata if extra_metadata else None,
         )
 
         feedback_id = str(feedback.id) if feedback else None
@@ -237,13 +229,16 @@ async def submit_feedback(
                         exc_info=True,
                     )
 
-        # Log for monitoring
-        feedback_type = "positive" if body.score >= 0.5 else "negative"
         logger.info(
-            "User feedback submitted: run_id=%s, type=%s, category=%s",
+            "feedback submitted run_id=%s score=%s "
+            "comment_present=%s has_correction=%s "
+            "category=%s intent=%s",
             body.run_id,
-            feedback_type,
+            body.score,
+            bool(safe_comment),
+            bool(safe_correction),
             body.category,
+            body.intent,
         )
 
         # Route negative feedback to intent-specific annotation queues

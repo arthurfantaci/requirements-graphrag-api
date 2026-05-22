@@ -370,3 +370,142 @@ class TestRubricScores:
         # Endpoint still succeeds despite rubric failure
         assert response.status_code == 200
         assert response.json()["status"] == "received"
+
+
+# =========================================================================
+# E. Comment / Extra Separation (Phase 4 — LangSmith feedback capture fix)
+# =========================================================================
+
+
+class TestCommentAndExtra:
+    """User free-text comment is passed AS-IS; system metadata lives in `extra`."""
+
+    def test_user_comment_passes_through_unchanged(
+        self, client: TestClient, mock_langsmith_client: MagicMock
+    ) -> None:
+        """The user's comment text reaches LangSmith's `comment` kwarg unchanged."""
+        user_text = "Sources panel disagreed with the citation list in the response."
+        response = client.post(
+            "/feedback",
+            json={"run_id": "run-1", "score": 0.0, "comment": user_text},
+        )
+
+        assert response.status_code == 200
+        call = mock_langsmith_client.create_feedback.call_args
+        assert call.kwargs["comment"] == user_text
+        # No metadata bleed
+        assert "|" not in (call.kwargs["comment"] or "")
+        assert "Category:" not in (call.kwargs["comment"] or "")
+        assert "Intent:" not in (call.kwargs["comment"] or "")
+
+    def test_metadata_goes_to_extra_not_comment(
+        self, client: TestClient, mock_langsmith_client: MagicMock
+    ) -> None:
+        """category/intent/message_id/conversation_id/trace_id land in `extra`, not `comment`."""
+        response = client.post(
+            "/feedback",
+            json={
+                "run_id": "run-1",
+                "score": 0.0,
+                "comment": "Free text only",
+                "category": "incorrect",
+                "intent": "explanatory",
+                "message_id": "msg-abc",
+                "conversation_id": "conv-xyz",
+                "trace_id": "trace-123",
+            },
+        )
+
+        assert response.status_code == 200
+        call = mock_langsmith_client.create_feedback.call_args
+        assert call.kwargs["comment"] == "Free text only"
+        assert call.kwargs["extra"] == {
+            "category": "incorrect",
+            "intent": "explanatory",
+            "message_id": "msg-abc",
+            "conversation_id": "conv-xyz",
+            "trace_id": "trace-123",
+        }
+
+    def test_empty_comment_with_metadata_yields_none_comment(
+        self, client: TestClient, mock_langsmith_client: MagicMock
+    ) -> None:
+        """No user text + metadata → `comment=None`, metadata still flows via `extra`."""
+        response = client.post(
+            "/feedback",
+            json={
+                "run_id": "run-1",
+                "score": 0.0,
+                "category": "incorrect",
+                "intent": "structured",
+            },
+        )
+
+        assert response.status_code == 200
+        call = mock_langsmith_client.create_feedback.call_args
+        assert call.kwargs["comment"] is None
+        assert call.kwargs["extra"] == {"category": "incorrect", "intent": "structured"}
+
+    def test_no_metadata_no_extra(
+        self, client: TestClient, mock_langsmith_client: MagicMock
+    ) -> None:
+        """Comment-only submission produces `extra=None` (not an empty dict)."""
+        response = client.post(
+            "/feedback",
+            json={"run_id": "run-1", "score": 1.0, "comment": "Great response"},
+        )
+
+        assert response.status_code == 200
+        call = mock_langsmith_client.create_feedback.call_args
+        assert call.kwargs["comment"] == "Great response"
+        assert call.kwargs["extra"] is None
+
+    def test_correction_remains_structured(
+        self, client: TestClient, mock_langsmith_client: MagicMock
+    ) -> None:
+        """Correction text stays in the structured `correction` kwarg, not folded into comment."""
+        response = client.post(
+            "/feedback",
+            json={
+                "run_id": "run-1",
+                "score": 0.0,
+                "comment": "Wrong answer",
+                "correction": "The correct answer is X",
+            },
+        )
+
+        assert response.status_code == 200
+        call = mock_langsmith_client.create_feedback.call_args
+        assert call.kwargs["comment"] == "Wrong answer"
+        assert call.kwargs["correction"] == {"text": "The correct answer is X"}
+        # Correction must NOT leak into comment
+        assert "The correct answer is X" not in call.kwargs["comment"]
+
+    def test_pii_redacted_comment_is_what_reaches_langsmith(
+        self, mock_app: FastAPI, mock_langsmith_client: MagicMock
+    ) -> None:
+        """When PII is detected, the anonymized text (not the raw comment) is sent to LangSmith."""
+        raw_comment = "Email me at user@example.com about this."
+        redacted_comment = "Email me at <EMAIL> about this."
+
+        with (
+            patch.dict("os.environ", {"LANGSMITH_API_KEY": "test-key"}),
+            patch("requirements_graphrag_api.routes.feedback.detect_and_redact_pii") as mock_pii,
+            patch("langsmith.Client", return_value=mock_langsmith_client),
+        ):
+            pii_result = MagicMock()
+            pii_result.contains_pii = True
+            pii_result.anonymized_text = redacted_comment
+            pii_result.entity_count = 1
+            mock_pii.return_value = pii_result
+
+            test_client = TestClient(mock_app)
+            response = test_client.post(
+                "/feedback",
+                json={"run_id": "run-1", "score": 0.0, "comment": raw_comment},
+            )
+
+        assert response.status_code == 200
+        call = mock_langsmith_client.create_feedback.call_args
+        assert call.kwargs["comment"] == redacted_comment
+        assert raw_comment not in (call.kwargs["comment"] or "")
