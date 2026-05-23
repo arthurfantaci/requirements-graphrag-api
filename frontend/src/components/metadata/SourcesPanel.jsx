@@ -73,14 +73,19 @@ function RelevanceBar({ score }) {
 /**
  * Single source item
  */
-function SourceItem({ source }) {
+function SourceItem({ source, sourceNumber }) {
   const { title, url, relevance_score } = source
 
   return (
     <div className="flex items-start justify-between gap-2 py-2 border-b border-black/5 last:border-b-0">
-      <div className="flex-1 min-w-0">
-        <p className="text-sm text-charcoal-light truncate">{title || 'Untitled Source'}</p>
-        <RelevanceBar score={relevance_score} />
+      <div className="flex-1 min-w-0 flex items-start gap-2">
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 flex-shrink-0 mt-0.5">
+          {sourceNumber}
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-charcoal-light truncate">{title || 'Untitled Source'}</p>
+          <RelevanceBar score={relevance_score} />
+        </div>
       </div>
       {url && (
         <a
@@ -132,7 +137,7 @@ export function SourcesPanel({ sources }) {
       {isOpen && (
         <div className="px-3 pb-2 border-t border-emerald-100 bg-ivory-light">
           {sources.map((source, index) => (
-            <SourceItem key={`source-${index}`} source={source} />
+            <SourceItem key={`source-${index}`} source={source} sourceNumber={index + 1} />
           ))}
         </div>
       )}
