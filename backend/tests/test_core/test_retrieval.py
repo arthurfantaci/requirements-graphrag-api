@@ -1196,6 +1196,11 @@ def test_retrieval_filters_scaffolding_labels() -> None:
         "use `[lbl IN labels(n) WHERE NOT lbl STARTS WITH '__'][0]` to skip "
         "SimpleKGPipeline scaffolding labels (issue #362)."
     )
+    assert "labels(related)[0]" not in source, (
+        "core/retrieval.py must not contain the bare `labels(related)[0]` pattern; "
+        "use `[lbl IN labels(related) WHERE NOT lbl STARTS WITH '__'][0]` to skip "
+        "SimpleKGPipeline scaffolding labels (issue #362)."
+    )
     assert "STARTS WITH '__'" in source, (
         "core/retrieval.py must filter '__'-prefixed scaffolding labels (issue #362)."
     )
