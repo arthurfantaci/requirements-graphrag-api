@@ -1,6 +1,34 @@
 import { useState } from 'react'
 import { Tooltip } from '../ui/Tooltip'
 
+const EXCERPT_MAX_CHARS = 280
+const BOUNDARY_FLOOR = 100
+
+function buildExcerpt(content) {
+  if (!content) return null
+  const normalized = content.trim().replace(/\s+/g, ' ')
+  if (!normalized) return null
+  if (normalized.length <= EXCERPT_MAX_CHARS) return normalized
+
+  const window = normalized.slice(0, EXCERPT_MAX_CHARS)
+
+  // Prefer the last sentence boundary within the window
+  const sentenceMatches = [...window.matchAll(/[.?!]\s/g)]
+  const lastSentence = sentenceMatches[sentenceMatches.length - 1]
+  if (lastSentence && lastSentence.index >= BOUNDARY_FLOOR) {
+    return normalized.slice(0, lastSentence.index + 1) + ' …'
+  }
+
+  // Fall back to the last word boundary
+  const wordBoundary = window.lastIndexOf(' ')
+  if (wordBoundary >= BOUNDARY_FLOOR) {
+    return normalized.slice(0, wordBoundary) + ' …'
+  }
+
+  // Pathological: no whitespace in first 280 chars — hard cut
+  return window + '…'
+}
+
 /**
  * Info icon for tooltip trigger
  */
@@ -74,7 +102,8 @@ function RelevanceBar({ score }) {
  * Single source item
  */
 function SourceItem({ source, sourceNumber }) {
-  const { title, url, relevance_score } = source
+  const { title, url, content, relevance_score } = source
+  const excerpt = buildExcerpt(content)
 
   return (
     <div className="flex items-start justify-between gap-2 py-2 border-b border-black/5 last:border-b-0">
@@ -83,7 +112,16 @@ function SourceItem({ source, sourceNumber }) {
           {sourceNumber}
         </span>
         <div className="flex-1 min-w-0">
-          <p className="text-sm text-charcoal-light truncate">{title || 'Untitled Source'}</p>
+          <Tooltip
+            title={title || `Source ${sourceNumber}`}
+            description={excerpt || 'No excerpt available.'}
+            color="emerald"
+            position="top"
+          >
+            <p className="text-sm text-charcoal-light truncate">
+              {title || 'Untitled Source'}
+            </p>
+          </Tooltip>
           <RelevanceBar score={relevance_score} />
         </div>
       </div>
