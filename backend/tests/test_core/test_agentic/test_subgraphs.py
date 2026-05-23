@@ -266,6 +266,34 @@ class TestSynthesisSubgraph:
         )
         assert critique.completeness == "insufficient"
 
+    def test_synthesis_module_has_no_sources_footer(self):
+        """Regression guard: synthesis must not emit a '**Sources:**' citation footer.
+
+        Issue #357 / docs/superpowers/specs/2026-05-23-unified-source-attribution-design.md.
+        The accordion at the bottom of the response is the canonical numbered source list;
+        a duplicated markdown footer creates a divergent third numbering scheme (LLM-judged
+        citations) that conflicts with the inline [Source N] markers (retrieval order).
+
+        This is a source-inspection regression rather than a runtime assertion because
+        format_output is a closure inside create_synthesis_subgraph and is not reachable
+        through a stable public API without elaborate LLM mocking through the full graph.
+        Source-inspection is a strictly stronger invariant: if the offending string is
+        absent from the module source, the runtime output cannot produce it.
+        """
+        import inspect
+
+        from requirements_graphrag_api.core.agentic.subgraphs import synthesis
+
+        source = inspect.getsource(synthesis)
+        assert "**Sources:**" not in source, (
+            "synthesis.py must not contain a '**Sources:**' footer marker; "
+            "see docs/superpowers/specs/2026-05-23-unified-source-attribution-design.md"
+        )
+        assert "citation_text" not in source, (
+            "The citation_text variable was part of the now-removed '**Sources:**' "
+            "footer logic; see the spec above for the rationale."
+        )
+
 
 # =============================================================================
 # STATE TYPE TESTS

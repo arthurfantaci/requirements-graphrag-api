@@ -273,18 +273,11 @@ Focus on improving completeness and addressing the gaps identified above."""
         adding citation references and metadata.
         """
         draft = state.get("draft_answer", "")
-        citations = state.get("citations", [])
         critique = state.get("critique")
 
         logger.info("Formatting final output")
 
-        # Build final answer with citation footer
         final = draft
-        if citations:
-            citation_text = "\n\n**Sources:**\n"
-            for i, source in enumerate(citations, 1):
-                citation_text += f"- [{i}] {source}\n"
-            final += citation_text
 
         # Add confidence indicator if low
         if critique and critique.confidence < CONFIDENCE_THRESHOLD:
