@@ -141,13 +141,13 @@ No payload-schema changes. The backend SSE stream already publishes `sources: li
 ## Error handling
 
 | Condition | Behavior |
-|---|---|
+| --- | --- |
 | `source.content` missing / empty / whitespace-only | Tooltip renders with `description="No excerpt available."` — consistent affordance across all rows, no conditional hiding. |
 | `source.content` very long (>2000 chars) | Same truncation path; ellipsis at the boundary. No special case. |
 | `source.content` contains HTML or markdown syntax | React's text rendering escapes by default. The excerpt renders inside `<p>{description}</p>` in `TooltipContent` (`Tooltip.jsx:135`) — pure React text rendering, no raw-HTML injection paths involved. **No XSS surface introduced.** |
 | Tooltip near viewport top edge | Existing widget's flip-to-bottom logic (`Tooltip.jsx:33-51`) applies. May be off by ~40px due to `tooltipHeight = 80` constant (actual excerpt height ~120-160px); viewport-clamp prevents off-screen render. Acceptable cosmetic. |
 | Mobile viewport | Widget clamps to `w-64 max-w-xs` (256-320px) and adjusts horizontally within bounds (`Tooltip.jsx:24-27`). No new behavior. |
-| `sources` empty array | Existing early-return at `SourcesPanel.jsx:108` (`if (!sources || sources.length === 0) return null`) handles. No new code. |
+| `sources` empty array | Existing early-return at `SourcesPanel.jsx:108` (`if (!sources \|\| sources.length === 0) return null`) handles. No new code. |
 
 ## Testing
 
@@ -164,6 +164,7 @@ uv run pytest --tb=short
 Tests live in `backend/tests/test_core/test_agentic/test_subgraphs.py`, class `TestSynthesisSubgraph`. The class currently has seven tests; none of them invoke `format_output` directly or assert on the `**Sources:**` rendering — so there is nothing existing to UPDATE. We are ADDING one new regression test:
 
 **New test — `test_format_output_no_sources_footer`** (or similar name): construct a `SynthesisState` with `draft_answer` and `citations` populated, invoke the compiled subgraph (or call the `format_output` node directly via the same pattern as the existing tests), and assert all of:
+
 - `final_answer` does NOT contain `"**Sources:**"`.
 - `final_answer` does NOT contain `"\n- ["` (the citation-list marker pattern).
 - The returned state (or the input state, depending on test scope) still carries `citations` so downstream consumers (LangSmith telemetry) are not broken by the rendering removal.
