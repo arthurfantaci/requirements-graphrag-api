@@ -825,7 +825,7 @@ def _enrich_with_entities(
         return_clause = """
             collect(DISTINCT {
                 name: entity.display_name,
-                type: labels(entity)[0],
+                type: [lbl IN labels(entity) WHERE NOT lbl STARTS WITH '__'][0],
                 definition: entity.definition,
                 benefit: entity.benefit,
                 impact: entity.impact
@@ -898,7 +898,7 @@ def _enrich_with_semantic_relationships(
                      from_entity: entity.display_name,
                      relationship: type(r),
                      to_entity: related.display_name,
-                     to_type: labels(related)[0],
+                     to_type: [lbl IN labels(related) WHERE NOT lbl STARTS WITH '__'][0],
                      to_definition: related.definition
                  }})[..$max_related] AS relationships
             WHERE size(relationships) > 0
@@ -1385,7 +1385,9 @@ async def get_entities_from_chunks(
                 """
                 MATCH (entity)-[:MENTIONED_IN]->(c:Chunk)
                 WHERE elementId(c) IN $chunk_ids
-                WITH entity, labels(entity)[0] AS label, count(*) AS mentions
+                WITH entity,
+                     [lbl IN labels(entity) WHERE NOT lbl STARTS WITH '__'][0] AS label,
+                     count(*) AS mentions
                 RETURN label,
                        entity.name AS name,
                        entity.display_name AS display_name,
@@ -1426,7 +1428,7 @@ async def search_entities_by_name(
                        OR n:Outcome)
                       AND (toLower(n.name) CONTAINS toLower($term)
                            OR toLower(n.display_name) CONTAINS toLower($term))
-                WITH n, labels(n)[0] AS label
+                WITH n, [lbl IN labels(n) WHERE NOT lbl STARTS WITH '__'][0] AS label
                 OPTIONAL MATCH (n)-[r]-(related)
                 WITH n, label, count(DISTINCT related) AS connections
                 RETURN label,
@@ -1465,7 +1467,7 @@ async def get_related_entities(
                 MATCH (n {name: $name})-[r]-(related)
                 WHERE NOT related:Chunk AND NOT related:Article
                 WITH type(r) AS rel_type,
-                     labels(related)[0] AS related_label,
+                     [lbl IN labels(related) WHERE NOT lbl STARTS WITH '__'][0] AS related_label,
                      related.name AS related_name,
                      related.display_name AS related_display,
                      startNode(r) = n AS outgoing

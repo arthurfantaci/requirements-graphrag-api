@@ -1172,3 +1172,30 @@ class TestCommunitySearch:
 
         assert len(results) == 1
         assert results[0]["score"] == 0.0
+
+
+def test_retrieval_filters_scaffolding_labels() -> None:
+    """Regression guard for issue #362: Cypher must filter SimpleKGPipeline scaffolding labels.
+
+    Source-inspection guard against re-introducing the __KGBuilder__/__Entity__ leak.
+    Bare `labels(X)[0]` returns the first scaffolding label on typed entity nodes built
+    by neo4j-graphrag's SimpleKGPipeline; the filtered form skips '__'-prefixed labels.
+    """
+    import inspect
+
+    from requirements_graphrag_api.core import retrieval
+
+    source = inspect.getsource(retrieval)
+    assert "labels(entity)[0]" not in source, (
+        "core/retrieval.py must not contain the bare `labels(entity)[0]` pattern; "
+        "use `[lbl IN labels(entity) WHERE NOT lbl STARTS WITH '__'][0]` to skip "
+        "SimpleKGPipeline scaffolding labels (issue #362)."
+    )
+    assert "labels(n)[0]" not in source, (
+        "core/retrieval.py must not contain the bare `labels(n)[0]` pattern; "
+        "use `[lbl IN labels(n) WHERE NOT lbl STARTS WITH '__'][0]` to skip "
+        "SimpleKGPipeline scaffolding labels (issue #362)."
+    )
+    assert "STARTS WITH '__'" in source, (
+        "core/retrieval.py must filter '__'-prefixed scaffolding labels (issue #362)."
+    )
