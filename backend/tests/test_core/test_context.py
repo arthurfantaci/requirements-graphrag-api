@@ -284,6 +284,34 @@ class TestFormatContext:
         assert "AEC" in result.entities_by_name
         assert result.entities_by_name["AEC"]["definition"] == "Arch, Eng & Constr"
 
+    def test_concept_label_preserved_when_glossary_definition_matches(self) -> None:
+        """Regression for #359: a Concept entity must not be demoted to "Definition"
+        when a matching glossary_definitions entry augments its tooltip text.
+        """
+        docs = [
+            NormalizedDocument(
+                content="Chunk discussing bi-directional traceability.",
+                source="Traceability Article",
+                entities=[
+                    {"name": "Bi-directional Traceability", "type": "Concept", "definition": None},
+                ],
+                glossary_definitions=[
+                    {
+                        "term": "Bi-directional Traceability",
+                        "definition": (
+                            "Traceability that works forwards and backwards across the "
+                            "requirements lifecycle."
+                        ),
+                    },
+                ],
+            ),
+        ]
+        result = format_context(docs)
+        assert result.entities_by_name["Bi-directional Traceability"]["label"] == "Concept"
+        assert result.entities_by_name["Bi-directional Traceability"]["definition"] == (
+            "Traceability that works forwards and backwards across the requirements lifecycle."
+        )
+
     def test_deduplicates_relationships(self) -> None:
         """Same relationship from two chunks appears once in KG section."""
         rel = {
