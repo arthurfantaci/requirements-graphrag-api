@@ -288,8 +288,7 @@ Focus on improving completeness and addressing the gaps identified above."""
         # Markers whose source isn't in `citations` are dropped (LLM cited an
         # input source it didn't include in its citations list).
         ctx_titles = {
-            n: title.strip()
-            for n, title in re.findall(r"\[Source (\d+):\s*([^\]]+)\]", context)
+            n: title.strip() for n, title in re.findall(r"\[Source (\d+):\s*([^\]]+)\]", context)
         }
         cit_index = {title.strip(): i + 1 for i, title in enumerate(citations)}
 
