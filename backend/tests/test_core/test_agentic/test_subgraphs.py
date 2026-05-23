@@ -266,6 +266,112 @@ class TestSynthesisSubgraph:
         )
         assert critique.completeness == "insufficient"
 
+    @pytest.mark.asyncio
+    async def test_format_output_renumbers_inline_markers(self, mock_config: AppConfig):
+        """`[Source N]` markers (input numbering) are renumbered to match the
+        filtered `citations` list (output numbering) so the body and footer
+        agree."""
+        # Draft references input sources 3 and 1; citations list keeps C and A
+        # (in that order), so [Source 3] -> [Source 1] and [Source 1] -> [Source 2].
+        draft_payload = json.dumps(
+            {
+                "answer": "Foo [Source 3] bar [Source 1]",
+                "critique": {
+                    "confidence": 0.9,
+                    "completeness": "complete",
+                    "missing_aspects": [],
+                },
+                "citations": ["C", "A"],
+            }
+        )
+
+        mock_chain = MagicMock()
+        mock_chain.ainvoke = AsyncMock(return_value=create_ai_message_mock(draft_payload))
+        mock_prompt_template = MagicMock()
+        mock_prompt_template.__or__ = MagicMock(return_value=mock_chain)
+        mock_llm = MagicMock()
+
+        with (
+            patch(
+                "requirements_graphrag_api.core.agentic.subgraphs.synthesis.get_prompt",
+                new_callable=AsyncMock,
+                return_value=mock_prompt_template,
+            ),
+            patch(
+                "requirements_graphrag_api.core.agentic.subgraphs.synthesis.ChatOpenAI",
+                return_value=mock_llm,
+            ),
+        ):
+            graph = create_synthesis_subgraph(mock_config)
+            result = await graph.ainvoke(
+                {
+                    "query": "q",
+                    "context": "[Source 1: A]\n[Source 2: B]\n[Source 3: C]",
+                }
+            )
+
+        final = result["final_answer"]
+        # Body uses footer-aligned numbering: C is [Source 1], A is [Source 2].
+        assert "Foo [Source 1] bar [Source 2]" in final
+        # Footer matches.
+        assert "- [1] C" in final
+        assert "- [2] A" in final
+        # No leftover input-numbered marker for the dropped index.
+        assert "[Source 3]" not in final
+
+    @pytest.mark.asyncio
+    async def test_format_output_drops_orphan_markers(self, mock_config: AppConfig):
+        """When the LLM cites an input source it didn't include in `citations`,
+        the inline marker is dropped (rather than dangling against the footer)."""
+        # Body cites Source 2 (B), but citations only includes A and C -> B is
+        # an "orphan" and that inline marker must be removed.
+        draft_payload = json.dumps(
+            {
+                "answer": "Alpha [Source 1] beta [Source 2] gamma [Source 3].",
+                "critique": {
+                    "confidence": 0.9,
+                    "completeness": "complete",
+                    "missing_aspects": [],
+                },
+                "citations": ["A", "C"],
+            }
+        )
+
+        mock_chain = MagicMock()
+        mock_chain.ainvoke = AsyncMock(return_value=create_ai_message_mock(draft_payload))
+        mock_prompt_template = MagicMock()
+        mock_prompt_template.__or__ = MagicMock(return_value=mock_chain)
+        mock_llm = MagicMock()
+
+        with (
+            patch(
+                "requirements_graphrag_api.core.agentic.subgraphs.synthesis.get_prompt",
+                new_callable=AsyncMock,
+                return_value=mock_prompt_template,
+            ),
+            patch(
+                "requirements_graphrag_api.core.agentic.subgraphs.synthesis.ChatOpenAI",
+                return_value=mock_llm,
+            ),
+        ):
+            graph = create_synthesis_subgraph(mock_config)
+            result = await graph.ainvoke(
+                {
+                    "query": "q",
+                    "context": "[Source 1: A]\n[Source 2: B]\n[Source 3: C]",
+                }
+            )
+
+        final = result["final_answer"]
+        # A -> [Source 1] (first in citations), C -> [Source 2] (second).
+        assert "[Source 1]" in final  # for A
+        assert "[Source 2]" in final  # for C
+        # The orphan reference to B (input Source 2) must be gone.
+        # After dropping, the body should have exactly two markers remaining.
+        assert final.count("[Source ") == 2
+        assert "- [1] A" in final
+        assert "- [2] C" in final
+
 
 # =============================================================================
 # STATE TYPE TESTS
