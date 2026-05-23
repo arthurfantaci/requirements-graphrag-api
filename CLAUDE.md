@@ -61,6 +61,12 @@
 - **Use `logger.exception`** (not `logger.warning`) for caught exceptions — preserves traceback + triggers Sentry
 - **Orchestrator error boundaries**: async wrapper functions (e.g., `_community()`) catch exceptions and return safe defaults (`[]`)
 
+## Browser Automation (Playwright)
+- Two ways in, both wired here: the **`playwright-cli` skill** (`.claude/skills/playwright-cli/`, token-efficient default) and the **`playwright` MCP server** (`.mcp.json`, `npx @playwright/mcp@latest`).
+- **Local sessions** also inherit a user-scope MCP + skill, so no per-repo setup is needed on this machine.
+- **Cloud / ephemeral sandboxes** (Anthropic remote Claude Code): the committed skill + `.mcp.json` travel with the repo. If the `playwright-cli` binary is missing in the sandbox, bootstrap it: `npm i -g @playwright/cli@latest && playwright-cli install` (uses system Chrome if present; otherwise `npx playwright install chromium`).
+- Primary surface is `frontend/` (Vite/React) — use Playwright to drive the live UI, not the FastAPI backend.
+
 ## Verification Before PR
 ```bash
 cd backend

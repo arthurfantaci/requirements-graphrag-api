@@ -106,3 +106,6 @@ browser-performance-traces/
 # Claude Code local config
 .claudeignore
 .claude/worktrees/
+
+# Playwright CLI runtime session/state (page snapshots) — committed skill lives in .claude/skills/
+.playwright-cli/
