@@ -250,7 +250,6 @@ def format_context(
                     all_entities[term] = {"definition": definition, "label": "Definition"}
                 elif definition and not all_entities[term].get("definition"):
                     all_entities[term]["definition"] = definition
-                    all_entities[term]["label"] = "Definition"
                 # Collect for KG section
                 if term not in seen_glossary and definition:
                     seen_glossary[term] = definition
