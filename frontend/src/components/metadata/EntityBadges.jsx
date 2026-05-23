@@ -45,6 +45,15 @@ function ChevronIcon({ isOpen }) {
  * - Teal: Entities (general extracted terms)
  * - Amber: Challenges (problems/issues)
  * - Green: Best Practices (recommendations)
+ * - Indigo: Standards (formal specifications)
+ * - Orange: Industries (vertical markets)
+ * - Cyan: Artifacts (produced deliverables)
+ * - Fuchsia: Process Stages (workflow phases)
+ * - Yellow: Methodologies (structured approaches)
+ * - Rose: Tools (software/equipment)
+ * - Lime: Roles (job functions)
+ * - Emerald: Organizations (companies/groups)
+ * - Sky: Outcomes (results/effects)
  * - Slate: Fallback for unknown labels
  */
 const LABEL_COLORS = {
@@ -101,6 +110,78 @@ const LABEL_COLORS = {
     hoverBorder: 'hover:border-indigo-300',
     indicator: 'text-indigo-400',
     tooltipColor: 'purple',
+  },
+  Industry: {
+    bg: 'bg-orange-50',
+    text: 'text-orange-700',
+    border: 'border-orange-200',
+    hoverBg: 'hover:bg-orange-100',
+    hoverBorder: 'hover:border-orange-300',
+    indicator: 'text-orange-400',
+    tooltipColor: 'amber',
+  },
+  Artifact: {
+    bg: 'bg-cyan-50',
+    text: 'text-cyan-700',
+    border: 'border-cyan-200',
+    hoverBg: 'hover:bg-cyan-100',
+    hoverBorder: 'hover:border-cyan-300',
+    indicator: 'text-cyan-400',
+    tooltipColor: 'teal',
+  },
+  Processstage: {
+    bg: 'bg-fuchsia-50',
+    text: 'text-fuchsia-700',
+    border: 'border-fuchsia-200',
+    hoverBg: 'hover:bg-fuchsia-100',
+    hoverBorder: 'hover:border-fuchsia-300',
+    indicator: 'text-fuchsia-400',
+    tooltipColor: 'purple',
+  },
+  Methodology: {
+    bg: 'bg-yellow-50',
+    text: 'text-yellow-700',
+    border: 'border-yellow-200',
+    hoverBg: 'hover:bg-yellow-100',
+    hoverBorder: 'hover:border-yellow-300',
+    indicator: 'text-yellow-400',
+    tooltipColor: 'amber',
+  },
+  Tool: {
+    bg: 'bg-rose-50',
+    text: 'text-rose-700',
+    border: 'border-rose-200',
+    hoverBg: 'hover:bg-rose-100',
+    hoverBorder: 'hover:border-rose-300',
+    indicator: 'text-rose-400',
+    tooltipColor: 'rose',
+  },
+  Role: {
+    bg: 'bg-lime-50',
+    text: 'text-lime-700',
+    border: 'border-lime-200',
+    hoverBg: 'hover:bg-lime-100',
+    hoverBorder: 'hover:border-lime-300',
+    indicator: 'text-lime-400',
+    tooltipColor: 'green',
+  },
+  Organization: {
+    bg: 'bg-emerald-50',
+    text: 'text-emerald-700',
+    border: 'border-emerald-200',
+    hoverBg: 'hover:bg-emerald-100',
+    hoverBorder: 'hover:border-emerald-300',
+    indicator: 'text-emerald-400',
+    tooltipColor: 'emerald',
+  },
+  Outcome: {
+    bg: 'bg-sky-50',
+    text: 'text-sky-700',
+    border: 'border-sky-200',
+    hoverBg: 'hover:bg-sky-100',
+    hoverBorder: 'hover:border-sky-300',
+    indicator: 'text-sky-400',
+    tooltipColor: 'blue',
   },
   // Default fallback for unknown labels
   default: {
