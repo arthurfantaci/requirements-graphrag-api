@@ -501,13 +501,15 @@ git status
 git log main..HEAD --oneline
 ```
 
-Expected: working tree clean. The branch should have FIVE commits ahead of `main`:
+Expected: working tree clean. The branch should have SEVEN commits ahead of `main`:
 
 1. `docs(spec): unified source attribution design`
 2. `docs(spec): fix markdownlint diagnostics on unified source attribution spec`
-3. `refactor(synthesis): remove redundant Sources footer from final answer`
-4. `feat(ui): number Sources accordion rows with citation-style chips`
-5. `feat(ui): show retrieved chunk excerpt on Sources row hover`
+3. `docs(plan): unified source attribution implementation plan`
+4. `docs(plan): fix expected commit count in Task 4 Step 1`
+5. `refactor(synthesis): remove redundant Sources footer from final answer`
+6. `feat(ui): number Sources accordion rows with citation-style chips`
+7. `feat(ui): show retrieved chunk excerpt on Sources row hover`
 
 If the commit list looks wrong, stop and reconcile before pushing.
 
