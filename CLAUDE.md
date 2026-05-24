@@ -12,6 +12,7 @@
 - Conventional commits: `fix:`, `feat:`, `refactor:`, `docs:`
 - Git workflow: Issue → Branch → PR (always use RC branch strategy for phases)
 - **CLAUDE.md & memory files — NO separate workflow**: Changes that ONLY touch `CLAUDE.md` or `~/.claude/` memory files MUST NOT get their own issue, branch, or PR. Bundle them into the next phase's PR, or commit directly to the working branch. See global CLAUDE.md for full rule.
+- **Tooling-only changes MAY bypass the PR workflow.** Changes that ONLY touch `.gitignore`, `.mcp.json`, `.claude/skills/`, `.claude/settings.json`, or `CLAUDE.md` sections MAY be direct-pushed to `main` using the repo-owner bypass on ruleset 11978163 (`bypass_mode: always` for the admin RepositoryRole). On direct pushes, the PR-required rule, the `claude-review` workflow, and required status checks (Lint & Format Check, Test) are ALL skipped — this is intentional for config-only changes where the PR ceremony exceeds the change's risk. **Product code (anything under `backend/`, `frontend/`, `data/`, `scripts/`, `migrations/`) MUST go through the standard Issue → Branch → PR cycle** so CI gating and code review apply. When in doubt, open a PR. The bypass is for ergonomics on truly trivial config tweaks, not a license to skip review on substantive changes.
 - CI triggers only on PRs targeting `main` — RC→main is where CI runs
 - Ruff format hook auto-fixes imports → always re-stage after first commit attempt
 
