@@ -25,6 +25,7 @@ from langsmith import get_current_run_tree
 from neo4j import Query
 from neo4j.exceptions import ClientError, CypherSyntaxError, DatabaseError, ServiceUnavailable
 
+from requirements_graphrag_api.core.errors import classify_llm_error
 from requirements_graphrag_api.evaluation.cost_analysis import get_global_cost_tracker
 from requirements_graphrag_api.observability import traceable_safe
 from requirements_graphrag_api.prompts import PromptName, get_prompt
@@ -288,8 +289,12 @@ async def text2cypher_query(
             return error_response
         except Exception as e:
             # Non-timeout LLM failure (API error, auth error, etc.)
-            logger.error(
-                "Text2Cypher LLM error (attempt %d/%d): %s", attempt + 1, max_retries + 1, e
+            _safe_msg, category = classify_llm_error(e)
+            logger.exception(
+                "Text2Cypher LLM error (attempt %d/%d)",
+                attempt + 1,
+                max_retries + 1,
+                error_category=category,
             )
             if attempt < max_retries:
                 continue
@@ -298,7 +303,7 @@ async def text2cypher_query(
                 cypher="",
                 results=[],
                 row_count=0,
-                error=f"Query generation failed after {max_retries + 1} attempts: {e}",
+                error=_safe_msg,
             )
 
         # LLM succeeded — no retry for validation/execution errors

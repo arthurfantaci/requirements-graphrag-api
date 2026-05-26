@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 import structlog
 from langchain_openai import ChatOpenAI
 
+from requirements_graphrag_api.core.errors import classify_llm_error
 from requirements_graphrag_api.evaluation.cost_analysis import get_global_cost_tracker
 from requirements_graphrag_api.observability import traceable_safe
 from requirements_graphrag_api.prompts import PromptName, get_prompt
@@ -206,7 +207,13 @@ async def classify_intent(
 
     chain = prompt_template | llm
 
-    llm_response = await chain.ainvoke({"question": question})
+    try:
+        llm_response = await chain.ainvoke({"question": question})
+    except Exception as e:
+        _safe_msg, category = classify_llm_error(e)
+        logger.exception("Intent classification LLM call failed", category=category)
+        return QueryIntent.EXPLANATORY
+
     get_global_cost_tracker().record_from_response(
         config.chat_model, llm_response, operation="intent_classification"
     )

@@ -499,7 +499,9 @@ class TestText2CypherTimeout:
             result = await text2cypher_query(mock_config, MagicMock(), "test", max_retries=1)
 
             assert mock_gen.call_count == 2
-            assert "failed" in result["error"]
+            # Error is now a safe user message — must not expose raw exception text
+            assert "API is down" not in result["error"]
+            assert result["error"] != ""
             assert result["row_count"] == 0
 
 

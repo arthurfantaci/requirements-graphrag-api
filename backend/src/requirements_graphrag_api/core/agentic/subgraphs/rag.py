@@ -27,6 +27,7 @@ from requirements_graphrag_api.core.agentic.state import (
     RAGState,
     RetrievedDocument,
 )
+from requirements_graphrag_api.core.errors import classify_llm_error
 from requirements_graphrag_api.evaluation.cost_analysis import get_global_cost_tracker
 from requirements_graphrag_api.prompts import PromptName, get_prompt
 
@@ -115,10 +116,11 @@ def create_rag_subgraph(
             }
 
         except Exception as e:
-            logger.exception("Query expansion failed")
+            _safe_msg, category = classify_llm_error(e)
+            logger.exception("Query expansion failed", error_category=category)
             return {
                 "expanded_queries": [query],
-                "retrieval_metadata": {"expansion_error": str(e)},
+                "retrieval_metadata": {"expansion_error": category},
             }
 
     # -------------------------------------------------------------------------

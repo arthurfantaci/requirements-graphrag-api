@@ -32,6 +32,8 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
+from requirements_graphrag_api.core.errors import classify_llm_error
+
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
@@ -386,7 +388,8 @@ async def stream_agentic_events(
 
     except Exception as e:
         logger.exception("Agentic stream error")
-        yield create_error_event(str(e)).to_sse()
+        safe_message, _category = classify_llm_error(e)
+        yield create_error_event(safe_message).to_sse()
 
 
 __all__ = [
