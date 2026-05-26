@@ -11,6 +11,7 @@ then LLM-based classification (INTENT_CLASSIFIER prompt) for ambiguous queries.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from enum import StrEnum
@@ -18,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 from langchain_openai import ChatOpenAI
+from openai import RateLimitError
 
 from requirements_graphrag_api.core.errors import classify_llm_error
 from requirements_graphrag_api.evaluation.cost_analysis import get_global_cost_tracker
@@ -28,6 +30,15 @@ if TYPE_CHECKING:
     from requirements_graphrag_api.config import AppConfig
 
 logger = structlog.get_logger()
+
+
+# Bounded retry policy for transient OpenAI rate-limit errors during intent
+# classification. Three attempts with exponential backoff (0.5s, 1.0s, 2.0s)
+# adds a worst-case ~3.5s of wait time before falling back to EXPLANATORY,
+# which is acceptable given that the alternative is silently degrading the
+# user's first turn.
+MAX_INTENT_RETRIES = 3
+INTENT_BACKOFF_BASE = 0.5
 
 
 class QueryIntent(StrEnum):
@@ -207,12 +218,33 @@ async def classify_intent(
 
     chain = prompt_template | llm
 
-    try:
-        llm_response = await chain.ainvoke({"question": question})
-    except Exception as e:
-        _safe_msg, category = classify_llm_error(e)
-        logger.exception("Intent classification LLM call failed", category=category)
-        return QueryIntent.EXPLANATORY
+    llm_response = None
+    for attempt in range(MAX_INTENT_RETRIES):
+        try:
+            llm_response = await chain.ainvoke({"question": question})
+            break
+        except RateLimitError as e:
+            if attempt < MAX_INTENT_RETRIES - 1:
+                backoff = INTENT_BACKOFF_BASE * (2**attempt)
+                logger.warning(
+                    "Intent classification rate-limited; retrying",
+                    attempt=attempt + 1,
+                    max_attempts=MAX_INTENT_RETRIES,
+                    backoff_seconds=backoff,
+                )
+                await asyncio.sleep(backoff)
+                continue
+            _safe_msg, category = classify_llm_error(e)
+            logger.warning(
+                "Intent classification rate-limited after retries; falling back to EXPLANATORY",
+                category=category,
+                attempts=MAX_INTENT_RETRIES,
+            )
+            return QueryIntent.EXPLANATORY
+        except Exception as e:
+            _safe_msg, category = classify_llm_error(e)
+            logger.exception("Intent classification LLM call failed", category=category)
+            return QueryIntent.EXPLANATORY
 
     get_global_cost_tracker().record_from_response(
         config.chat_model, llm_response, operation="intent_classification"

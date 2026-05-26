@@ -454,3 +454,135 @@ class TestClassifyIntentLlmFailure:
             result = await classify_intent(mock_config, "What is requirements traceability?")
 
         assert result == QueryIntent.EXPLANATORY
+
+
+class TestClassifyIntentRateLimitRetry:
+    """Tests for bounded retry-with-backoff on RateLimitError."""
+
+    @pytest.fixture
+    def mock_config(self) -> MagicMock:
+        config = MagicMock()
+        config.chat_model = "gpt-4o-mini"
+        config.openai_api_key = "test-key"
+        return config
+
+    def _make_rate_limit_error(self) -> openai.RateLimitError:
+        response = httpx.Response(
+            429,
+            json={"error": {"type": "rate_limit_exceeded", "code": "rate_limit_exceeded"}},
+            request=httpx.Request("POST", "https://api.openai.com/v1/chat/completions"),
+        )
+        return openai.RateLimitError(
+            "Rate limit exceeded",
+            response=response,
+            body={"error": {"type": "rate_limit_exceeded", "code": "rate_limit_exceeded"}},
+        )
+
+    @pytest.mark.asyncio
+    async def test_rate_limit_then_success_returns_classified_intent(
+        self, mock_config: MagicMock
+    ) -> None:
+        """First attempt hits 429, retry succeeds — caller sees the LLM classification."""
+        json_response = '{"intent": "structured", "confidence": "high"}'
+        mock_ai_msg = MagicMock()
+        mock_ai_msg.content = json_response
+        mock_ai_msg.response_metadata = {
+            "token_usage": {"prompt_tokens": 50, "completion_tokens": 20},
+        }
+
+        mock_chain = MagicMock()
+        mock_chain.ainvoke = AsyncMock(
+            side_effect=[self._make_rate_limit_error(), mock_ai_msg]
+        )
+        mock_prompt = MagicMock()
+        mock_prompt.__or__ = MagicMock(return_value=mock_chain)
+
+        with (
+            patch(
+                "requirements_graphrag_api.core.routing._quick_classify",
+                return_value=None,
+            ),
+            patch(
+                "requirements_graphrag_api.core.routing.get_prompt",
+                new_callable=AsyncMock,
+                return_value=mock_prompt,
+            ),
+            patch("requirements_graphrag_api.core.routing.ChatOpenAI"),
+            patch(
+                "requirements_graphrag_api.core.routing.asyncio.sleep",
+                new_callable=AsyncMock,
+            ) as mock_sleep,
+        ):
+            result = await classify_intent(mock_config, "ambiguous query")
+
+        assert result == QueryIntent.STRUCTURED
+        # Should have slept exactly once with the first-attempt backoff (0.5s).
+        assert mock_chain.ainvoke.await_count == 2
+        mock_sleep.assert_awaited_once_with(0.5)
+
+    @pytest.mark.asyncio
+    async def test_rate_limit_exhausts_retries_falls_back_with_warning(
+        self, mock_config: MagicMock, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """All attempts hit 429 — function falls back to EXPLANATORY and logs a warning."""
+        mock_chain = MagicMock()
+        mock_chain.ainvoke = AsyncMock(side_effect=self._make_rate_limit_error())
+        mock_prompt = MagicMock()
+        mock_prompt.__or__ = MagicMock(return_value=mock_chain)
+
+        with (
+            patch(
+                "requirements_graphrag_api.core.routing._quick_classify",
+                return_value=None,
+            ),
+            patch(
+                "requirements_graphrag_api.core.routing.get_prompt",
+                new_callable=AsyncMock,
+                return_value=mock_prompt,
+            ),
+            patch("requirements_graphrag_api.core.routing.ChatOpenAI"),
+            patch(
+                "requirements_graphrag_api.core.routing.asyncio.sleep",
+                new_callable=AsyncMock,
+            ) as mock_sleep,
+        ):
+            result = await classify_intent(mock_config, "ambiguous query")
+
+        assert result == QueryIntent.EXPLANATORY
+        # MAX_INTENT_RETRIES=3 attempts, two intermediate sleeps (0.5s, 1.0s).
+        assert mock_chain.ainvoke.await_count == 3
+        assert mock_sleep.await_count == 2
+        sleep_durations = [call.args[0] for call in mock_sleep.await_args_list]
+        assert sleep_durations == [0.5, 1.0]
+
+    @pytest.mark.asyncio
+    async def test_non_rate_limit_exception_does_not_retry(
+        self, mock_config: MagicMock
+    ) -> None:
+        """A non-RateLimitError exception falls back immediately without retry."""
+        mock_chain = MagicMock()
+        mock_chain.ainvoke = AsyncMock(side_effect=RuntimeError("boom"))
+        mock_prompt = MagicMock()
+        mock_prompt.__or__ = MagicMock(return_value=mock_chain)
+
+        with (
+            patch(
+                "requirements_graphrag_api.core.routing._quick_classify",
+                return_value=None,
+            ),
+            patch(
+                "requirements_graphrag_api.core.routing.get_prompt",
+                new_callable=AsyncMock,
+                return_value=mock_prompt,
+            ),
+            patch("requirements_graphrag_api.core.routing.ChatOpenAI"),
+            patch(
+                "requirements_graphrag_api.core.routing.asyncio.sleep",
+                new_callable=AsyncMock,
+            ) as mock_sleep,
+        ):
+            result = await classify_intent(mock_config, "ambiguous query")
+
+        assert result == QueryIntent.EXPLANATORY
+        assert mock_chain.ainvoke.await_count == 1
+        mock_sleep.assert_not_awaited()
