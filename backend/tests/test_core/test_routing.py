@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
+import openai
 import pytest
 
 from requirements_graphrag_api.core.routing import (
@@ -346,3 +348,109 @@ class TestClassifyIntentConversational:
         ):
             result = await classify_intent(mock_config, "Can you go back to my earlier point?")
             assert result == QueryIntent.CONVERSATIONAL
+
+
+class TestClassifyIntentLlmFailure:
+    """Tests for fail-soft behaviour when the classification LLM raises a provider error."""
+
+    @pytest.fixture
+    def mock_config(self) -> MagicMock:
+        config = MagicMock()
+        config.chat_model = "gpt-4o-mini"
+        config.openai_api_key = "test-key"
+        return config
+
+    def _make_response(self, status_code: int, body: dict) -> httpx.Response:
+        return httpx.Response(
+            status_code,
+            json=body,
+            request=httpx.Request("POST", "https://api.openai.com/v1/chat/completions"),
+        )
+
+    @pytest.mark.asyncio
+    async def test_rate_limit_insufficient_quota_defaults_explanatory(
+        self, mock_config: MagicMock
+    ) -> None:
+        response = self._make_response(
+            429,
+            {"error": {"type": "insufficient_quota", "code": "insufficient_quota"}},
+        )
+        exc = openai.RateLimitError(
+            "You exceeded your current quota",
+            response=response,
+            body={"error": {"type": "insufficient_quota", "code": "insufficient_quota"}},
+        )
+
+        mock_chain = MagicMock()
+        mock_chain.ainvoke = AsyncMock(side_effect=exc)
+        mock_prompt = MagicMock()
+        mock_prompt.__or__ = MagicMock(return_value=mock_chain)
+
+        with (
+            patch(
+                "requirements_graphrag_api.core.routing._quick_classify",
+                return_value=None,
+            ),
+            patch(
+                "requirements_graphrag_api.core.routing.get_prompt",
+                new_callable=AsyncMock,
+                return_value=mock_prompt,
+            ),
+            patch("requirements_graphrag_api.core.routing.ChatOpenAI"),
+        ):
+            result = await classify_intent(mock_config, "What is requirements traceability?")
+
+        assert result == QueryIntent.EXPLANATORY
+
+    @pytest.mark.asyncio
+    async def test_authentication_error_defaults_explanatory(self, mock_config: MagicMock) -> None:
+        response = self._make_response(401, {"error": {"type": "invalid_api_key"}})
+        exc = openai.AuthenticationError(
+            "Invalid API key",
+            response=response,
+            body={"error": {"type": "invalid_api_key"}},
+        )
+
+        mock_chain = MagicMock()
+        mock_chain.ainvoke = AsyncMock(side_effect=exc)
+        mock_prompt = MagicMock()
+        mock_prompt.__or__ = MagicMock(return_value=mock_chain)
+
+        with (
+            patch(
+                "requirements_graphrag_api.core.routing._quick_classify",
+                return_value=None,
+            ),
+            patch(
+                "requirements_graphrag_api.core.routing.get_prompt",
+                new_callable=AsyncMock,
+                return_value=mock_prompt,
+            ),
+            patch("requirements_graphrag_api.core.routing.ChatOpenAI"),
+        ):
+            result = await classify_intent(mock_config, "What is requirements traceability?")
+
+        assert result == QueryIntent.EXPLANATORY
+
+    @pytest.mark.asyncio
+    async def test_generic_exception_defaults_explanatory(self, mock_config: MagicMock) -> None:
+        mock_chain = MagicMock()
+        mock_chain.ainvoke = AsyncMock(side_effect=RuntimeError("unexpected"))
+        mock_prompt = MagicMock()
+        mock_prompt.__or__ = MagicMock(return_value=mock_chain)
+
+        with (
+            patch(
+                "requirements_graphrag_api.core.routing._quick_classify",
+                return_value=None,
+            ),
+            patch(
+                "requirements_graphrag_api.core.routing.get_prompt",
+                new_callable=AsyncMock,
+                return_value=mock_prompt,
+            ),
+            patch("requirements_graphrag_api.core.routing.ChatOpenAI"),
+        ):
+            result = await classify_intent(mock_config, "What is requirements traceability?")
+
+        assert result == QueryIntent.EXPLANATORY
