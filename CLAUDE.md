@@ -61,6 +61,7 @@
 - **Wrap only runtime calls**: try/except around search execution, not object initialization
 - **Use `logger.exception`** (not `logger.warning`) for caught exceptions — preserves traceback + triggers Sentry
 - **Orchestrator error boundaries**: async wrapper functions (e.g., `_community()`) catch exceptions and return safe defaults (`[]`)
+- **Sanitize provider errors at the boundary**: `core/errors.py::classify_llm_error()` maps raw LLM exceptions → `(safe_user_message, category)` (`capacity`/`config`/`unknown`). The SSE catch-all in `core/agentic/streaming.py` MUST emit the safe message, never `str(e)` (raw OpenAI `insufficient_quota`/429 text must not reach the UI). Caller logs the real exception via `logger.exception`. Intent routing fails soft → `EXPLANATORY` on LLM error.
 
 ## Browser Automation (Playwright)
 - Two ways in, both wired here: the **`playwright-cli` skill** (`.claude/skills/playwright-cli/`, token-efficient default) and the **`playwright` MCP server** (`.mcp.json`, `npx @playwright/mcp@latest`).
