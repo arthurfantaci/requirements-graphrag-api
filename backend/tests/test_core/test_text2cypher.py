@@ -133,6 +133,50 @@ class TestGenerateCypher:
             assert "```" not in result
             assert "MATCH (n) RETURN n" in result
 
+    @pytest.mark.asyncio
+    async def test_attributes_question_returns_keys_not_name_substring_scan(
+        self, mock_config: MagicMock, mock_driver: MagicMock
+    ) -> None:
+        """Schema-introspection questions ("What are the attributes of a Requirement?")
+        must not become `WHERE toLower(a.name) CONTAINS 'requirement'` record-listing
+        queries — they must surface property names via `keys(...)` (or an equivalent
+        property listing). Regression test for issue c3da37a2.
+        """
+        from requirements_graphrag_api.prompts.definitions import TEXT2CYPHER_SYSTEM
+
+        # The system prompt must teach the schema-introspection pattern; otherwise
+        # the generator falls back to a name-substring scan over Artifact rows.
+        assert "keys(" in TEXT2CYPHER_SYSTEM, (
+            "TEXT2CYPHER_SYSTEM must include a keys(n) schema-introspection example"
+        )
+        assert "attributes" in TEXT2CYPHER_SYSTEM.lower(), (
+            "TEXT2CYPHER_SYSTEM must mention 'attributes' so the generator recognizes "
+            "schema-introspection questions"
+        )
+        assert "Schema vs data" in TEXT2CYPHER_SYSTEM or "schema vs data" in TEXT2CYPHER_SYSTEM, (
+            "TEXT2CYPHER_SYSTEM must include the schema-vs-data guideline"
+        )
+
+        # With the schema-introspection guidance in place, the LLM should emit a
+        # keys(...) form for an "attributes of X" question — assert the generator
+        # surface (post-strip) does NOT produce the buggy name-substring shape.
+        with patch("requirements_graphrag_api.core.text2cypher.ChatOpenAI") as mock_llm_class:
+            mock_llm_class.return_value = create_llm_mock(
+                "MATCH (a:Artifact) RETURN keys(a) AS attributes LIMIT 1"
+            )
+
+            result = await generate_cypher(
+                mock_config, mock_driver, "What are the attributes of a Requirement?"
+            )
+
+            normalized = result.lower().replace(" ", "").replace("\n", "")
+            assert "tolower(a.name)contains'requirement'" not in normalized, (
+                f"Generator regressed to name-substring scan: {result!r}"
+            )
+            assert "keys(" in result, (
+                f"Schema-introspection question should produce keys(...) form, got: {result!r}"
+            )
+
 
 # =============================================================================
 # Text2Cypher Query Tests

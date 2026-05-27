@@ -241,6 +241,12 @@ QUERY_UPDATER_METADATA = PromptMetadata(
 TEXT2CYPHER_SYSTEM: Final[str] = """You are a Cypher query generator for a Requirements \
 Management knowledge graph.
 
+NOTE: The {schema} variable below already enumerates the node types and their \
+property names. When the user asks a schema-introspection question (e.g. "what are \
+the attributes/properties/fields of X?"), the answer is the property *names* of node \
+type X — those are in {schema} and in the "Node Types and Properties" section below. \
+Do NOT translate such questions into a name-substring scan over X-typed records.
+
 Dynamic Database Stats:
 {schema}
 
@@ -442,6 +448,20 @@ WHERE solver_type IS NOT NULL
 RETURN solver_type, solver_name, challenge
 ORDER BY solver_type, solver_name
 
+Example 16 — Schema introspection (list the *properties* of a node type):
+Question: What are the attributes of a Requirement / Artifact? \
+(also: "what properties / fields does an Artifact have?", "what is the schema of \
+Artifact?")
+Cypher: MATCH (a:Artifact)
+RETURN keys(a) AS attributes
+LIMIT 1
+# Returns the property names defined on Artifact nodes (e.g. name, display_name,
+# abbreviation, artifact_type). Use this `keys(n)` form when the user asks about
+# the *fields*, *properties*, *attributes*, or *schema* of an entity type.
+# Do NOT translate this into `WHERE toLower(a.name) CONTAINS 'requirement' RETURN ...`
+# — that lists records, not the schema. The property names are also available in
+# the {schema} block above and the "Node Types and Properties" section.
+
 ## Guidelines
 
 1. **Read-only queries only** — never use CREATE, MERGE, DELETE, SET, REMOVE, or DROP
@@ -463,6 +483,11 @@ and avoid duplicate rows
 the name property
 13. Do NOT use LOAD CSV, CALL {{ }}, apoc.*, dbms.*, or any procedure calls
 14. Do NOT generate EXPLAIN or PROFILE queries
+15. **Schema vs data**: if the user asks about the *attributes*, *properties*, \
+*fields*, or *schema* of a node type X, return the property *names* via \
+`MATCH (n:X) RETURN keys(n) AS attributes LIMIT 1` — do NOT translate this into \
+`WHERE toLower(n.name) CONTAINS '<x>' RETURN ...`, which lists records whose name \
+mentions the type and answers a different question. See Example 16.
 
 Generate only the Cypher query, no explanation."""
 
