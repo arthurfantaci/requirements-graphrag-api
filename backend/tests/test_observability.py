@@ -12,6 +12,8 @@ import pytest
 from requirements_graphrag_api.config import AppConfig
 from requirements_graphrag_api.observability import (
     REDACTED,
+    _build_otlp_exporter_config,
+    configure_otel,
     configure_tracing,
     create_eval_run,
     create_thread_metadata,
@@ -93,6 +95,127 @@ def _make_config_no_api_key() -> AppConfig:
         langsmith_project="test-project",
         langsmith_tracing_enabled=True,
     )
+
+
+_OTEL_ENV_VARS = (
+    "LANGSMITH_API_KEY",
+    "LANGSMITH_PROJECT",
+    "LANGSMITH_WORKSPACE_ID",
+    "LANGSMITH_OTEL_ENDPOINT",
+    "LANGSMITH_OTEL_TIMEOUT_SECONDS",
+)
+
+
+@pytest.fixture
+def clean_otel_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Remove all OTLP-exporter env vars so each test sets its own."""
+    for var in _OTEL_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+
+
+class TestBuildOtlpExporterConfig:
+    """Tests for the OTLP exporter (endpoint, headers, timeout) construction."""
+
+    def test_defaults_to_us_endpoint(
+        self, clean_otel_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _ = clean_otel_env
+        monkeypatch.setenv("LANGSMITH_API_KEY", "lsv2_sk_test")
+        endpoint, _headers, _timeout = _build_otlp_exporter_config()
+        assert endpoint == "https://api.smith.langchain.com/otel/v1/traces"
+
+    def test_endpoint_is_env_configurable(
+        self, clean_otel_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _ = clean_otel_env
+        monkeypatch.setenv("LANGSMITH_API_KEY", "lsv2_sk_test")
+        monkeypatch.setenv(
+            "LANGSMITH_OTEL_ENDPOINT", "https://eu.api.smith.langchain.com/otel/v1/traces"
+        )
+        endpoint, _headers, _timeout = _build_otlp_exporter_config()
+        assert endpoint == "https://eu.api.smith.langchain.com/otel/v1/traces"
+
+    def test_includes_api_key_and_project_headers(
+        self, clean_otel_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _ = clean_otel_env
+        monkeypatch.setenv("LANGSMITH_API_KEY", "lsv2_sk_test")
+        monkeypatch.setenv("LANGSMITH_PROJECT", "my-project")
+        _endpoint, headers, _timeout = _build_otlp_exporter_config()
+        assert headers["x-api-key"] == "lsv2_sk_test"
+        assert headers["Langsmith-Project"] == "my-project"
+
+    def test_includes_tenant_header_when_workspace_set(
+        self, clean_otel_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Org-scoped keys require X-Tenant-Id or the OTLP endpoint returns 403."""
+        _ = clean_otel_env
+        monkeypatch.setenv("LANGSMITH_API_KEY", "lsv2_sk_test")
+        monkeypatch.setenv("LANGSMITH_WORKSPACE_ID", "ws-123")
+        _endpoint, headers, _timeout = _build_otlp_exporter_config()
+        assert headers["X-Tenant-Id"] == "ws-123"
+
+    def test_omits_tenant_header_when_workspace_unset(
+        self, clean_otel_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _ = clean_otel_env
+        monkeypatch.setenv("LANGSMITH_API_KEY", "lsv2_sk_test")
+        _endpoint, headers, _timeout = _build_otlp_exporter_config()
+        assert "X-Tenant-Id" not in headers
+
+    def test_timeout_is_none_by_default(
+        self, clean_otel_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _ = clean_otel_env
+        monkeypatch.setenv("LANGSMITH_API_KEY", "lsv2_sk_test")
+        _endpoint, _headers, timeout = _build_otlp_exporter_config()
+        assert timeout is None
+
+    def test_timeout_is_env_configurable(
+        self, clean_otel_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _ = clean_otel_env
+        monkeypatch.setenv("LANGSMITH_API_KEY", "lsv2_sk_test")
+        monkeypatch.setenv("LANGSMITH_OTEL_TIMEOUT_SECONDS", "30")
+        _endpoint, _headers, timeout = _build_otlp_exporter_config()
+        assert timeout == 30
+
+
+class TestConfigureOtel:
+    """Tests for configure_otel exporter wiring."""
+
+    def test_noop_without_api_key(
+        self, clean_otel_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _ = clean_otel_env
+        assert configure_otel() is False
+
+    def test_builds_exporter_with_tenant_header(
+        self, clean_otel_env: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The exporter must receive the X-Tenant-Id header for org-scoped keys."""
+        _ = clean_otel_env
+        monkeypatch.setenv("LANGSMITH_API_KEY", "lsv2_sk_test")
+        monkeypatch.setenv("LANGSMITH_WORKSPACE_ID", "ws-123")
+        monkeypatch.setenv("LANGSMITH_PROJECT", "my-project")
+
+        with (
+            patch(
+                "opentelemetry.exporter.otlp.proto.http.trace_exporter.OTLPSpanExporter"
+            ) as mock_exporter,
+            patch("opentelemetry.sdk.trace.export.BatchSpanProcessor"),
+            patch("opentelemetry.trace.get_tracer_provider") as mock_get_provider,
+        ):
+            mock_get_provider.return_value = MagicMock()
+            result = configure_otel()
+
+        assert result is True
+        mock_exporter.assert_called_once()
+        call_kwargs = mock_exporter.call_args.kwargs
+        assert call_kwargs["endpoint"] == "https://api.smith.langchain.com/otel/v1/traces"
+        assert call_kwargs["headers"]["x-api-key"] == "lsv2_sk_test"
+        assert call_kwargs["headers"]["X-Tenant-Id"] == "ws-123"
+        assert "timeout" not in call_kwargs
 
 
 class TestConfigureTracing:

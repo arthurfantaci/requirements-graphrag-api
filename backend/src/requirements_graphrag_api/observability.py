@@ -331,6 +331,47 @@ def configure_sentry() -> bool:
     return True
 
 
+# Default LangSmith OTLP traces endpoint (US region). Override per region with
+# LANGSMITH_OTEL_ENDPOINT (EU host: https://eu.api.smith.langchain.com/otel/v1/traces).
+_DEFAULT_OTEL_ENDPOINT: Final[str] = "https://api.smith.langchain.com/otel/v1/traces"
+
+
+def _build_otlp_exporter_config() -> tuple[str, dict[str, str], int | None]:
+    """Build the (endpoint, headers, timeout) for the LangSmith OTLP exporter.
+
+    Org-scoped LANGSMITH_API_KEYs are NOT bound to a single workspace, so the
+    LangSmith OTLP endpoint cannot infer the tenant and rejects the request with
+    HTTP 403 Forbidden unless the workspace is supplied as an ``X-Tenant-Id``
+    header. This mirrors the LangChain/LangGraph auto-trace path, which sends the
+    same workspace via the ``LANGSMITH_WORKSPACE_ID`` environment variable.
+
+    Endpoint, timeout, and the tenant header are all driven by environment
+    variables so the region and export tuning are configurable without code
+    changes:
+      - LANGSMITH_OTEL_ENDPOINT: full traces URL (default: US region host)
+      - LANGSMITH_WORKSPACE_ID:  workspace UUID, sent as X-Tenant-Id
+      - LANGSMITH_OTEL_TIMEOUT_SECONDS: export timeout (default: SDK default)
+
+    Returns:
+        A tuple of (endpoint, headers, timeout) ready to pass to OTLPSpanExporter.
+        ``timeout`` is None when unset, so the SDK default is used.
+    """
+    endpoint = os.getenv("LANGSMITH_OTEL_ENDPOINT", _DEFAULT_OTEL_ENDPOINT)
+    headers = {
+        "x-api-key": os.getenv("LANGSMITH_API_KEY", ""),
+        "Langsmith-Project": os.getenv("LANGSMITH_PROJECT", "default"),
+    }
+
+    workspace_id = os.getenv("LANGSMITH_WORKSPACE_ID", "")
+    if workspace_id:
+        headers["X-Tenant-Id"] = workspace_id
+
+    timeout_raw = os.getenv("LANGSMITH_OTEL_TIMEOUT_SECONDS", "")
+    timeout = int(timeout_raw) if timeout_raw else None
+
+    return endpoint, headers, timeout
+
+
 def configure_otel() -> bool:
     """Configure OpenTelemetry with LangSmith OTLP export.
 
@@ -354,14 +395,20 @@ def configure_otel() -> bool:
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-    langsmith_project = os.getenv("LANGSMITH_PROJECT", "default")
-    exporter = OTLPSpanExporter(
-        endpoint="https://api.smith.langchain.com/otel/v1/traces",
-        headers={
-            "x-api-key": langsmith_api_key,
-            "Langsmith-Project": langsmith_project,
-        },
-    )
+    endpoint, headers, timeout = _build_otlp_exporter_config()
+    langsmith_project = headers["Langsmith-Project"]
+
+    if "X-Tenant-Id" not in headers:
+        logger.warning(
+            "OTel LangSmith exporter has no workspace/tenant header "
+            "(LANGSMITH_WORKSPACE_ID not set). Org-scoped API keys will be "
+            "rejected by the OTLP endpoint with HTTP 403."
+        )
+
+    exporter_kwargs: dict[str, Any] = {"endpoint": endpoint, "headers": headers}
+    if timeout is not None:
+        exporter_kwargs["timeout"] = timeout
+    exporter = OTLPSpanExporter(**exporter_kwargs)
 
     # Reuse Sentry's TracerProvider if available, otherwise create one
     provider = trace.get_tracer_provider()
